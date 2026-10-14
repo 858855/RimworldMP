@@ -1,0 +1,61 @@
+schema_version: 1
+status_schema:
+  open: "Noch nicht begonnen."
+  in_progress: "Aktive Arbeit auf einem Arbeitsbranch."
+  blocked: "Abhängigkeit oder nachweisbares Hindernis verhindert Abschluss."
+  ready_for_human_review: "Umsetzung und verfügbare Prüfungen fertig; Merge-Freigabe ausstehend."
+  done: "Abgeschlossen; bei Merge-Aufgaben nach menschlich freigegebenem Merge."
+tasks:
+  - id: DOC-001
+    title: "Projektgedächtnis und vorhandene Wissensbasis in Git zugänglich machen"
+    status: ready_for_human_review
+    branch: docs/project-governance
+    depends_on: []
+    acceptance_criteria:
+      - "Alle geforderten Projektgedächtnis-Dateien und Verzeichnisse sind vorhanden."
+      - "Vorhandene AGENTS.md und README.md bleiben inhaltlich erhalten."
+      - "Archivinhalt ist prüfbar, und keine Mod-Laufzeit wird behauptet."
+    verification:
+      - "python3 scripts/verify_knowledge_archive.py: 49 Archiveinträge bestanden"
+      - "python3 scripts/validate_structure.py: 3 XML-Dateien bestanden"
+      - "YAML- und Git-Prüfung: siehe docs/verification/2026-10-14-project-baseline.md"
+    review: docs/reviews/2026-10-14-project-governance.md
+  - id: ENV-001
+    title: "Lokal installierte RimWorld-Version feststellen"
+    status: done
+    branch: docs/project-governance
+    depends_on: []
+    acceptance_criteria:
+      - "Version mit Revision und Steam-Build-ID aus lokalen Dateien erfasst."
+    verification:
+      - "Version.txt: 1.6.4871 rev598"
+      - "appmanifest_294100.acf: buildid 23969874"
+      - "RimWorld-Laufzeit nicht getestet"
+  - id: SRC-001
+    title: "Verwendete API-Quellen für erste Implementierung pinnen und lokal prüfen"
+    status: open
+    branch: null
+    depends_on: [DOC-001, FEATURE-001]
+    acceptance_criteria:
+      - "Für benutzte externe APIs sind Commit-Hashes oder Paketversionen dokumentiert."
+      - "Signaturen sind gegen die passende lokale Assembly oder getaggte Quelle geprüft."
+    verification: []
+  - id: FEATURE-001
+    title: "Erstes konkretes Mod-Feature und Ziel-Build festlegen"
+    status: open
+    branch: null
+    depends_on: [DOC-001]
+    acceptance_criteria:
+      - "Umfang, 1.6-Build, SP/MP-Ziel und Akzeptanzkriterien sind dokumentiert."
+      - "Eine Designnotiz nach AGENTS.md liegt vor."
+    verification: []
+  - id: TEST-001
+    title: "Laufzeit- und Zwei-Client-MP-Test des ersten MP-Features"
+    status: blocked
+    branch: null
+    depends_on: [FEATURE-001, SRC-001]
+    acceptance_criteria:
+      - "RimWorld-Start, Def-Laden, Save/Load und zwei echte Clients sind protokolliert."
+      - "Desync-Befund, Builds und Logs beider Clients sind dokumentiert."
+    verification: []
+    blocker: "Noch kein produktiver Mod oder konkretes MP-Feature vorhanden."

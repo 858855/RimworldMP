@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Template for native 1.6/net472, requires legally installed Game DLLs and reference pack. -->
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <AssemblyName>CodexResearch.Example</AssemblyName>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Pass /p:RimWorldManaged=... pointing at YOUR local 1.6 Managed directory. -->
+    <Reference Include="Assembly-CSharp">
+      <HintPath>$(RimWorldManaged)/Assembly-CSharp.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <!-- Depending on 1.6 game code, more UnityEngine/System/Verse refs may be needed. -->
+  </ItemGroup>
+</Project>

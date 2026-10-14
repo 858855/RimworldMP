@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Didactic ThingDef: incomplete for many gameplay uses; validate ParentName in Core. -->
+<Defs>
+  <ThingDef ParentName="ResourceBase">
+    <defName>Codex_ResearchSample</defName>
+    <label>research sample</label>
+    <description>An example XML Def; deliberately not a production item.</description>
+    <stackLimit>75</stackLimit>
+  </ThingDef>
+</Defs>

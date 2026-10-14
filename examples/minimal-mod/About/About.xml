@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ModMetaData>
+  <name>Codex Research Example (not release-ready)</name>
+  <author>Codex Research Knowledge Base</author>
+  <packageId>com.codexresearch.rimworld.example</packageId>
+  <supportedVersions>
+    <li>1.6</li>
+  </supportedVersions>
+  <description>Illustrative 1.6 structure for research. NOT compiled or runtime tested.</description>
+</ModMetaData>

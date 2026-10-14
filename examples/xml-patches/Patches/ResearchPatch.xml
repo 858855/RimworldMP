@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Intentionally uses a hypothetical Def. Do NOT ship: XPath target may not exist. -->
+<Patch>
+  <Operation Class="PatchOperationAdd">
+    <xpath>Defs/ThingDef[defName="Codex_ResearchSample"]</xpath>
+    <value>
+      <!-- illustrative field addition; actual schema must be checked in target game -->
+      <tradeability>All</tradeability>
+    </value>
+  </Operation>
+</Patch>
