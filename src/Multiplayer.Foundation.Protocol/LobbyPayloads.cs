@@ -6,8 +6,11 @@ namespace Multiplayer.Foundation.Protocol
 {
     public sealed class PlayerView
     {
-        public PlayerView(Guid id, string name, bool ready) { Id = id; Name = name; Ready = ready; }
+        public PlayerView(Guid id, string name, bool ready, PlayerKey key) { Id = id; Name = name; Ready = ready; Key = key; }
+        /// <summary>Session ID of this connection; changes on every reconnect.</summary>
         public Guid Id { get; }
+        /// <summary>Persistent identity; use this for anything saved.</summary>
+        public PlayerKey Key { get; }
         public string Name { get; }
         public bool Ready { get; }
     }
@@ -74,6 +77,11 @@ namespace Multiplayer.Foundation.Protocol
                 throw new ProtocolException("Chat message must contain printable text.");
         }
 
+        public static byte[] Hello(string playerName, PlayerKey key)
+        { var writer = new PayloadWriter(); writer.WriteString(playerName, 160); key.Write(writer); return writer.ToArray(); }
+        public static (string Name, PlayerKey Key) ReadHello(byte[] bytes)
+        { var reader = new PayloadReader(bytes); string name = reader.ReadString(160); PlayerKey key = PlayerKey.Read(reader); reader.EnsureComplete(); return (name, key); }
+
         public static byte[] String(string value, int maxBytes = 160)
         { var writer = new PayloadWriter(); writer.WriteString(value, maxBytes); return writer.ToArray(); }
         public static string ReadString(byte[] bytes, int maxBytes = 160)
@@ -106,7 +114,7 @@ namespace Multiplayer.Foundation.Protocol
             if (state.Players.Count > 64) throw new ProtocolException("Too many players.");
             writer.WriteByte((byte)state.Players.Count);
             foreach (PlayerView player in state.Players)
-            { writer.WriteGuid(player.Id); writer.WriteString(player.Name, 160); writer.WriteBool(player.Ready); }
+            { writer.WriteGuid(player.Id); writer.WriteString(player.Name, 160); writer.WriteBool(player.Ready); player.Key.Write(writer); }
             return writer.ToArray();
         }
         public static LobbyView ReadState(byte[] bytes)
@@ -116,7 +124,8 @@ namespace Multiplayer.Foundation.Protocol
             ulong revision = reader.ReadUInt64(); byte capacity = reader.ReadByte(); byte count = reader.ReadByte();
             if (count > 64 || count > capacity) throw new ProtocolException("Invalid player count.");
             var players = new List<PlayerView>();
-            for (int i = 0; i < count; i++) players.Add(new PlayerView(reader.ReadGuid(), reader.ReadString(160), reader.ReadBool()));
+            for (int i = 0; i < count; i++)
+                players.Add(new PlayerView(reader.ReadGuid(), reader.ReadString(160), reader.ReadBool(), PlayerKey.Read(reader)));
             reader.EnsureComplete(); return new LobbyView(id, name, host, revision, capacity, players);
         }
         public static byte[] List(IReadOnlyList<LobbySummary> lobbies)

@@ -117,6 +117,32 @@ await Run("transfer payloads and limits", () =>
     Equal(true, (TransferPayloads.MaximumWindowChunks * (TransferPayloads.ChunkSize + 64)) < 512 * 1024);
     return Task.CompletedTask;
 });
+await Run("player key and hello", () =>
+{
+    PlayerKey steam = PlayerKey.Steam(76561198000000001UL);
+    PlayerKey local = PlayerKey.Local(Guid.Parse("0123456789abcdef0123456789abcdef"));
+    Equal("steam:76561198000000001", steam.ToString());
+    Equal("local:0123456789abcdef0123456789abcdef", local.ToString());
+    Equal(true, PlayerKey.TryParse(steam.ToString(), out PlayerKey parsedSteam) && parsedSteam == steam);
+    Equal(true, PlayerKey.TryParse(local.ToString(), out PlayerKey parsedLocal) && parsedLocal == local);
+    foreach (string bad in new[] { "", "steam:0", "steam:-1", "steam: 5", "local:", "local:00000000000000000000000000000000", "x:1", "STEAM:5" })
+        Equal(false, PlayerKey.TryParse(bad, out _));
+    Equal(false, steam == local);
+    Equal(false, default(PlayerKey).IsValid);
+    Throws<ArgumentOutOfRangeException>(() => PlayerKey.Steam(0));
+    Throws<ArgumentOutOfRangeException>(() => PlayerKey.Local(Guid.Empty));
+    var (name, key) = LobbyPayloads.ReadHello(LobbyPayloads.Hello("Alice", steam));
+    Equal("Alice", name); Equal(steam, key);
+    Equal(local, LobbyPayloads.ReadHello(LobbyPayloads.Hello("Bob", local)).Key);
+    Throws<ProtocolException>(() => LobbyPayloads.Hello("Alice", default));
+    var oldHello = new PayloadWriter(); oldHello.WriteString("Alice", 160);
+    Throws<ProtocolException>(() => LobbyPayloads.ReadHello(oldHello.ToArray()));
+    var badKind = new PayloadWriter(); badKind.WriteString("Alice", 160); badKind.WriteByte(9); badKind.WriteUInt64(5);
+    Throws<ProtocolException>(() => LobbyPayloads.ReadHello(badKind.ToArray()));
+    var zeroSteam = new PayloadWriter(); zeroSteam.WriteString("Alice", 160); zeroSteam.WriteByte(1); zeroSteam.WriteUInt64(0);
+    Throws<ProtocolException>(() => LobbyPayloads.ReadHello(zeroSteam.ToArray()));
+    return Task.CompletedTask;
+});
 Console.WriteLine($"PASS: {passed} protocol test groups");
 
 async Task Run(string name, Func<Task> body)

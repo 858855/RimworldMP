@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Spielerkennung (Arbeitsbranch `feat/player-key`, ID-001)
+
+- Jeder Spieler hat jetzt eine feste Kennung: mit Steam die SteamID, ohne Steam eine einmal erzeugte und gespeicherte Kennung. Sie ist die Grundlage für Charakterwahl und Pawn-Besitz.
+- Über Steam kann sich niemand als anderer Spieler ausgeben: Der Host prüft die Kennung gegen das, was Steam selbst bestätigt hat. Jeder Spieler kann nur einmal gleichzeitig verbunden sein.
+- Behoben: Abgelehnte Steam-Gäste sahen statt des Grunds nur „Server closed during handshake“. Ebenfalls behoben: Nach dem Trennen dauerte es bis zu 5 Sekunden, bis die anderen „Spieler hat verlassen“ sahen.
+- Beide Spieler brauchen denselben Build.
+- Entscheidungen des Benutzers: Startort per Fähnchen, nur der Host wählt; Charakterwahl erst weiter, wenn alle fertig sind (ADR 0015).
+
 ### Chunk-Kanal (Arbeitsbranch `feat/chunk-transfer`, XFER-001)
 
 - Große Daten wie Welt und Spielstand lassen sich jetzt zwischen Lobbymitgliedern übertragen: in Stücken, mit SHA-256-Prüfung und mit Gegendruck. Ein Steam-Gast kann dadurch nicht überlaufen. Das ist die Grundlage für Weltübertragung, Spielstart und späteren Beitritt; im Spiel wird es noch nicht genutzt.

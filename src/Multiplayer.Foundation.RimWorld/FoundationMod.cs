@@ -253,7 +253,20 @@ namespace Multiplayer.Foundation.RimWorld
             if (!HostEndpoint.TryParse(settings.ServerAddress, port, out string host, out port))
             { status = "Ungültige Serveradresse"; return; }
             status = "Verbindung wird aufgebaut";
-            connecting = LobbyClient.ConnectAsync(host, port, settings.PlayerName.Trim(), TimeSpan.FromSeconds(10));
+            connecting = LobbyClient.ConnectAsync(host, port, settings.PlayerName.Trim(), TimeSpan.FromSeconds(10),
+                System.Threading.CancellationToken.None, CurrentPlayerKey());
+        }
+
+        // SteamID when Steam runs, otherwise a key created once and stored in the mod settings (ADR 0016).
+        private PlayerKey CurrentPlayerKey()
+        {
+            if (steam != null)
+            {
+                CSteamID own = SteamUser.GetSteamID();
+                if (own.IsValid()) return PlayerKey.Steam((ulong)own);
+            }
+            if (settings.EnsureLocalPlayerKey()) WriteSettings();
+            return settings.LocalKey;
         }
 
         private void HostLobby()
@@ -267,7 +280,7 @@ namespace Multiplayer.Foundation.RimWorld
             { status = "Lobbyname muss 1–40 druckbare Zeichen haben"; return; }
             status = "Lokale Lobby startet";
             hosting = ListenHost.StartAsync(settings.HostBindAddress.Trim(), port,
-                settings.PlayerName.Trim(), name, capacity);
+                settings.PlayerName.Trim(), name, capacity, CurrentPlayerKey());
         }
 
         private void HostSteamLobby()
@@ -280,13 +293,13 @@ namespace Multiplayer.Foundation.RimWorld
             { status = "Lobbyname muss 1–40 druckbare Zeichen haben"; return; }
             status = "Steam-Lobby startet";
             steamHostStarting = true;
-            hosting = StartSteamHostAsync(steam, settings.PlayerName.Trim(), name, capacity);
+            hosting = StartSteamHostAsync(steam, settings.PlayerName.Trim(), name, capacity, CurrentPlayerKey());
         }
 
         private static async Task<ListenHost> StartSteamHostAsync(SteamLobbyBridge bridge,
-            string playerName, string name, byte capacity)
+            string playerName, string name, byte capacity, PlayerKey playerKey)
         {
-            ListenHost host = await ListenHost.StartAsync("127.0.0.1", 0, playerName, name, capacity);
+            ListenHost host = await ListenHost.StartAsync("127.0.0.1", 0, playerName, name, capacity, playerKey);
             try { await bridge.StartHostingAsync(host, name, capacity); return host; }
             catch { await host.DisposeAsync(); throw; }
         }

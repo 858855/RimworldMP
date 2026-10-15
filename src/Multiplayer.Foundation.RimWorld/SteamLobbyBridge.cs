@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Multiplayer.Foundation.Hosting;
 using Multiplayer.Foundation.Network;
+using Multiplayer.Foundation.Protocol;
 using Steamworks;
 using UnityEngine;
 
@@ -100,8 +101,9 @@ namespace Multiplayer.Foundation.RimWorld
                 Task finished = await Task.WhenAny(stream.Connected, Task.Delay(TimeSpan.FromSeconds(20)));
                 if (finished != stream.Connected) throw new TimeoutException("Steam P2P connection timed out.");
                 await stream.Connected;
-                return await LobbyClient.ConnectOverStreamAsync(stream, playerName, TimeSpan.FromSeconds(10))
-                    .ConfigureAwait(false);
+                // The host verifies this claim against the SteamID Steam authenticated for the connection.
+                return await LobbyClient.ConnectOverStreamAsync(stream, playerName, TimeSpan.FromSeconds(10),
+                    CancellationToken.None, PlayerKey.Steam((ulong)SteamUser.GetSteamID())).ConfigureAwait(false);
             }
             catch { stream?.Dispose(); Leave(); throw; }
             finally { joinResult = null; }
@@ -165,7 +167,8 @@ namespace Multiplayer.Foundation.RimWorld
                 { SteamNetworkingSockets.CloseConnection(handle, 0, "Not a lobby member.", false); return; }
                 var stream = new SteamPeerStream(handle);
                 streams.Add(handle, stream);
-                if (!host.AttachConnection(NetworkConnection.FromDuplexStream(stream)))
+                // Steam authenticated `remote`; the guest's Hello must claim exactly this SteamID.
+                if (!host.AttachConnection(NetworkConnection.FromDuplexStream(stream), PlayerKey.Steam((ulong)remote)))
                     streams.Remove(handle);
             }
             else if (streams.TryGetValue(handle, out SteamPeerStream? stream))

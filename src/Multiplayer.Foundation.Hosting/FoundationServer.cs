@@ -106,11 +106,13 @@ public sealed class FoundationServer : IAsyncDisposable
             catch (OperationCanceledException) { break; }
             catch (ObjectDisposedException) { break; }
             catch (SocketException) when (cancellationToken.IsCancellationRequested) { break; }
-            AttachConnection(NetworkConnection.FromAcceptedClient(client));
+            AttachConnection(NetworkConnection.FromAcceptedClient(client), null);
         }
     }
 
-    public bool AttachConnection(NetworkConnection connection)
+    /// <param name="verifiedKey">Identity the transport has proven, e.g. the SteamID Steam authenticated for a P2P
+    /// connection. The Hello must claim the same key. Null for TCP, where the claim cannot be checked (SEC-001).</param>
+    public bool AttachConnection(NetworkConnection connection, PlayerKey? verifiedKey = null)
     {
         if (connection == null) throw new ArgumentNullException(nameof(connection));
         if (listener == null || stopping.IsCancellationRequested ||
@@ -122,14 +124,14 @@ public sealed class FoundationServer : IAsyncDisposable
             return false;
         }
         Guid taskId = Guid.NewGuid();
-        Task task = HandleClientAsync(connection, stopping.Token);
+        Task task = HandleClientAsync(connection, verifiedKey, stopping.Token);
         peerTasks[taskId] = task;
         _ = task.ContinueWith(completed => peerTasks.TryRemove(taskId, out _),
             CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
         return true;
     }
 
-    private async Task HandleClientAsync(NetworkConnection connection, CancellationToken serverToken)
+    private async Task HandleClientAsync(NetworkConnection connection, PlayerKey? verifiedKey, CancellationToken serverToken)
     {
         Guid sessionId = Guid.NewGuid();
         Peer? peer = null;
@@ -145,14 +147,23 @@ public sealed class FoundationServer : IAsyncDisposable
             if (hello == null || hello.Type != MessageType.Hello || hello.RequestId != 1)
             { await RejectAsync(connection, 1, "Expected Hello.", serverToken).ConfigureAwait(false); return; }
             string name;
-            try { name = LobbyPayloads.ReadString(hello.Payload); lobbies.AddMember(sessionId, name); }
-            catch (Exception error) when (error is ProtocolException or LobbyRuleException)
-            { await RejectAsync(connection, 1, "Invalid player name.", serverToken).ConfigureAwait(false); return; }
+            PlayerKey key;
+            try { (name, key) = LobbyPayloads.ReadHello(hello.Payload); }
+            catch (ProtocolException)
+            { await RejectAsync(connection, 1, "Invalid Hello.", serverToken).ConfigureAwait(false); return; }
+            if (verifiedKey != null && key != verifiedKey.Value)
+            { await RejectAsync(connection, 3, "Player key does not match the verified identity.", serverToken).ConfigureAwait(false); return; }
+            try { lobbies.AddMember(sessionId, name, key); }
+            catch (LobbyRuleException error)
+            { await RejectAsync(connection, error.Code, error.Message, serverToken).ConfigureAwait(false); return; }
             peer = new Peer(sessionId, name, connection);
             peers[sessionId] = peer;
             await connection.SendAsync(new WireMessage(MessageType.HandshakeAccepted, 1,
                 LobbyPayloads.Accepted(sessionId, (ushort)config.HeartbeatIntervalSeconds)), serverToken).ConfigureAwait(false);
-            Task heartbeat = HeartbeatLoopAsync(peer, serverToken);
+            // Per-connection stop: without it the heartbeat's delay holds up cleanup (PlayerLeft, freeing the
+            // player key, aborting transfers) by up to one heartbeat interval after the client is gone.
+            using var peerStop = CancellationTokenSource.CreateLinkedTokenSource(serverToken);
+            Task heartbeat = HeartbeatLoopAsync(peer, peerStop.Token);
             try
             {
                 while (!serverToken.IsCancellationRequested)
@@ -166,7 +177,7 @@ public sealed class FoundationServer : IAsyncDisposable
                     { await SendErrorAsync(peer, message.RequestId, 1, error.Message, serverToken).ConfigureAwait(false); break; }
                 }
             }
-            finally { connection.Dispose(); await heartbeat.ConfigureAwait(false); }
+            finally { connection.Dispose(); peerStop.Cancel(); await heartbeat.ConfigureAwait(false); }
         }
         catch (OperationCanceledException) when (serverToken.IsCancellationRequested) { }
         catch (OperationCanceledException) { }

@@ -21,30 +21,32 @@ namespace Multiplayer.Foundation.Network
         {
             connection = handshake.Connection;
             SessionId = handshake.SessionId;
+            PlayerKey = handshake.PlayerKey;
             HeartbeatSeconds = handshake.HeartbeatSeconds;
             reader = ReadLoopAsync();
         }
 
         public Guid SessionId { get; }
+        public PlayerKey PlayerKey { get; }
         public ushort HeartbeatSeconds { get; }
         public bool IsConnected => Volatile.Read(ref closed) == 0 && !connection.IsClosed;
         public string? LastError => Volatile.Read(ref lastError);
         public Task Completion => reader;
 
         public static async Task<LobbyClient> ConnectAsync(string host, int port, string playerName,
-            TimeSpan timeout, CancellationToken cancellationToken = default)
+            TimeSpan timeout, CancellationToken cancellationToken = default, PlayerKey? playerKey = null)
         {
-            HandshakeResult handshake = await HandshakeClient.ConnectAsync(host, port, playerName, timeout, cancellationToken)
+            HandshakeResult handshake = await HandshakeClient.ConnectAsync(host, port, playerName, timeout, cancellationToken, playerKey)
                 .ConfigureAwait(false);
             return new LobbyClient(handshake);
         }
 
         public static async Task<LobbyClient> ConnectOverStreamAsync(Stream stream, string playerName,
-            TimeSpan timeout, CancellationToken cancellationToken = default)
+            TimeSpan timeout, CancellationToken cancellationToken = default, PlayerKey? playerKey = null)
         {
             var connection = NetworkConnection.FromDuplexStream(stream);
             HandshakeResult handshake = await HandshakeClient.ConnectAsync(connection, playerName, timeout,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken, playerKey).ConfigureAwait(false);
             return new LobbyClient(handshake);
         }
 

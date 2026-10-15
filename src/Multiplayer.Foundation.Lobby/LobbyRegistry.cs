@@ -30,11 +30,17 @@ namespace Multiplayer.Foundation.Lobby
         public LobbyRegistry(byte maximumCapacity)
         { if (maximumCapacity < 2 || maximumCapacity > 64) throw new ArgumentOutOfRangeException(nameof(maximumCapacity)); this.maximumCapacity = maximumCapacity; }
 
-        public void AddMember(Guid id, string name)
+        public void AddMember(Guid id, string name, PlayerKey key)
         {
             ValidateName(name);
+            if (!key.IsValid) throw new LobbyRuleException(1, "Invalid player key.");
             lock (gate)
-            { if (id == Guid.Empty || members.ContainsKey(id)) throw new LobbyRuleException(6, "Invalid session."); members.Add(id, new Member(id, name)); }
+            {
+                if (id == Guid.Empty || members.ContainsKey(id)) throw new LobbyRuleException(6, "Invalid session.");
+                // One connection per player: ownership and permissions hang on the key (ADR 0016).
+                if (members.Values.Any(member => member.Key == key)) throw new LobbyRuleException(6, "This player is already connected.");
+                members.Add(id, new Member(id, name, key));
+            }
         }
 
         public IReadOnlyList<LobbySummary> List()
@@ -140,14 +146,15 @@ namespace Multiplayer.Foundation.Lobby
         }
         private LobbyChange Change(Room room, Guid actor)
         {
-            var players = room.Members.Select(id => new PlayerView(id, members[id].Name, members[id].Ready)).ToArray();
+            var players = room.Members.Select(id => new PlayerView(id, members[id].Name, members[id].Ready, members[id].Key)).ToArray();
             return new LobbyChange(new LobbyView(room.Id, room.Name, room.Host, room.Revision, room.Capacity, players), room.Members.ToArray(), actor);
         }
         private sealed class Member
         {
-            public Member(Guid id, string name) { Id = id; Name = name; }
+            public Member(Guid id, string name, PlayerKey key) { Id = id; Name = name; Key = key; }
             public Guid Id { get; }
             public string Name { get; }
+            public PlayerKey Key { get; }
             public Guid? Room { get; set; }
             public bool Ready { get; set; }
         }

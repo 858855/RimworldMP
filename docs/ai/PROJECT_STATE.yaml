@@ -14,15 +14,17 @@ target_rimworld_version:
   runtime: Unity/Mono
   game_runtime_tested: true
   other_versions_verified: []
-current_phase: chunk_transfer_review_pending
+current_phase: player_key_review_pending
 git:
-  branch: feat/chunk-transfer
-  base_branch: docs/full-multiplayer-plan
-  base_commit: 1e5a529
+  branch: feat/player-key
+  base_branch: feat/chunk-transfer
+  base_commit: c7ed45a
   current_commit_ref: HEAD
   pushed: false
   merged: false
   dependent_branches:
+  - feat/chunk-transfer
+  - docs/full-multiplayer-plan
   - docs/project-governance
   - feat/network-protocol
   - feat/dedicated-server
@@ -105,12 +107,15 @@ verified_capabilities:
 - 'Menü-/Chat-Vorschau: RimWorld-1.6-Release-Build mit Harmony-Patch ohne Warnungen; neun ZIP-Einträge und lokale Installation bytegleich geprüft.'
 - 'Merge von feat/main-menu-chat und fix/internet-connectivity in main: RimWorld-1.6-Mod (Linux, 1.6.4871 rev598) ohne Warnungen gebaut, Dedicated Server gebaut, alle sieben Testprojekte unter .NET 10.0.13 auf Linux bestanden. Siehe docs/verification/2026-10-15-merge-menu-chat-internet.md.'
 - 'Chunk-Kanal (XFER-001): 50 MB Host→Gast über ListenHost per TCP und per Steam-Nachbildung mit gleichem SHA-256; Spitze Steam-Sendepuffer 360/512 KiB, Empfangsqueue 360/1024 KiB; Gegenprobe mit Plan-Fenster 32 bricht die Steam-Nachbildung ab. Echtes Steam nicht getestet. Siehe docs/verification/2026-10-15-chunk-transfer.md.'
+- 'PlayerKey (ID-001): Hello trägt SteamID oder lokale GUID; über Steam-Nachbildung wird eine fremde SteamID abgelehnt, Doppelverbindung abgelehnt, Kennung binnen 1,5 s nach Trennen frei. Spielneustart nicht getestet. Siehe docs/verification/2026-10-15-player-key.md.'
 user_reported_capabilities:
 - 'Steam-Verbindung laut Benutzer am 2026-10-15 erfolgreich; Ablauf, Heimanschlüsse und weitere Lobbyfunktionen noch nicht dokumentiert. Siehe docs/verification/2026-10-15-steam-user-connection.md.'
 - 'Multiplayer-Knopf direkt unter Tutorial und Fensteröffnung vom Benutzer am 2026-10-15 im Spiel bestätigt; siehe docs/verification/2026-10-15-menu-chat.md.'
 - 'Spieltest durch Benutzer (Windows, 1.6.4871 rev590): Mod lädt, Einstellungsfenster bedienbar, Direkt-Host erstellt Lobby. Dabei gefundene UPnP-/Adressfehler auf fix/internet-connectivity korrigiert.'
 - 'Branch fix/internet-connectivity: Dual-Stack-Bindung `::`, Client über IPv6/DNS mit Fallback und UPnP gegen Fake-Gateway getestet (sieben Testprojekte unter .NET 8); Mod-Build gegen Windows-1.6-Installation (rev590) ohne Warnungen; SSDP gegen echte FRITZ!Box nur lesend.'
 known_issues:
+- 'PlayerKey über TCP fälschbar (SEC-001); mit und ohne Steam ergibt zwei verschiedene Kennungen.'
+- 'Spieltests derzeit nicht möglich (Benutzer, 2026-10-15): alle Laufzeitprüfungen im Spiel bleiben offen.'
 - 'Wire-Version 3 (Chunk-Kanal) ist nicht mit Version 2 kombinierbar; Nachrichtencodes 20–23 beim Merge mit parallelen Branches abgleichen.'
 - 'RimWorld-UI durch Codex nicht verifiziert: -nographics verursacht Atlasfehler; grafischer Start
   kam auch im 180-s-Wiederholungsversuch nicht bis zu belegten Mod-Ladeeinträgen.'
@@ -132,7 +137,7 @@ active_tasks:
 - CHAT-001
 - NET-002
 - PLAN-001
-next_action: 'XFER-001 menschlich prüfen; danach Chunk-Kanal mit zwei Steam-Konten testen. Plan-Entscheidung ADR 0013 (Steam-Listen-Host statt Dedicated Server) und Fensterabweichung ADR 0014 in PLAN-001-Review aufnehmen.'
+next_action: 'Review von feat/chunk-transfer und feat/player-key. Danach nächster Meilenstein ohne Spieltest-Bedarf, z. B. die serverseitigen Regeln von START-001/SETUP-003/SETUP-004 (ADR 0015) als Zustandsmaschine im Lobby-Kern.'
 documentation_refs:
   tasks: docs/ai/TASKS.yaml
   handoff: docs/ai/SESSION_HANDOFF.md

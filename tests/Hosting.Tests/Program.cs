@@ -205,6 +205,55 @@ await using (var room = await ListenHost.StartAsync("127.0.0.1", 0, "Host", "Tra
     Console.WriteLine("PASS: server rejects a window overrun and a second concurrent transfer");
 }
 
+// ID-001: persistent player key, verified over Steam-like links, unique per connected player.
+PlayerKey hostKey = PlayerKey.Steam(76561198000000010UL);
+PlayerKey friendKey = PlayerKey.Steam(76561198000000020UL);
+await using (var keyed = await ListenHost.StartAsync("127.0.0.1", 0, "Host", "Key Room", 4, hostKey))
+{
+    LobbyView keyRoom = LobbyPayloads.ReadState((await ReceiveAsync(keyed.Client, MessageType.LobbyStateUpdate)).Payload);
+    Assert(keyed.Client.PlayerKey == hostKey && keyRoom.Players.Single().Key == hostKey, "host joins with its own key");
+
+    // Steam authenticated friendKey for this link; the friend claims the same.
+    using var honestLink = new SteamLikeLink();
+    Assert(keyed.AttachConnection(NetworkConnection.FromDuplexStream(honestLink.A), friendKey), "verified link attached");
+    using LobbyClient friend = await LobbyClient.ConnectOverStreamAsync(honestLink.B, "Friend", TimeSpan.FromSeconds(4),
+        CancellationToken.None, friendKey);
+    await friend.SendAsync(MessageType.JoinLobby, 2, LobbyPayloads.GuidValue(keyRoom.Id));
+    LobbyView withFriend = LobbyPayloads.ReadState((await ReceiveAsync(keyed.Client, MessageType.LobbyStateUpdate)).Payload);
+    Assert(withFriend.Players.Single(p => p.Name == "Friend").Key == friendKey, "host sees the friend's SteamID");
+
+    // A guest Steam verified as someone else claims the host's SteamID: rejected.
+    using var spoofLink = new SteamLikeLink();
+    Assert(keyed.AttachConnection(NetworkConnection.FromDuplexStream(spoofLink.A), PlayerKey.Steam(76561198000000099UL)), "spoof link attached");
+    ProtocolException spoof = await ExpectAsync<ProtocolException>(() => LobbyClient.ConnectOverStreamAsync(spoofLink.B, "Mallory",
+        TimeSpan.FromSeconds(4), CancellationToken.None, hostKey));
+    Assert(spoof.Message.Contains("verified identity"), "claim that differs from the Steam identity is rejected");
+
+    // The same player cannot be connected twice; once gone, the key is free again.
+    ProtocolException twice = await ExpectAsync<ProtocolException>(() => LobbyClient.ConnectAsync("127.0.0.1", keyed.Port, "FriendAgain",
+        TimeSpan.FromSeconds(4), CancellationToken.None, friendKey));
+    Assert(twice.Message.Contains("already connected"), "second connection with the same key rejected");
+    await friend.DisconnectAsync();
+    // Must free within a second; before the per-connection heartbeat stop it took up to one 5 s heartbeat.
+    var freed = System.Diagnostics.Stopwatch.StartNew();
+    LobbyClient? again = null;
+    for (int attempt = 0; attempt < 20 && again == null; attempt++)
+    {
+        try { again = await LobbyClient.ConnectAsync("127.0.0.1", keyed.Port, "FriendAgain", TimeSpan.FromSeconds(4), CancellationToken.None, friendKey); }
+        catch (ProtocolException) { await Task.Delay(50); }
+    }
+    Assert(again != null && again.PlayerKey == friendKey && freed.Elapsed < TimeSpan.FromSeconds(1.5),
+        "key usable again within a second of disconnect");
+    again!.Dispose();
+}
+Console.WriteLine("PASS: player key reaches the lobby; Steam-verified identity cannot be spoofed; one connection per player");
+
+static async Task<T> ExpectAsync<T>(Func<Task> action) where T : Exception
+{
+    try { await action(); } catch (T error) { return error; }
+    throw new Exception("Expected " + typeof(T).Name);
+}
+
 static async Task<byte[][]> TransferAsync(LobbyClient from, LobbyClient[] to, Guid recipient, byte[] data, bool framePaced)
 {
     using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(120));

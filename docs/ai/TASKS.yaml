@@ -577,24 +577,49 @@ tasks:
 - id: ID-001
   title: 'Persistente Spieleridentität (PlayerKey)'
   goal: 'Spieler über Neustarts und Reconnects hinweg eindeutig erkennen.'
-  description: 'Plan §4; lokale Roadmap F5.'
+  description: 'Plan §4; lokale Roadmap F5. Design ADR 0016.'
   priority: high
   components:
   - protocol
   - network_core
+  - lobby_core
+  - listen_host
   - rimworld_adapter
   depends_on:
   - CLIENT-001
   - STEAM-001
+  scope:
+  - src/Multiplayer.Foundation.Protocol/PlayerKey.cs
+  - src/Multiplayer.Foundation.Protocol/LobbyPayloads.cs
+  - src/Multiplayer.Foundation.Lobby/LobbyRegistry.cs
+  - src/Multiplayer.Foundation.Network/
+  - src/Multiplayer.Foundation.Hosting/
+  - src/Multiplayer.Foundation.RimWorld/
+  - tests/
+  - docs/
+  non_goals:
+  - 'Übernahme einer alten Sitzung beim Wiederverbinden (JOIN-001)'
+  - 'Authentifizierung für IP-Verbindungen (SEC-001)'
   acceptance:
   - 'Hello überträgt den PlayerKey'
   - 'Steam nutzt die SteamID, sonst eine einmalig erzeugte und gespeicherte GUID'
   - 'Schlüssel übersteht einen Spielneustart'
-  implementation: planned
-  verification: not_tested
-  integration: not_submitted
-  branch: null
-  evidence: []
+  - 'Über Steam kann ein Gast keine fremde SteamID behaupten'
+  test_strategy: 'Format- und Grenztests; Eindeutigkeit im Lobby-Kern; Ende zu Ende über ListenHost mit Steam-Nachbildung inklusive Fälschungsversuch und Freigabe nach dem Trennen; Mod-Build mit per Reflection geprüften APIs.'
+  risks:
+  - 'IP-Kennung fälschbar (SEC-001)'
+  - 'Mit und ohne Steam ergibt zwei verschiedene Kennungen für denselben Menschen'
+  - 'Spielneustart und echtes Steam nicht getestet'
+  implementation: implemented
+  verification: tests_passed
+  integration: ready_for_human_review
+  branch: feat/player-key
+  base_branch: feat/chunk-transfer
+  base_commit: c7ed45a
+  evidence:
+  - docs/verification/2026-10-15-player-key.md
+  - docs/decisions/0016-persistent-player-key.md
+  blocker: 'Abnahme „übersteht Spielneustart“ nur per Build und Code belegt; Spieltest derzeit nicht möglich.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: MOD-001
   title: 'Mod-Manifest und Lobby-Prüfung von Mods und Ladereihenfolge'

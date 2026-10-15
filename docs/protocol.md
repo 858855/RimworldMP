@@ -12,7 +12,7 @@ Strings sind `length:u16` plus strikt gültige UTF-8-Bytes. Allgemeine Strings: 
 
 | Code | Typ | Richtung | Nutzdaten |
 |---|---|---|---|
-| 1 | Hello | C→S | Spielername |
+| 1 | Hello | C→S | Spielername, PlayerKey (Art `u8`: 1 = Steam + `u64`, 2 = lokal + GUID) |
 | 2 | HandshakeAccepted | S→C | Session-ID, Heartbeat-Sekunden |
 | 3 | HandshakeRejected | S→C | Fehlercode, Text |
 | 4/5 | Ping/Pong | beide | Nonce `u64` |
@@ -33,7 +33,7 @@ Strings sind `length:u16` plus strikt gültige UTF-8-Bytes. Allgemeine Strings: 
 | 22 | TransferAck | beide | Transfer-ID, Anzahl lückenlos verarbeiteter Chunks `u32` |
 | 23 | TransferAbort | beide | Transfer-ID, Grund `u8`, Text |
 
-Listen- und Zustandsupdates sind in `LobbyPayloads.cs` kodiert: Liste mit `count:u8`, je Lobby GUID, Name, Hostname, Spielerzahl und Kapazität; Snapshot mit GUID, Name, Host-GUID, Revision `u64`, Kapazität und Spielerarray (GUID, Name, Ready). Der TCP-Server verwendet diese Payloads; zwei unabhängige TCP-Testclients bestanden die Integrationstests. RimWorld-Client-Kompatibilität ist noch offen. Fehlercodes: `1=InvalidMessage`, `2=VersionMismatch`, `3=Unauthorized`, `4=NotFound`, `5=Capacity`, `6=InvalidState`, `7=ServerBusy`.
+Listen- und Zustandsupdates sind in `LobbyPayloads.cs` kodiert: Liste mit `count:u8`, je Lobby GUID, Name, Hostname, Spielerzahl und Kapazität; Snapshot mit GUID, Name, Host-GUID, Revision `u64`, Kapazität und Spielerarray (Session-GUID, Name, Ready, PlayerKey). Der TCP-Server verwendet diese Payloads; zwei unabhängige TCP-Testclients bestanden die Integrationstests. RimWorld-Client-Kompatibilität ist noch offen. Fehlercodes: `1=InvalidMessage`, `2=VersionMismatch`, `3=Unauthorized`, `4=NotFound`, `5=Capacity`, `6=InvalidState`, `7=ServerBusy`.
 
 ## Übergänge und Grenzen
 
@@ -46,3 +46,7 @@ Chat-Anfragen sind nur für Mitglieder einer Lobby gültig. Der Server bestimmt 
 ## Chunk-Kanal (Wire-Version 3)
 
 Große Daten (Mod-Manifest bis 4 MiB, Welt bis 64 MiB, Spielstand und Snapshot bis 256 MiB) gehen in Chunks zu 61 440 Byte; die Chunkzahl ist ⌈Länge / 61 440⌉. Ein Absender hat höchstens 6 unbestätigte Chunks unterwegs; der Server bricht ab Index „bestätigt + 8“ ab. In `TransferBegin` nennt der Absender den Empfänger (`Guid.Empty` = alle anderen Lobbymitglieder); der Server ersetzt das Feld beim Weiterleiten durch die serverseitige Session-ID des Absenders. Empfänger bestätigen erst nach Verarbeitung, die letzte Bestätigung erst nach erfolgreicher SHA-256-Prüfung. Der Server meldet dem Absender nach jeder Bestätigung das Minimum über alle Empfänger. Abbruchgründe: `1=Rejected`, `2=Cancelled`, `3=HashMismatch`, `4=Timeout`, `5=PeerLeft`, `6=InvalidData`. Verletzungen der Transfer-Regeln beenden nur die Übertragung, nicht die Verbindung. Siehe ADR 0014.
+
+## Spielerkennung
+
+Die Session-ID wechselt mit jeder Verbindung; der `PlayerKey` bleibt. Gespeichertes wie Pawn-Besitz nutzt nur den `PlayerKey`. Über Steam prüft der Server das Hello gegen die von Steam authentifizierte SteamID (Ablehnung Code 3). Über TCP ist die Kennung nicht prüfbar (SEC-001). Eine Kennung darf nur einmal gleichzeitig verbunden sein (Ablehnung Code 6). Siehe ADR 0016.

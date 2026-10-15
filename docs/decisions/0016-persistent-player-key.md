@@ -1,0 +1,25 @@
+# ADR 0016 – Persistente Spielerkennung (ID-001)
+
+- **Status:** angenommen für `feat/player-key`. Designnotiz nach `AGENTS.md` Regel 4. Plan §4, Aufgabe `ID-001`. Grundlage ADR 0013 (Steam-Listen-Host).
+- **Ziel:** Ein Spieler wird über Neustarts und Wiederverbindungen hinweg erkannt. Alles Gespeicherte, etwa Pawn-Besitz (`OWN-001`) und Charakterwahl (`SETUP-004`), hängt an dieser Kennung, nie an der Session-ID, die sich bei jeder Verbindung ändert.
+- **Kennung:** `PlayerKey` in `Protocol/PlayerKey.cs`, zwei Arten:
+  - `Steam`: die 64-Bit-SteamID.
+  - `Local`: eine GUID, beim ersten Verbinden ohne Steam erzeugt und als `localPlayerKey` in den Mod-Einstellungen gespeichert.
+  - Textform für Spielstände und Logs: `steam:<Zahl>` bzw. `local:<32 Hex>`.
+- **Wahl im Mod:** Läuft Steam (`SteamLobbyBridge` initialisiert), nutzt der Mod immer die SteamID, auch für IP-Verbindungen. Ohne Steam nutzt er die lokale GUID. Folge: Wer einmal mit und einmal ohne Steam spielt, ist für das Spiel zwei verschiedene Spieler.
+- **Vertrauen:**
+  - **Steam-Verbindung:** `SteamLobbyBridge` übergibt die SteamID, die Steam für die eingehende P2P-Verbindung authentifiziert hat, als `verifiedKey` an `AttachConnection`. Behauptet das Hello etwas anderes, lehnt der Server mit Code 3 ab. Ein Gast kann sich also nicht als anderer Steam-Spieler ausgeben.
+  - **TCP:** Die Behauptung lässt sich nicht prüfen und wird übernommen. Das ist die bekannte Lücke `SEC-001` aus Plan §7.12. Im Steam-Modus bindet der eingebettete Server an `127.0.0.1`; fälschen könnte nur ein Prozess auf dem Host-PC.
+- **Eindeutigkeit:** Eine Kennung darf nur einmal gleichzeitig verbunden sein; ein zweiter Versuch wird mit Code 6 abgelehnt. Die Prüfung läuft unter dem Lock von `LobbyRegistry`. Ein Übernehmen der alten Sitzung beim Wiederverbinden gehört zu `JOIN-001`. Bis dahin gilt die Ablehnung; sie ist fälschungssicher, weil ein IP-Angreifer sonst fremde Spieler hinauswerfen könnte.
+- **Protokoll:** Hello = Spielername + `PlayerKey` (Art `u8`, dann `u64` bzw. GUID). Jeder Spieler im Lobbyzustand trägt seinen `PlayerKey`. Wire-Version bleibt 3; Version 3 ist bis zum ersten Release nicht eingefroren.
+- **Nebenbefunde, mitbehoben:**
+  - `SteamPeerStream` schloss auch geordnet mit `bEnableLinger = false`. Steam verwirft dann ungesendete Daten. Jede Ablehnung über Steam (volle Lobby, falsche Kennung) kam beim Gast nur als „Server closed during handshake“ an. Geordnetes Schließen nutzt jetzt `linger = true`, Fehler weiterhin `false`. Signatur `CloseConnection(HSteamNetConnection, Int32, String, Boolean)` per Reflection gegen die lokale Steamworks.NET-Assembly geprüft. Das Verhalten folgt der Steamworks-Dokumentation (**WAHRSCHEINLICH**) und ist mit echtem Steam nicht getestet.
+  - Der Server wartete nach dem Trennen bis zu einem Heartbeat-Intervall (5 s), bevor er den Spieler entfernte. Folgen: verspätetes `PlayerLeft`, belegte Kennung, verspäteter Transfer-Abbruch. Der Heartbeat hat jetzt ein eigenes Stoppsignal je Verbindung.
+- **Persistenz:** nur die lokale GUID in den Mod-Einstellungen. Sie wird beim ersten Verbinden erzeugt und mit `Verse.Mod.WriteSettings()` gespeichert, nicht im Konstruktor. `Mod.WriteSettings`, `ModSettings.Write`, `SteamUser.GetSteamID` und der `CSteamID`→`UInt64`-Cast sind per Reflection gegen die lokalen 1.6-Assemblies geprüft.
+- **UI/Sync:** keine sichtbare UI-Änderung; keine Simulation berührt.
+- **Tests:**
+  - Format, Textform und ungültige Werte.
+  - Eindeutigkeit und Weitergabe im Lobbyzustand.
+  - Ende zu Ende über `ListenHost`: Host-Kennung, verifizierte Steam-Kennung, Fälschungsversuch, Doppelverbindung, Freigabe binnen einer Sekunde nach dem Trennen.
+  - Spielneustart (Kennung bleibt erhalten): `NICHT_GETESTET`, Spieltests sind laut Benutzer derzeit nicht möglich.
+- **Rollback:** Branch verwerfen. Ohne `ID-001` fehlen `SETUP-004` und `OWN-001` die Grundlage.
