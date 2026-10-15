@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using Multiplayer.Foundation.Lobby;
@@ -9,7 +10,7 @@ namespace Multiplayer.Foundation.Server;
 
 public sealed class FoundationServer : IAsyncDisposable
 {
-    private readonly ServerConfig config;
+    private readonly HostConfig config;
     private readonly LobbyRegistry lobbies;
     private readonly ConcurrentDictionary<Guid, Peer> peers = new();
     private readonly ConcurrentDictionary<Guid, Task> peerTasks = new();
@@ -18,7 +19,7 @@ public sealed class FoundationServer : IAsyncDisposable
     private Task? acceptTask;
     private int pendingConnections;
 
-    public FoundationServer(ServerConfig config)
+    public FoundationServer(HostConfig config)
     {
         this.config = config ?? throw new ArgumentNullException(nameof(config));
         lobbies = new LobbyRegistry(config.MaxPlayersPerLobby);
@@ -57,7 +58,7 @@ public sealed class FoundationServer : IAsyncDisposable
         while (!cancellationToken.IsCancellationRequested)
         {
             TcpClient client;
-            try { client = await listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false); }
+            try { client = await listener.AcceptTcpClientAsync().ConfigureAwait(false); }
             catch (OperationCanceledException) { break; }
             catch (ObjectDisposedException) { break; }
             catch (SocketException) when (cancellationToken.IsCancellationRequested) { break; }
@@ -140,9 +141,12 @@ public sealed class FoundationServer : IAsyncDisposable
                 await peer.Connection.SendAsync(new WireMessage(MessageType.Pong, message.RequestId, message.Payload), token).ConfigureAwait(false);
                 break;
             case MessageType.Pong:
-                if (LobbyPayloads.ReadPing(message.Payload) != (ulong)Volatile.Read(ref peer.ExpectedNonce))
+                ulong acknowledged = LobbyPayloads.ReadPing(message.Payload);
+                if (acknowledged == 0 || acknowledged <= (ulong)Volatile.Read(ref peer.LastAcknowledgedNonce)
+                    || acknowledged > (ulong)Volatile.Read(ref peer.NextNonce))
                     throw new ProtocolException("Unexpected Pong.");
-                peer.LastPongUtc = DateTime.UtcNow;
+                Volatile.Write(ref peer.LastAcknowledgedNonce, (long)acknowledged);
+                Volatile.Write(ref peer.LastPongStamp, Stopwatch.GetTimestamp());
                 break;
             case MessageType.LobbyListRequest:
                 RequireEmpty(message.Payload);
@@ -208,10 +212,10 @@ public sealed class FoundationServer : IAsyncDisposable
             while (!token.IsCancellationRequested && !peer.Connection.IsClosed)
             {
                 await Task.Delay(TimeSpan.FromSeconds(config.HeartbeatIntervalSeconds), token).ConfigureAwait(false);
-                if (DateTime.UtcNow - peer.LastPongUtc > TimeSpan.FromSeconds(config.ClientTimeoutSeconds))
+                if ((Stopwatch.GetTimestamp() - Volatile.Read(ref peer.LastPongStamp))
+                    / (double)Stopwatch.Frequency > config.ClientTimeoutSeconds)
                 { peer.Connection.Dispose(); break; }
                 long nonce = Interlocked.Increment(ref peer.NextNonce);
-                Volatile.Write(ref peer.ExpectedNonce, nonce);
                 await peer.Connection.SendAsync(new WireMessage(MessageType.Ping, 0, LobbyPayloads.Ping((ulong)nonce)), token).ConfigureAwait(false);
             }
         }
@@ -230,12 +234,12 @@ public sealed class FoundationServer : IAsyncDisposable
     private sealed class Peer
     {
         public Peer(Guid id, string name, NetworkConnection connection)
-        { Id = id; Name = name; Connection = connection; LastPongUtc = DateTime.UtcNow; }
+        { Id = id; Name = name; Connection = connection; LastPongStamp = Stopwatch.GetTimestamp(); }
         public Guid Id { get; }
         public string Name { get; }
         public NetworkConnection Connection { get; }
-        public DateTime LastPongUtc { get; set; }
+        public long LastPongStamp;
         public long NextNonce;
-        public long ExpectedNonce;
+        public long LastAcknowledgedNonce;
     }
 }

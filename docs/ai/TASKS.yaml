@@ -236,3 +236,144 @@ tasks:
   branch: null
   evidence: []
   blocker: Lizenzwunsch des Rechteinhabers noch nicht festgelegt; technische Arbeit kann fortgesetzt werden.
+- id: TEST-002
+  title: Mehrere unabhängige Spielerprozesse verbinden
+  goal: Zwei eigene Client-Prozesse verbinden sich mit dem Serverprozess und sehen denselben Lobbyzustand.
+  description: Prozessgrenze für die bestehende TCP- und Lobby-Implementierung nachweisen.
+  priority: critical
+  components:
+  - network_core
+  - lobby_core
+  - dedicated_server
+  depends_on:
+  - NET-001
+  - SERVER-001
+  - LOBBY-001
+  scope:
+  - tests/ProcessIntegration.Tests/
+  - docs/verification/
+  non_goals:
+  - RimWorld-UI und Gameplay-Synchronisation
+  acceptance:
+  - Eigenständiger Serverprozess und zwei Client-Prozesse starten
+  - Beide Clients erhalten denselben Lobbyzustand nach Join und Ready
+  - Disconnect entfernt den Spieler aus dem Zustand des verbleibenden Clients
+  test_strategy: Release-Build und automatisierter Mehrprozess-TCP-Test auf Loopback.
+  risks:
+  - Port-Belegung zwischen Reservierung und Serverstart
+  implementation: implemented
+  verification: tests_passed
+  integration: ready_for_human_review
+  branch: test/multi-player-process
+  base_branch: main
+  evidence:
+  - docs/verification/2026-10-15-multi-process-lobby.md
+- id: SERVER-002
+  title: Dedizierten Server bei verzögerten Heartbeats und Stoppsignal stabilisieren
+  goal: Gültige verspätete Pong-Antworten erhalten die Verbindung; SIGTERM beendet den Server geordnet.
+  description: Bestehende Serverimplementierung gezielt korrigieren und im Prozess nachweisen.
+  priority: high
+  components:
+  - dedicated_server
+  - network_core
+  depends_on:
+  - SERVER-001
+  - TEST-002
+  scope:
+  - src/Multiplayer.Foundation.Server/
+  - tests/Integration.Tests/
+  - tests/ProcessIntegration.Tests/
+  non_goals:
+  - Authentifizierung, TLS, öffentlicher Internetbetrieb, RimWorld-UI
+  acceptance:
+  - Pong auf einen noch ausstehenden älteren Ping wird angenommen
+  - Doppeltes oder ungesendetes Pong bleibt ungültig
+  - SIGTERM beendet den Serverprozess mit Exit 0
+  test_strategy: Gezielt reproduzierender TCP-Test, Mehrprozess-Test und Server-Build.
+  risks:
+  - Nebenläufige Lese- und Heartbeat-Schleifen
+  implementation: implemented
+  verification: tests_passed
+  integration: ready_for_human_review
+  branch: fix/server-heartbeat
+  base_branch: test/multi-player-process
+  base_commit: 4a6b129
+  evidence:
+  - docs/verification/2026-10-15-server-heartbeat-shutdown.md
+- id: PKG-001
+  title: Installierbares RimWorld-1.6-Mod-ZIP auf GitHub bereitstellen
+  goal: Reproduzierbares ZIP mit Mod-Ordner und Anleitung für manuelle Installation veröffentlichen.
+  description: Bestehenden Mod-Build paketieren, Archivinhalt prüfen und den Arbeitsbranch mit ZIP auf GitHub hochladen.
+  priority: high
+  components:
+  - rimworld_adapter
+  - deployment
+  depends_on:
+  - CLIENT-001
+  - SERVER-002
+  scope:
+  - scripts/package-mod.py
+  - releases/
+  - docs/build.md
+  - docs/verification/
+  non_goals:
+  - Steam-Workshop-Veröffentlichung, Gameplay-Synchronisation, Spiel-Laufzeitfreigabe
+  acceptance:
+  - ZIP enthält einen direkt unter RimWorld/Mods entpackbaren Mod-Ordner
+  - About.xml und alle benötigten eigenen Assemblies sind enthalten, keine proprietären Spiel-DLLs
+  - Archiv und SHA-256 geprüft
+  - Installationsanleitung und GitHub-Downloadlink vorhanden
+  test_strategy: Release-Build gegen lokale 1.6-Assemblies, ZIP-Strukturprüfung und Prüfsumme.
+  risks:
+  - Mod-UI im Spiel weiterhin ungetestet
+  implementation: implemented
+  verification: tests_passed
+  integration: ready_for_human_review
+  branch: release/mod-install-0.1-dev
+  base_branch: fix/server-heartbeat
+  base_commit: 1192eb5
+  evidence:
+  - docs/verification/2026-10-15-installable-mod-zip.md
+  - docs/verification/2026-10-15-direct-host.md
+- id: HOST-001
+  title: Lobby ohne separaten Serverprozess aus der Mod hosten
+  goal: Ein Spieler startet die autoritative Lobby direkt im RimWorld-Mod und ein Kollege verbindet sich per LAN-IP.
+  description: Serverkern in spielunabhängige netstandard2.1-Bibliothek auslagern; Listen-Host und UI ergänzen.
+  priority: critical
+  components:
+  - dedicated_server
+  - lobby_core
+  - network_core
+  - rimworld_adapter
+  - mod_package
+  depends_on:
+  - LOBBY-001
+  - CLIENT-001
+  - PKG-001
+  scope:
+  - src/Multiplayer.Foundation.Hosting/
+  - src/Multiplayer.Foundation.Server/
+  - src/Multiplayer.Foundation.RimWorld/
+  - tests/Hosting.Tests/
+  - scripts/build-mod.sh
+  - scripts/package-mod.py
+  - releases/
+  non_goals:
+  - Gameplay-Synchronisation, Peer-to-Peer-Protokoll ohne Host-Autorität, öffentlicher Internetbetrieb
+  acceptance:
+  - In-Game-Host benötigt keinen separaten Serverprozess
+  - Zweiter Client kann per TCP beitreten und gleichen Lobby-/Ready-Zustand sehen
+  - Host-Stopp trennt den Gast und gibt den Listener frei
+  - Dedizierter Server und bestehende Tests bleiben funktionsfähig
+  - Aktualisiertes installierbares ZIP liegt auf GitHub
+  test_strategy: Hosting-Integration, bestehende Server-/Mehrprozess-Tests, Mod-Release-Build und ZIP-Prüfung.
+  risks:
+  - RimWorld-1.6-Mono-Laufzeit des Mod-Adapters bleibt ohne Spieltest unbestätigt
+  - Host-IP muss für Kollegen erreichbar und LAN-Firewall geöffnet sein
+  implementation: implemented
+  verification: tests_passed
+  integration: ready_for_human_review
+  branch: release/mod-install-0.1-dev
+  base_branch: fix/server-heartbeat
+  evidence:
+  - docs/verification/2026-10-15-direct-host.md

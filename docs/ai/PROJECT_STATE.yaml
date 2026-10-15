@@ -14,19 +14,22 @@ target_rimworld_version:
   runtime: Unity/Mono
   game_runtime_tested: true
   other_versions_verified: []
-current_phase: client_integration_verification
+current_phase: direct_host_built_and_tcp_verified
 git:
-  branch: main
-  base_branch: null
-  base_commit: null
+  branch: release/mod-install-0.1-dev
+  base_branch: fix/server-heartbeat
+  base_commit: 1192eb5
   current_commit_ref: HEAD
   pushed: true
-  merged: true
+  merged: false
   dependent_branches:
   - docs/project-governance
   - feat/network-protocol
   - feat/dedicated-server
   - feat/rimworld-client
+  - test/multi-player-process
+  - fix/server-heartbeat
+  - release/mod-install-0.1-dev
 components:
   governance:
     implementation: implemented
@@ -51,11 +54,19 @@ components:
   dedicated_server:
     implementation: implemented
     verification: tests_passed
-    integration: merged
+    integration: ready_for_human_review
   rimworld_adapter:
     implementation: implemented
     verification: build_passed
-    integration: merged
+    integration: ready_for_human_review
+  mod_package:
+    implementation: implemented
+    verification: tests_passed
+    integration: ready_for_human_review
+  listen_host:
+    implementation: implemented
+    verification: tests_passed
+    integration: ready_for_human_review
 verified_capabilities:
 - 'Archiv: 49 Einträge gegen eingebettetes Manifest geprüft.'
 - Drei XML-Beispiele syntaktisch geprüft; kein RimWorld-Laufzeitnachweis.
@@ -71,6 +82,10 @@ verified_capabilities:
   getestet.'
 - 'Erweiterter TCP-Test: Reconnect ohne Doppelmitgliedschaft, ungültige Wire-Version abgelehnt und Host-Rechte
   nach Disconnect übertragen; insgesamt 13 Integrationstestgruppen bestanden.'
+- 'Mehrprozess-Test: eigenständiger Server und zwei unabhängige Client-Prozesse, Lobby-Liste, Join, gleiche Snapshots, Ready und Disconnect bestanden.'
+- 'Server: verzögertes gültiges Pong akzeptiert, Duplikat und ungesendete Nonce abgelehnt; SIGTERM beendet den Linux-Prozess mit verbundenem Client geordnet.'
+- 'Mod-ZIP: Release-Build gegen lokale 1.6-Assemblies, sieben Archiveinträge, Entpacken nach RimWorld/Mods und SHA-256 geprüft; kein Spiel-Laufzeittest.'
+- 'Direkt-Hosting: Host und Gast verbinden sich über denselben TCP-Lobby-Kern, Join/Ready und Host-Stopp in vier Testgruppen bestanden; dedizierter Server bleibt erhalten.'
 known_issues:
 - 'RimWorld-UI im Spiel nicht verifiziert: -nographics verursacht Atlasfehler; grafischer Start
   kam auch im 180-s-Wiederholungsversuch nicht bis zu belegten Mod-Ladeeinträgen.'
@@ -81,8 +96,7 @@ blockers:
 - 1.7-Unterstützung ungeklärt.
 active_tasks:
 - TEST-001
-next_action: Grafischen RimWorld-Start bis zum Hauptmenü und Mod-Ladeeintrag beobachten; danach Mod-Einstellungen
-  und Lobby-Aktionen gegen den Server prüfen.
+next_action: Aktualisiertes ZIP mit zwei RimWorld-1.6-Spielclients installieren; Direkt-Hosting und dedizierten Server im Spiel und über LAN manuell prüfen.
 documentation_refs:
   tasks: docs/ai/TASKS.yaml
   handoff: docs/ai/SESSION_HANDOFF.md
@@ -98,6 +112,10 @@ documentation_refs:
   server_verification: docs/verification/2026-10-15-dedicated-server.md
   client_verification: docs/verification/2026-10-15-client.md
   extended_integration: docs/verification/2026-10-15-integration-extended.md
+  process_integration: docs/verification/2026-10-15-multi-process-lobby.md
+  server_stability: docs/verification/2026-10-15-server-heartbeat-shutdown.md
+  mod_package: docs/verification/2026-10-15-installable-mod-zip.md
+  direct_host: docs/verification/2026-10-15-direct-host.md
   prompt_history: docs/governance/PROMPT_HISTORY.md
   prompt_review: docs/reviews/2026-10-15-prompt-archive.md
   prompt_archive_verification: docs/verification/2026-10-15-prompt-archive.md

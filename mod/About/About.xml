@@ -6,5 +6,5 @@
   <supportedVersions>
     <li>1.6</li>
   </supportedVersions>
-  <description>Client-Server-Verbindung und Lobby für RimWorld 1.6. Gemeinsames Gameplay ist in Version 0.1 nicht verfügbar.</description>
+  <description>Lobby für RimWorld 1.6: direkt im Spiel hosten oder dedizierten Server nutzen. Gemeinsames Gameplay ist in Version 0.1 nicht verfügbar.</description>
 </ModMetaData>

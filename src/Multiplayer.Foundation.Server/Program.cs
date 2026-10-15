@@ -1,4 +1,5 @@
 using Multiplayer.Foundation.Server;
+using System.Runtime.InteropServices;
 
 try
 {
@@ -10,6 +11,8 @@ try
     Console.WriteLine("Press Ctrl+C to stop.");
     using var stop = new CancellationTokenSource();
     Console.CancelKeyPress += (_, eventArgs) => { eventArgs.Cancel = true; stop.Cancel(); };
+    using var termination = OperatingSystem.IsWindows() ? null : PosixSignalRegistration.Create(
+        PosixSignal.SIGTERM, context => { context.Cancel = true; stop.Cancel(); });
     try { await Task.Delay(Timeout.InfiniteTimeSpan, stop.Token); }
     catch (OperationCanceledException) { }
     await server.StopAsync();
