@@ -11,17 +11,18 @@ target_rimworld_version:
   runtime: Unity/Mono
   game_runtime_tested: false
   other_versions_verified: []
-current_phase: rimworld_client
+current_phase: client_integration_verification
 git:
-  branch: feat/dedicated-server
-  base_branch: feat/network-protocol
-  base_commit: f14142c
+  branch: feat/rimworld-client
+  base_branch: feat/dedicated-server
+  base_commit: 61ee7fb
   current_commit_ref: HEAD
   pushed: false
   merged: false
   dependent_branches:
   - docs/project-governance
   - feat/network-protocol
+  - feat/dedicated-server
 components:
   governance:
     implementation: implemented
@@ -36,9 +37,9 @@ components:
     verification: tests_passed
     integration: not_submitted
   network_core:
-    implementation: in_progress
+    implementation: implemented
     verification: tests_passed
-    integration: not_submitted
+    integration: ready_for_human_review
   lobby_core:
     implementation: implemented
     verification: tests_passed
@@ -48,8 +49,8 @@ components:
     verification: tests_passed
     integration: ready_for_human_review
   rimworld_adapter:
-    implementation: planned
-    verification: not_tested
+    implementation: implemented
+    verification: build_passed
     integration: not_submitted
 verified_capabilities:
 - 'Archiv: 49 Einträge gegen eingebettetes Manifest geprüft.'
@@ -60,18 +61,22 @@ verified_capabilities:
 - Dedicated Server Release-Build ohne Warnungen.
 - 'Zwei echte TCP-Clients: Handshake, Lobby, Ready, Host-Rechte, Disconnect, Heartbeat und Shutdown in
   Integration.Tests bestanden.'
+- RimWorld-1.6-Mod gegen lokale netstandard2.1-Assemblies ohne Warnungen gebaut; Paket enthält About.xml
+  und drei eigene DLLs.
+- 'LobbyClient: Snapshot, automatische Pong-Antwort über >4 Sekunden und Disconnect gegen echten TCP-Server
+  getestet.'
 known_issues:
-- RimWorld-Client noch nicht implementiert oder im Spiel geprüft.
-- Server hat keine Authentifizierung oder TLS; nur kontrolliertes LAN/Testnetz.
+- 'RimWorld-UI im Spiel nicht verifiziert: -nographics verursacht Spiel-Atlasfehler; grafischer Start
+  kam binnen 60 s nicht über Unity-Initialisierung.'
+- Server und Client haben keine Authentifizierung/TLS; nur kontrolliertes LAN/Testnetz.
 blockers:
-- RimWorld-1.6-Mod-API-Signaturen und Laufzeit noch nicht geprüft.
+- Vollständiger RimWorld-UI-Laufzeittest in dieser Umgebung offen.
 - 1.7-Unterstützung ungeklärt.
 active_tasks:
-- NET-001
 - CLIENT-001
 - TEST-001
-next_action: RimWorld-1.6-Adapter und Client-Nachrichtenpumpe gegen lokale Assemblies implementieren und
-  bauen.
+next_action: Mod in RimWorld 1.6 mit isolierter Modliste grafisch laden, Mod-Einstellungen öffnen und
+  Lobby-Aktionen gegen den Server prüfen.
 documentation_refs:
   tasks: docs/ai/TASKS.yaml
   handoff: docs/ai/SESSION_HANDOFF.md
@@ -84,4 +89,5 @@ documentation_refs:
   network_verification: docs/verification/2026-10-15-network.md
   lobby_verification: docs/verification/2026-10-15-lobby-core.md
   server_verification: docs/verification/2026-10-15-dedicated-server.md
+  client_verification: docs/verification/2026-10-15-client.md
 last_updated: '2026-10-15'

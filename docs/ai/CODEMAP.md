@@ -18,4 +18,6 @@
 | `src/Multiplayer.Foundation.Server/FoundationServer.cs` | TCP-Listener, Sitzungen, Nachrichtenrouting, Broadcast und Heartbeat | `tests/Integration.Tests/Program.cs` | zehn Gruppen bestanden |
 | `src/Multiplayer.Foundation.Server/ServerConfig.cs`, `Program.cs` | Konfiguration und Serverstart | Integrationstests/Build | implementiert |
 | `tests/Integration.Tests/Program.cs` | Reale Zwei-Client-TCP-Lobby und Fehlerfälle | `dotnet run --project ...` | bestanden |
-| `src/Multiplayer.Foundation.RimWorld/`, `mod/` | Game-Adapter und UI | Game-Start | geplant |
+| `src/Multiplayer.Foundation.Network/LobbyClient.cs` | Ein Reader, UI-Nachrichtenqueue, Ping/Pong und Disconnect | `tests/Client.Tests/Program.cs` | TCP-Test bestanden |
+| `src/Multiplayer.Foundation.RimWorld/FoundationMod.cs`, `FoundationSettings.cs` | Mod-Einstellungen, Verbindung und Lobby-UI | Release-Build; Game-Test offen | gebaut, Laufzeit offen |
+| `mod/About/About.xml`, `scripts/build-mod.sh` | Mod-Metadaten und Paketbau | XML/Paketprüfung | geprüft |

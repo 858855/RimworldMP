@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ModMetaData>
+  <name>RimWorld Multiplayer Foundation</name>
+  <author>RimWorld Multiplayer Foundation contributors</author>
+  <packageId>rimworldmp.foundation</packageId>
+  <supportedVersions>
+    <li>1.6</li>
+  </supportedVersions>
+  <description>Client-Server-Verbindung und Lobby für RimWorld 1.6. Gemeinsames Gameplay ist in Version 0.1 nicht verfügbar.</description>
+</ModMetaData>

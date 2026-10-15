@@ -84,13 +84,14 @@ tasks:
   - Versionskonflikt abgelehnt
   - Nachrichtenlimit erzwungen
   - Zwei TCP-Clients erreichbar
-  implementation: in_progress
+  implementation: implemented
   verification: tests_passed
-  integration: not_submitted
-  branch: feat/network-protocol
-  base_branch: docs/project-governance
+  integration: ready_for_human_review
+  branch: feat/rimworld-client
+  base_branch: feat/dedicated-server
   evidence:
   - docs/verification/2026-10-15-protocol.md
+  - docs/verification/2026-10-15-client.md
 - id: SERVER-001
   title: Autoritativer Linux-Dedicated-Server
   goal: Konfiguration, Sitzungen, Listener und geordneten Shutdown implementieren.
@@ -147,12 +148,14 @@ tasks:
   - Mod baut gegen lokalen 1.6-Build
   - UI erreichbar
   - Lobby-Aktionen am Server sichtbar
-  implementation: planned
-  verification: not_tested
+  implementation: implemented
+  verification: build_passed
   integration: not_submitted
   branch: feat/rimworld-client
   base_branch: feat/dedicated-server
-  evidence: []
+  evidence:
+  - docs/verification/2026-10-15-client.md
+  blocker: Spielstart und bedienbare Oberfläche noch nicht nachgewiesen.
 - id: TEST-001
   title: Zwei-Client-Integration und RimWorld-Laufzeit
   goal: Netzwerk und UI mit zwei unabhängigen Clients nachweisen.
@@ -172,10 +175,11 @@ tasks:
   implementation: in_progress
   verification: tests_passed
   integration: not_submitted
-  branch: feat/dedicated-server
-  base_branch: feat/network-protocol
+  branch: feat/rimworld-client
+  base_branch: feat/dedicated-server
   evidence:
   - docs/verification/2026-10-15-dedicated-server.md
+  - docs/verification/2026-10-15-client.md
 - id: LIC-001
   title: Lizenz für neue Projektdateien festlegen
   goal: Rechte für spätere Veröffentlichung eindeutig dokumentieren.

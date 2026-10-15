@@ -1,3 +1,21 @@
 # RimWorld-Client 0.1
 
-**Stand:** Geplant; keine produktive Assembly. Ziel ist die lokal installierte RimWorld-Version `1.6.4871 rev598`. Die UI umfasst Verbindung, Lobby-Browser und Lobby-Ansicht; sie mutiert keinen Gameplay-Zustand. Einstiegspunkt und lokale Verse-Signaturen werden vor Implementierung geprüft. 1.7 ist nicht verifiziert.
+**Ziel:** lokal installierter RimWorld-Build `1.6.4871 rev598` (Unity/Mono). Der Adapter zielt auf `netstandard2.1`, weil die lokale `Assembly-CSharp.dll` und Unity-Module `netstandard` 2.1 referenzieren. Das wurde durch einen Probe-Build und den Release-Mod-Build geprüft. Andere Spielversionen sind nicht getestet.
+
+## Bedienung
+
+Nach Aktivierung des Mods in RimWorld unter **Optionen → Mod-Einstellungen → Multiplayer Foundation** öffnen. Das ist der geprüfte Kompilier-Einstieg `Verse.Mod`; ein Hauptmenü-Patch ist derzeit nicht nötig. Serveradresse, Port und Spielername sind editierbar und werden als Mod-Einstellungen gespeichert. Mit **Verbinden** startet ein echter TCP-Handshake. Danach erscheinen Lobby-Liste, Erstellen, Beitreten, Spielerliste, Host, Ready und Verlassen/Schließen. **Spielstart nicht verfügbar** ist ausdrücklich angezeigt. Ein Button **Trennen** beendet die Sitzung; danach kann erneut verbunden werden.
+
+`LobbyClient` liest Nachrichten im Hintergrund und beantwortet Server-Pings. Die UI verarbeitet empfangene Ereignisse nur auf dem Spielthread. Lobby-Snapshots mit älterer Revision werden ignoriert. Gameplay-Daten werden nicht gelesen oder synchronisiert.
+
+## Bauen und installieren
+
+```bash
+DOTNET_BIN=/home/fabiok/.local/share/dotnet-rimworldmp/dotnet bash scripts/build-mod.sh
+```
+
+Das Skript erzeugt `dist/RimWorldMultiplayerFoundation/` mit `About/About.xml` und drei eigenen DLLs in `Assemblies/`. Für andere Installationen `RIMWORLD_MANAGED` auf das lokale `RimWorldLinux_Data/Managed`-Verzeichnis setzen. Zum manuellen Installieren das Paket als Unterordner in RimWorld `Mods/` kopieren und im Mod-Menü aktivieren. Es werden keine proprietären Spiel-DLLs gepackt.
+
+## Verifizierungsgrenze
+
+Release-Build und Paketstruktur bestanden. Die spielunabhängige Client-Pumpe wurde gegen den echten TCP-Server getestet. Der Spielstart gelang in dieser Ausführungsumgebung nicht bis zur UI: `-nographics` führte zu Atlasfehlern des Null-Grafikgeräts; grafischer Start blieb in der Unity-Initialisierung und wurde nach 60 s beendet. Eine visuelle und funktionale RimWorld-UI-Prüfung bleibt offen. Die normale Benutzer-Modliste wurde nicht verändert; der temporäre Test-Symlink wurde entfernt. Siehe `docs/verification/2026-10-15-client.md`.
