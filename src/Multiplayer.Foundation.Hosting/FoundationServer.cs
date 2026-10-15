@@ -282,6 +282,18 @@ public sealed class FoundationServer : IAsyncDisposable
             case MessageType.SiteDecided:
                 await PublishAsync(lobbies.DecideSite(peer.Id, SetupPayloads.ReadSite(message.Payload)), null, token, message.RequestId).ConfigureAwait(false);
                 break;
+            case MessageType.SetupSettings:
+                SetupSettings.Read(message.Payload); // validate before relaying
+                foreach (Guid viewer in lobbies.SetupSettingsRecipients(peer.Id))
+                    if (peers.TryGetValue(viewer, out Peer? settingsTarget))
+                        try
+                        {
+                            await settingsTarget.Connection.SendAsync(new WireMessage(MessageType.SetupSettings, 0, message.Payload), token)
+                                .ConfigureAwait(false);
+                        }
+                        catch (IOException) { settingsTarget.Connection.Dispose(); }
+                        catch (ObjectDisposedException) { }
+                break;
             case MessageType.ModManifestSummary:
                 LobbyChange? modsChanged = lobbies.SetManifest(peer.Id, ModManifestSummary.Read(message.Payload));
                 if (modsChanged != null) await PublishAsync(modsChanged, null, token).ConfigureAwait(false);

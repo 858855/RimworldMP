@@ -14,15 +14,16 @@ target_rimworld_version:
   runtime: Unity/Mono
   game_runtime_tested: true
   other_versions_verified: []
-current_phase: setup_rules_server_side_review_pending
+current_phase: mod_check_start_and_setup_mirror_review_pending
 git:
-  branch: feat/setup-rules
-  base_branch: feat/player-key
-  base_commit: 2221608
+  branch: feat/mod-check-setup-ui
+  base_branch: feat/setup-rules
+  base_commit: 5798f95
   current_commit_ref: HEAD
   pushed: false
   merged: false
   dependent_branches:
+  - feat/setup-rules
   - feat/player-key
   - feat/chunk-transfer
   - docs/full-multiplayer-plan
@@ -111,11 +112,13 @@ verified_capabilities:
 - 'PlayerKey (ID-001): Hello trägt SteamID oder lokale GUID; über Steam-Nachbildung wird eine fremde SteamID abgelehnt, Doppelverbindung abgelehnt, Kennung binnen 1,5 s nach Trennen frei. Spielneustart nicht getestet. Siehe docs/verification/2026-10-15-player-key.md.'
 - 'Setup-Regeln serverseitig (ADR 0017): Phasen, Sperre, Fähnchen, Startort nur Host, alle fertig vor Weiter; im Lobby-Kern und Ende zu Ende über ListenHost mit Steam-ähnlichem Gast getestet. Spielseite fehlt. Siehe docs/verification/2026-10-15-setup-rules.md.'
 user_reported_capabilities:
+- 'Mod-Prüfung und Start-Knopf (Fassung feat/lobby-hardening) laut Benutzer am 2026-10-15 mit zwei Spielern funktionsfähig; die auf feat/setup-rules übertragene Fassung ist noch nicht mit zwei Spielern geprüft.'
 - 'Steam-Verbindung laut Benutzer am 2026-10-15 erfolgreich; Ablauf, Heimanschlüsse und weitere Lobbyfunktionen noch nicht dokumentiert. Siehe docs/verification/2026-10-15-steam-user-connection.md.'
 - 'Multiplayer-Knopf direkt unter Tutorial und Fensteröffnung vom Benutzer am 2026-10-15 im Spiel bestätigt; siehe docs/verification/2026-10-15-menu-chat.md.'
 - 'Spieltest durch Benutzer (Windows, 1.6.4871 rev590): Mod lädt, Einstellungsfenster bedienbar, Direkt-Host erstellt Lobby. Dabei gefundene UPnP-/Adressfehler auf fix/internet-connectivity korrigiert.'
 - 'Branch fix/internet-connectivity: Dual-Stack-Bindung `::`, Client über IPv6/DNS mit Fallback und UPnP gegen Fake-Gateway getestet (sieben Testprojekte unter .NET 8); Mod-Build gegen Windows-1.6-Installation (rev590) ohne Warnungen; SSDP gegen echte FRITZ!Box nur lesend.'
 known_issues:
+- 'Tests von feat/mod-check-setup-ui liefen unter .NET 8 statt .NET 10 (lokaler Harness); Serverbuild und ProcessIntegration.Tests nicht ausgeführt.'
 - 'PlayerKey über TCP fälschbar (SEC-001); mit und ohne Steam ergibt zwei verschiedene Kennungen.'
 - 'Spieltests derzeit nicht möglich (Benutzer, 2026-10-15): alle Laufzeitprüfungen im Spiel bleiben offen.'
 - 'Wire-Version 3 (Chunk-Kanal) ist nicht mit Version 2 kombinierbar; Nachrichtencodes 20–23 beim Merge mit parallelen Branches abgleichen.'
@@ -139,7 +142,11 @@ active_tasks:
 - CHAT-001
 - NET-002
 - PLAN-001
-next_action: 'Review von feat/chunk-transfer, feat/player-key und feat/setup-rules. Weiter ohne Spieltest möglich: MOD-001 Serverseite (Manifest-Vergleich, Bereit sperren) oder SETUP-002 Fingerabdruck-Bedingung. Spielseitige Teile brauchen spätere Spieltests.'
+- VER-001
+- MOD-001
+- START-001
+- SETUP-001
+next_action: 'Spieltest mit zwei Spielern: Start, Seitenspiegel, gesperrter letzter Start, Abbruch; danach SETUP-002 (Weltübertragung) und SETUP-003 (Fähnchen auf der Weltkarte).'
 documentation_refs:
   tasks: docs/ai/TASKS.yaml
   handoff: docs/ai/SESSION_HANDOFF.md
@@ -182,4 +189,8 @@ documentation_refs:
   full_plan: docs/plans/rimworldmp-full-plan.md
   full_plan_verification: docs/verification/2026-10-15-full-plan.md
   full_plan_review: docs/reviews/2026-10-15-full-plan.md
+  mod_check_setup_ui_decision: docs/decisions/0018-mod-check-and-start-ui.md
+  setup_mirror_decision: docs/decisions/0019-setup-page-mirror.md
+  mod_check_setup_ui_verification: docs/verification/2026-10-15-mod-check-setup-ui.md
+  mod_check_setup_ui_review: docs/reviews/2026-10-15-mod-check-setup-ui.md
 last_updated: '2026-10-15'

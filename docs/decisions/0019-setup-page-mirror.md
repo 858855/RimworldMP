@@ -1,0 +1,15 @@
+# ADR 0019 – Spiegel der Einrichtungsseiten des Hosts (SETUP-001)
+
+- **Status:** angenommen für `feat/mod-check-setup-ui`. Designnotiz nach `AGENTS.md` Regel 4. Plan §6.1–§6.3, Aufgabe `SETUP-001`. Grundlage ADR 0017 (Phasen) und 0018 (Start).
+- **Ziel:** Nach dem Start durchläuft der Host die normalen vanilla-Seiten. Die Mitspieler sehen live, was er auswählt, und der Server kennt die Phase.
+- **Ablauf beim Host:** Wechselt der Lobbyzustand von `Lobby` auf `Scenario`, schließt die Mod das Multiplayer-Fenster, öffnet `Page_SelectScenario` und darüber ein kleines Feld (`SetupOverlayWindow`, Ebene `Super`) mit Phase, „Chat / Lobby“ und „Abbrechen“. Zweimal pro Sekunde liest `SetupMirror` die oberste offene `Page`:
+  - Sie bestimmt die gewünschte Phase (Szenario, Erzähler, Welt erstellen, Startort, Ideoligion, Figuren). Die Mod schaltet den Server Schritt für Schritt nach (`SetupAdvance` mit der jeweils nächsten Phase; von `SiteSelection` nach `Ideology` mit `SiteDecided` und `GameInitData.startingTile`). `WorldTransfer` wird bis `SETUP-002` ohne Übertragung durchlaufen.
+  - Sie liefert Anzeigetexte (`SetupSettings`): Szenarioname, Erzähler, Schwierigkeit, Bedrohungen, Speichermodus, Weltparameter und Fraktionen, gewähltes Feld, Ideoligion, Figurennamen. Geändertes wird an den Server geschickt.
+  - Ist keine Seite mehr offen und läuft kein langes Ereignis (Weltgenerierung), bricht die Mod nach 1,5 s die Einrichtung für alle ab („Zurück“ auf der ersten Seite).
+- **Lesen privater Felder:** `Harmony.AccessTools.FieldRefAccess` für `curScen`, `storyteller`, `difficulty`, `difficultyValues`, `seedString`, `planetCoverage`, `rainfall`, `temperature`, `population`, `landmarkDensity`, `factions`, `selectedIdeo`, `selectedStructure`; Namen und Typen gegen die lokale 1.6-Assembly geprüft (`references/verified-apis.md`). Nur lesen, keine Änderung an den Seiten. Fehler beim Lesen landen als Hinweis im Spiegel, nie als Abbruch der Seite.
+- **Kein vorgetäuschter Start:** Ein Harmony-Prefix auf `Page_ConfigureStartingPawns.DoNext` blockiert **nur während einer gemeinsamen Einrichtung** den letzten Start und zeigt eine Meldung. Der gemeinsame Start (Spielstand an alle) kommt mit `SETUP-005`. Einzelspieler-Starts bleiben unberührt.
+- **Protokoll:** Code 30 `SetupSettings` (Host→Server→übrige Mitglieder): Seitenname und bis zu 24 Paare Bezeichnung/Wert (64/256 Byte). Nur der Host, nur außerhalb der Lobbyphase; der Server prüft die Nutzdaten und leitet weiter. Reine Anzeige: verbindliche Werte kommen mit Welt und Spielstand (Plan §6.3).
+- **Gäste:** Die Einrichtungsansicht im Multiplayer-Fenster zeigt Phase, Seite und Werte des Hosts sowie den Chat.
+- **Grenzen:** Der Server kennt nur die am weitesten erreichte Phase; geht der Host zurück, bleibt die Serverphase, der Spiegel zeigt die aktuelle Seite. Ein später geänderter Startort ändert das gespeicherte Feld nicht.
+- **Tests:** Protocol (Nutzdaten, Grenzen), Hosting (Spiegel nur in der Einrichtung, nur vom Host, kommt beim Gast an). Spieltest der Seitenfolge mit zwei Clients: **offen**.
+- **Rollback:** Commit zurücknehmen; ADR 0017 und der Start-Knopf (0018) bleiben.

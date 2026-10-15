@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace Multiplayer.Foundation.Protocol
 {
@@ -45,6 +47,47 @@ namespace Multiplayer.Foundation.Protocol
         public static void WriteOptional(PayloadWriter writer, SiteTile? tile)
         { writer.WriteBool(tile.HasValue); tile?.Write(writer); }
         public static SiteTile? ReadOptional(PayloadReader reader) => reader.ReadBool() ? Read(reader) : (SiteTile?)null;
+    }
+
+    /// <summary>
+    /// SETUP-001: what the host currently sees on its setup page, for the other players' setup view.
+    /// Display text only; the binding values arrive with the world and the game save (plan §6.3).
+    /// </summary>
+    public sealed class SetupSettings
+    {
+        public const int MaximumEntries = 24;
+        public const int MaximumLabelBytes = 64;
+        public const int MaximumValueBytes = 256;
+
+        public SetupSettings(string page, IReadOnlyList<(string Label, string Value)> entries)
+        {
+            if (entries == null || entries.Count > MaximumEntries) throw new ProtocolException("Too many setup entries.");
+            Page = page ?? ""; Entries = entries;
+        }
+        public string Page { get; }
+        public IReadOnlyList<(string Label, string Value)> Entries { get; }
+
+        public bool SameAs(SetupSettings? other) =>
+            other != null && other.Page == Page && other.Entries.SequenceEqual(Entries);
+
+        public byte[] ToPayload()
+        {
+            var writer = new PayloadWriter();
+            writer.WriteString(Page, MaximumLabelBytes); writer.WriteByte((byte)Entries.Count);
+            foreach (var (label, value) in Entries)
+            { writer.WriteString(label, MaximumLabelBytes); writer.WriteString(value, MaximumValueBytes); }
+            return writer.ToArray();
+        }
+        public static SetupSettings Read(byte[] bytes)
+        {
+            var reader = new PayloadReader(bytes);
+            string page = reader.ReadString(MaximumLabelBytes); byte count = reader.ReadByte();
+            if (count > MaximumEntries) throw new ProtocolException("Too many setup entries.");
+            var entries = new List<(string, string)>(count);
+            for (int i = 0; i < count; i++) entries.Add((reader.ReadString(MaximumLabelBytes), reader.ReadString(MaximumValueBytes)));
+            reader.EnsureComplete();
+            return new SetupSettings(page, entries);
+        }
     }
 
     public static class SetupPayloads

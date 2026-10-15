@@ -6,6 +6,7 @@ using System.Net.Sockets;
 using System.Threading.Tasks;
 using HarmonyLib;
 using Multiplayer.Foundation.Network;
+using RimWorld;
 using Multiplayer.Foundation.Hosting;
 using Multiplayer.Foundation.Lobby;
 using Multiplayer.Foundation.Protocol;
@@ -55,6 +56,14 @@ namespace Multiplayer.Foundation.RimWorld
         private TransferReceiver? download;
         private bool diffRequested;
         private readonly List<Task> backgroundSends = new List<Task>();
+        // SETUP-001: the host's vanilla setup pages drive the server phases and are mirrored to the guests.
+        private bool hostSetupActive;
+        private SetupSettings? lastMirror;
+        private SetupSettings? hostSettings;
+        private float nextMirrorAt;
+        private float? pageMissingSince;
+        private bool advancePending;
+        internal bool HostSetupActive => hostSetupActive;
         internal static FoundationMod? Instance { get; private set; }
         private static bool menuPatched;
 
@@ -502,11 +511,115 @@ namespace Multiplayer.Foundation.RimWorld
 
         private void DrawSetupDetails(float x, ref float y, float width)
         {
-            const string info = "Der Start wurde angenommen. Die gemeinsamen Einrichtungsseiten (Szenario, Erzähler, Welt, " +
-                "Startort, Figuren) folgen mit dem nächsten Ausbauschritt. In dieser Vorschau kann der Host die Einrichtung nur abbrechen.";
+            if (lobby == null || client == null) return;
+            SetupSettings? shown = lobby.HostId == client.SessionId ? lastMirror : hostSettings;
+            if (shown == null)
+            {
+                Widgets.Label(new Rect(x, y, width, 25f), "Warte auf die Einstellungen des Hosts …");
+                y += 29f;
+            }
+            else
+            {
+                Widgets.Label(new Rect(x, y, width, 25f), "Seite des Hosts: " + shown.Page);
+                y += 27f;
+                foreach (var (label, value) in shown.Entries)
+                {
+                    string line = "  " + label + ": " + value;
+                    float lineHeight = Text.CalcHeight(line, width);
+                    Widgets.Label(new Rect(x, y, width, lineHeight), line);
+                    y += lineHeight + 2f;
+                }
+                y += 6f;
+            }
+            const string info = "Startort-Fähnchen, eigene Figurenwahl und der gemeinsame Spielstart folgen in den nächsten " +
+                "Ausbauschritten (SETUP-002 bis SETUP-005). Bis dahin kann der Host die Einrichtung ansehen und abbrechen.";
             float infoHeight = Text.CalcHeight(info, width);
             Widgets.Label(new Rect(x, y, width, infoHeight), info);
             y += infoHeight + 10f;
+        }
+
+        // Panel above the host's setup pages.
+        internal void DrawSetupOverlay(Rect inRect)
+        {
+            Widgets.Label(new Rect(inRect.x, inRect.y, inRect.width, 26f),
+                "Multiplayer-Einrichtung · " + (lobby == null ? "getrennt" : PhaseName(lobby.Phase)));
+            Widgets.Label(new Rect(inRect.x, inRect.y + 26f, inRect.width, 26f),
+                (lobby?.Players.Count ?? 0) + " Spieler sehen deine Auswahl live.");
+            float buttonY = inRect.y + 58f;
+            if (Widgets.ButtonText(new Rect(inRect.x, buttonY, 140f, 30f), "Chat / Lobby")) OpenWindow();
+            if (Widgets.ButtonText(new Rect(inRect.x + 150f, buttonY, 140f, 30f), "Abbrechen"))
+                Find.WindowStack.Add(Dialog_MessageBox.CreateConfirmation("Gemeinsame Einrichtung für alle abbrechen?",
+                    () => Send(MessageType.SetupAbort, Array.Empty<byte>()), true, "Einrichtung abbrechen", WindowLayer.Super));
+        }
+
+        private void OnPhaseChanged(SetupPhase before, SetupPhase now)
+        {
+            if (lobby == null || client == null) return;
+            if (before == SetupPhase.Lobby && now != SetupPhase.Lobby && lobby.HostId == client.SessionId) BeginHostSetup();
+            if (now == SetupPhase.Lobby && before != SetupPhase.Lobby)
+            {
+                hostSettings = null; lastMirror = null;
+                if (hostSetupActive) { EndHostSetup(true); status = "Einrichtung abgebrochen"; }
+            }
+        }
+
+        private void BeginHostSetup()
+        {
+            if (Current.ProgramState != ProgramState.Entry)
+            { Send(MessageType.SetupAbort, Array.Empty<byte>()); status = "Einrichtung nur aus dem Hauptmenü möglich"; return; }
+            hostSetupActive = true; lastMirror = null; pageMissingSince = null; advancePending = false; nextMirrorAt = 0f;
+            Find.WindowStack.TryRemove(typeof(FoundationWindow), false);
+            Find.WindowStack.Add(new Page_SelectScenario());
+            Find.WindowStack.Add(new SetupOverlayWindow(this));
+            status = "Einrichtung läuft – deine Auswahl wird geteilt";
+        }
+
+        private void EndHostSetup(bool reopenWindow)
+        {
+            hostSetupActive = false; advancePending = false;
+            if (Current.ProgramState == ProgramState.Entry)
+                foreach (Page page in Find.WindowStack.Windows.OfType<Page>().ToList()) Find.WindowStack.TryRemove(page, false);
+            Find.WindowStack.TryRemove(typeof(SetupOverlayWindow), false);
+            if (reopenWindow) OpenWindow();
+        }
+
+        // Called every frame; reads the host's page twice per second.
+        private void UpdateHostSetup()
+        {
+            if (!hostSetupActive) return;
+            if (client == null || lobby == null || lobby.HostId != client.SessionId) { EndHostSetup(true); return; }
+            if (Time.realtimeSinceStartup < nextMirrorAt) return;
+            nextMirrorAt = Time.realtimeSinceStartup + 0.5f;
+            Page? page = SetupMirror.CurrentPage();
+            if (page == null)
+            {
+                if (LongEventHandler.AnyEventNowOrWaiting) return; // world generation runs without a page
+                pageMissingSince ??= Time.realtimeSinceStartup;
+                if (Time.realtimeSinceStartup - pageMissingSince.Value < 1.5f) return;
+                // The host left the setup pages (Back on the first page): end the shared setup for everyone.
+                hostSetupActive = false;
+                Find.WindowStack.TryRemove(typeof(SetupOverlayWindow), false);
+                Send(MessageType.SetupAbort, Array.Empty<byte>());
+                OpenWindow();
+                return;
+            }
+            pageMissingSince = null;
+            SetupSettings mirror = SetupMirror.Read(page);
+            if (!mirror.SameAs(lastMirror) && SendBackground(new WireMessage(MessageType.SetupSettings, 0, mirror.ToPayload())))
+                lastMirror = mirror;
+            SetupPhase? wanted = SetupMirror.PhaseOf(page);
+            if (wanted == null || advancePending || lobby.Phase >= wanted.Value) return;
+            // The server only accepts the next phase, so walk forward one step per answer.
+            if (lobby.Phase == SetupPhase.SiteSelection)
+            {
+                GameInitData? init = Find.GameInitData;
+                if (init == null || !init.startingTile.Valid) return;
+                var site = new SiteTile(init.startingTile.tileId, init.startingTile.Layer.LayerID);
+                advancePending = SendBackground(new WireMessage(MessageType.SiteDecided, requestId++, SetupPayloads.Site(site)));
+            }
+            else
+                advancePending = SendBackground(new WireMessage(MessageType.SetupAdvance, requestId++,
+                    SetupPayloads.Advance((SetupPhase)((byte)lobby.Phase + 1))));
         }
 
         private static string PhaseName(SetupPhase phase)
@@ -648,6 +761,8 @@ namespace Multiplayer.Foundation.RimWorld
         private void ResetTransfers()
         {
             upload = null; download = null; diffRequested = false; manifestRequests.Clear(); manifestSentTo = null;
+            hostSettings = null; lastMirror = null;
+            if (hostSetupActive) EndHostSetup(true);
         }
 
         private bool Send(MessageType type, byte[] payload)
@@ -709,6 +824,7 @@ namespace Multiplayer.Foundation.RimWorld
                 action = null;
             }
             UpdateManifestAndTransfers();
+            UpdateHostSetup();
             if (client == null) return;
             try
             {
@@ -730,11 +846,19 @@ namespace Multiplayer.Foundation.RimWorld
                             if (lobby == null || lobby.Id != received.Id || received.Revision >= lobby.Revision)
                             {
                                 if (lobby == null || lobby.Id != received.Id) chatMessages.Clear();
+                                SetupPhase before = lobby?.Id == received.Id ? lobby.Phase : SetupPhase.Lobby;
                                 lobby = received;
+                                advancePending = false;
+                                OnPhaseChanged(before, received.Phase);
                             }
+                            break;
+                        case MessageType.SetupSettings:
+                            hostSettings = SetupSettings.Read(message.Payload);
                             break;
                         case MessageType.LeaveLobby:
                             lobby = null; chatMessages.Clear(); status = "Lobby verlassen";
+                            hostSettings = null; lastMirror = null;
+                            if (hostSetupActive) EndHostSetup(true);
                             Send(MessageType.LobbyListRequest, Array.Empty<byte>()); break;
                         case MessageType.LobbyChatMessage:
                             LobbyChatView chat = LobbyPayloads.ReadChatMessage(message.Payload);
@@ -754,6 +878,7 @@ namespace Multiplayer.Foundation.RimWorld
                         case MessageType.Error:
                             var reader = new PayloadReader(message.Payload);
                             byte code = reader.ReadByte(); string reason = reader.ReadString(); reader.EnsureComplete();
+                            advancePending = false;
                             status = "Serverfehler " + code + ": " + reason; break;
                     }
                 }

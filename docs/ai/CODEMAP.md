@@ -34,3 +34,6 @@
 | `mod/About/About.xml`, `scripts/build-mod.sh` | Mod-Metadaten und Paketbau | XML/Paketprüfung | geprüft |
 | `tests/ProcessIntegration.Tests/Program.cs` | Server und zwei Client-Prozesse über echte TCP-Lobby steuern | `dotnet run --project ...` | acht Prozess-Testschritte bestanden |
 | `scripts/package-mod.py`, `mod/INSTALLATION.md` | Geprüftes Mod-ZIP einschließlich Harmony-Lizenz und manuelle Installation | ZIP-Extraktionsprüfung | neun Einträge geprüft, Spiel-Laufzeit offen |
+| `src/Multiplayer.Foundation.Protocol/ModManifest.cs` | Mod-Manifest, Prüfsumme nur über Mods, Unterschiedsbericht, Inhalts-Hash (MOD-001) | `tests/Protocol.Tests`, `Lobby.Tests`, `Hosting.Tests` | implementiert, getestet |
+| `src/Multiplayer.Foundation.RimWorld/ModManifestBuilder.cs`, `ModDiffWindow.cs` | Manifest aus `LoadedModManager`; Unterschiedsfenster | Mod-Build; Spielstart-Log | gebaut, Manifest im Spiel geloggt |
+| `src/Multiplayer.Foundation.RimWorld/SetupMirror.cs`, `SetupOverlayWindow.cs`, `SharedStartGuardPatch.cs` | Host-Seiten lesen und spiegeln, Feld über den Seiten, Sperre des Einzelspieler-Starts (SETUP-001) | Mod-Build; `Hosting.Tests` (Spiegel-Relay) | gebaut, Seitenfolge im Spiel ungeprüft |

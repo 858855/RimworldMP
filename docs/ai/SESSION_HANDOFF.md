@@ -1,20 +1,9 @@
 # Sitzungsübergabe
 
-- **Bereich:** serverseitige Regeln der Spieleinrichtung (`START-001`, `SETUP-003`, `SETUP-004`) nach ADR 0015 und ADR 0017. Aufbauend auf `ID-001` (Spielerkennung) und `XFER-001` (Chunk-Kanal). Grundlage ist ADR 0013: Steam-Listen-Host, kein Dedicated Server.
-- **Branch:** `feat/setup-rules` von `feat/player-key` @ `2221608`, abhängig und ungemergt. Kette: `docs/full-multiplayer-plan` → `feat/chunk-transfer` → `feat/player-key` → `feat/setup-rules`. Worktree `/mnt/Arbeit/Git Projekte/RimworldMP-claude`, weil Codex parallel arbeitet. `feat/chunk-transfer` und `feat/player-key` sind gepusht, `feat/setup-rules` ist lokal.
-- **Stand:** `LobbyRegistry` führt die Phasen Lobby → Scenario → … → Characters → Generating und setzt durch:
-  - Start ab 2 Spielern und nur, wenn alle bereit sind.
-  - Nur der Host schaltet weiter, nur zur nächsten Phase.
-  - Lobby gesperrt während der Einrichtung.
-  - Fähnchen von allen, Startort nur durch den Host.
-  - Charakterwahl erst weiter, wenn alle fertig sind.
-  - Abbruch nur durch den Host; Host-Abgang beendet die Einrichtung.
-  Felder sind `PlanetTile` (Feld + Ebene, per Reflection geprüft). Nachrichten 24–27.
-- **Geprüft:** Mod- und Server-Build ohne Warnungen, alle sieben Testprojekte, Validator. Details: `docs/verification/2026-10-15-setup-rules.md`.
-- **Offen:**
-  - Spielseite: Start-Knopf, vanilla-Seiten, Weltkarte, Charakterfenster.
-  - Bedingungen Mod-Abgleich (MOD-001) und Welt-Fingerabdruck (SETUP-002).
-  - Spieltests sind laut Benutzer derzeit nicht möglich.
-  - Annahme in ADR 0015: Ein abgemeldeter Gast blockiert die Charakterwahl nicht; nicht bestätigt.
-- **Nächster Schritt:** Review. Ohne Spieltest weiter möglich: die Serverseite von MOD-001 (Manifest per Chunk-Kanal, Vergleich mit dem Host, Bereit sperren) oder die Fingerabdruck-Bedingung von SETUP-002.
-- **Dateien/Befehle:** `src/Multiplayer.Foundation.Lobby/LobbyRegistry.cs`, `src/Multiplayer.Foundation.Protocol/SetupPayloads.cs`, `LobbyPayloads.cs`, `FoundationServer.cs`; `dotnet run --project tests/Lobby.Tests/Lobby.Tests.csproj -c Release --nologo`.
+- **Bereich:** `MOD-001`, Spielseite von `START-001`, `SETUP-001`, `VER-001` (Metadatenteil), auf Basis von `feat/setup-rules` (ADR 0013–0017).
+- **Branch:** `feat/mod-check-setup-ui`, lokal unter `E:/RimworldMP`, abgezweigt von `origin/feat/setup-rules` @ `5798f95`. Ersetzt `origin/feat/lobby-hardening` (gleiche Funktionen auf eigenem Protokoll; auf Wunsch des Benutzers hierher übertragen).
+- **Stand:** Mod-Prüfung (Prüfsumme nur über Mods), Bereit-Sperre, Unterschiedsbericht über den Chunk-Kanal, **Spiel starten** mit Begründung; nach dem Start öffnet der Host die vanilla-Seiten, die Mod spiegelt Seite und Auswahl an die Gäste (Code 30) und schaltet die Serverphasen nach; der letzte Start ist während einer gemeinsamen Einrichtung gesperrt. ADR 0018 und 0019.
+- **Geprüft:** Sechs Testprojekte im .NET-8-Harness bestanden; Mod ohne Warnungen gebaut, installiert, Rauchtest (Manifest im Log, Patches geladen). Details: `docs/verification/2026-10-15-mod-check-setup-ui.md`.
+- **Offen:** Zwei-Spieler-Spieltest der übertragenen Fassung und des Seitenspiegels; `SETUP-002` (Weltübertragung, Fingerabdruck), `SETUP-003` (Fähnchen auf der Weltkarte), `SETUP-004` (Figurenwahl je Spieler), `SETUP-005` (gemeinsamer Start).
+- **Nächster Schritt:** Spieltest nach `docs/reviews/2026-10-15-mod-check-setup-ui.md`; danach `SETUP-002`.
+- **Dateien/Befehle:** `src/Multiplayer.Foundation.Protocol/ModManifest.cs`, `SetupPayloads.cs`, `src/Multiplayer.Foundation.Lobby/LobbyRegistry.cs`, `src/Multiplayer.Foundation.Hosting/FoundationServer.cs`, `src/Multiplayer.Foundation.RimWorld/{FoundationMod,SetupMirror,SetupOverlayWindow,SharedStartGuardPatch,ModManifestBuilder,ModDiffWindow}.cs`; Build: `RIMWORLD_MANAGED=E:/SteamLibrary/steamapps/common/RimWorld/RimWorldWin64_Data/Managed DOTNET_BIN=dotnet bash scripts/build-mod.sh`.

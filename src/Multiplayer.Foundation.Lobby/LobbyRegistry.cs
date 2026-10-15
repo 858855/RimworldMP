@@ -218,6 +218,17 @@ namespace Multiplayer.Foundation.Lobby
             }
         }
 
+        /// <summary>SETUP-001: the host's page mirror goes to every other member while setup runs.</summary>
+        public IReadOnlyList<Guid> SetupSettingsRecipients(Guid actor)
+        {
+            lock (gate)
+            {
+                Room room = GetHostedRoom(actor);
+                if (room.Phase == SetupPhase.Lobby) throw new LobbyRuleException(6, "No setup is running.");
+                return room.Members.Where(id => id != actor).ToArray();
+            }
+        }
+
         /// <summary>Only the host chooses the site, flagged or not (ADR 0015).</summary>
         public LobbyChange DecideSite(Guid actor, SiteTile tile)
         {

@@ -31,6 +31,8 @@ namespace Multiplayer.Foundation.Protocol
         SiteDecided = 27,
         // MOD-001
         ModManifestSummary = 28,
-        ModManifestRequest = 29
+        ModManifestRequest = 29,
+        // SETUP-001
+        SetupSettings = 30
     }
 }

@@ -233,6 +233,16 @@ await Run("mod status and host mods in lobby payloads", () =>
     Equal(true, listed[1].HostMods == null);
     return Task.CompletedTask;
 });
+await Run("setup settings mirror payload", () =>
+{
+    var settings = new SetupSettings("Welt erstellen", new[] { ("Seed", "icy"), ("Abdeckung", "50 %"), ("Fraktionen", "Ä, Ö") });
+    SetupSettings back = SetupSettings.Read(settings.ToPayload());
+    Equal(true, back.SameAs(settings)); Equal("icy", back.Entries[0].Value);
+    Throws<ProtocolException>(() => new SetupSettings("x", Enumerable.Range(0, 25).Select(i => ("a", "b")).ToArray()));
+    Throws<ProtocolException>(() => new SetupSettings("x", new[] { ("a", new string('x', 257)) }).ToPayload());
+    Throws<ProtocolException>(() => SetupSettings.Read(new byte[] { 0, 0, 25 }));
+    return Task.CompletedTask;
+});
 Console.WriteLine($"PASS: {passed} protocol test groups");
 
 async Task Run(string name, Func<Task> body)

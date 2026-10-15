@@ -326,6 +326,25 @@ await using (var modHost = await ListenHost.StartAsync("127.0.0.1", 0, "ModHost"
 }
 Console.WriteLine("PASS: mod check over a Steam-like link: status, ready gate, host list request and diff (MOD-001)");
 
+// SETUP-001: the host's page mirror reaches guests only while setup runs, and only from the host.
+await using (var mirrorHost = await ListenHost.StartAsync("127.0.0.1", 0, "Host", "Mirror Room", 4, PlayerKey.Steam(76561198000000070UL)))
+{
+    LobbyView mirrorRoom = LobbyPayloads.ReadState((await ReceiveAsync(mirrorHost.Client, MessageType.LobbyStateUpdate)).Payload);
+    using LobbyClient mirrorGuest = await LobbyClient.ConnectAsync("127.0.0.1", mirrorHost.Port, "Guest", TimeSpan.FromSeconds(4));
+    uint m = 700;
+    await StateAsync(mirrorGuest, MessageType.JoinLobby, ++m, LobbyPayloads.GuidValue(mirrorRoom.Id));
+    var page = new SetupSettings("Erzähler", new[] { ("Erzähler", "Cassandra Classic"), ("Schwierigkeit", "Strive to survive") });
+    Assert(await ErrorCodeAsync(mirrorHost.Client, MessageType.SetupSettings, ++m, page.ToPayload()) == 6, "no mirror before setup");
+    await StateAsync(mirrorHost.Client, MessageType.PlayerReadyChanged, ++m, LobbyPayloads.Bool(true));
+    await StateAsync(mirrorGuest, MessageType.PlayerReadyChanged, ++m, LobbyPayloads.Bool(true));
+    await StateAsync(mirrorHost.Client, MessageType.SetupAdvance, ++m, SetupPayloads.Advance(SetupPhase.Scenario));
+    await mirrorHost.Client.SendAsync(MessageType.SetupSettings, ++m, page.ToPayload());
+    SetupSettings mirrored = SetupSettings.Read((await ReceiveAsync(mirrorGuest, MessageType.SetupSettings)).Payload);
+    Assert(mirrored.SameAs(page), "guest sees the host's page");
+    Assert(await ErrorCodeAsync(mirrorGuest, MessageType.SetupSettings, ++m, page.ToPayload()) == 3, "guests cannot send a mirror");
+}
+Console.WriteLine("PASS: host page mirror reaches guests during setup only, host only (SETUP-001)");
+
 // Sends a request and returns the error code the server answers with.
 static async Task<byte> ErrorCodeAsync(LobbyClient client, MessageType type, uint requestId, byte[] payload)
 {

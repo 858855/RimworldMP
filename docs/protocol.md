@@ -36,6 +36,9 @@ Strings sind `length:u16` plus strikt gültige UTF-8-Bytes. Allgemeine Strings: 
 | 25 | SetupAbort | C→S | leer; nur Host |
 | 26 | SiteFlag | C→S | `bool` + optional Feld (`tileId:u32`, `layerId:u32`); nur in der Startortwahl |
 | 27 | SiteDecided | C→S | Feld; nur Host |
+| 28 | ModManifestSummary | C→S | Mod-Prüfsumme SHA-256 (32 Byte), Spielversion (nur Hinweis), Mod-Anzahl `u16` |
+| 29 | ModManifestRequest | C→S, S→C | Anfrage: Session-ID des Hosts; an den Host weitergeleitet: Session-ID des Anfragenden |
+| 30 | SetupSettings | C→S→C | Seitenname, bis zu 24 Paare Bezeichnung/Wert; nur Host, nur während der Einrichtung |
 
 Listen- und Zustandsupdates sind in `LobbyPayloads.cs` kodiert: Liste mit `count:u8`, je Lobby GUID, Name, Hostname, Spielerzahl und Kapazität; Snapshot mit GUID, Name, Host-GUID, Revision `u64`, Kapazität, Setup-Phase `u8`, optional gewähltes Feld und Spielerarray (Session-GUID, Name, Ready, PlayerKey, optional Fähnchen). Die Liste trägt je Lobby zusätzlich die Phase. Der TCP-Server verwendet diese Payloads; zwei unabhängige TCP-Testclients bestanden die Integrationstests. RimWorld-Client-Kompatibilität ist noch offen. Fehlercodes: `1=InvalidMessage`, `2=VersionMismatch`, `3=Unauthorized`, `4=NotFound`, `5=Capacity`, `6=InvalidState`, `7=ServerBusy`.
 
@@ -65,3 +68,11 @@ Phasen: `0 Lobby`, `1 Scenario`, `2 Storyteller`, `3 WorldParams`, `4 WorldTrans
 - Die Charakterwahl endet erst, wenn alle fertig sind.
 
 Bereit gilt in Lobby und Charakterwahl und wird bei jedem Phasenwechsel gelöscht. Felder sind `PlanetTile` aus RimWorld 1.6 mit Feld- und Ebenennummer. Antwort ist der vollständige Lobbyzustand; Verstöße kommen als `Error` mit Code 3 (nicht Host) oder 6 (Phase/Bedingung). Siehe ADR 0015 und 0017.
+
+## Mod-Prüfung (MOD-001, ADR 0018)
+
+Die Lobby-Prüfsumme ist ein SHA-256 nur über die Mods in Ladereihenfolge (Package-ID, Version, Inhalts-Hash aus `About.xml`, `Assemblies`, `Defs`, `Patches`); Spielversion und Anzeigenamen zählen nicht. Jeder Spieler im Lobbyzustand trägt zusätzlich `ModStatus:u8` (`0` ungeprüft, `1` Prüfung läuft, `2` passt, `3` abweichend), verglichen mit dem aktuellen Host. Lobbylisteneinträge tragen nach der Phase `bool` + optional die Zusammenfassung des Hosts. Code 8 = Mods abweichend (Bereit in der Lobby, Start). Die volle Liste für den Bericht geht als Chunk-Übertragung der Art `1` vom Host an den Anfragenden.
+
+## Seitenspiegel (SETUP-001, ADR 0019)
+
+`SetupSettings` ist reine Anzeige: was der Host auf seiner vanilla-Seite gerade sieht. Der Server prüft nur Absender (Host, sonst Code 3), Phase (nicht `Lobby`, sonst Code 6) und Format und leitet an die übrigen Mitglieder weiter.
