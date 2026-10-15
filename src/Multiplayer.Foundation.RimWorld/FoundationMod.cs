@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using HarmonyLib;
 using Multiplayer.Foundation.Network;
 using Multiplayer.Foundation.Hosting;
+using Multiplayer.Foundation.Lobby;
 using Multiplayer.Foundation.Protocol;
 using Steamworks;
 using UnityEngine;
@@ -116,7 +117,7 @@ namespace Multiplayer.Foundation.RimWorld
         {
             UpdateNetwork();
             float x = inRect.x + 8f, y = inRect.y + 6f, width = inRect.width - 16f;
-            Widgets.Label(new Rect(x, y, width, 30f), "Multiplayer Foundation 0.1");
+            Widgets.Label(new Rect(x, y, width, 30f), "Multiplayer Foundation 0.2 (Vorschau)");
             y += 32f;
             Widgets.Label(new Rect(x, y, width, 28f), "Verbinden und gemeinsam eine Lobby nutzen · gemeinsames Spiel folgt später");
             y += 34f;
@@ -386,14 +387,15 @@ namespace Multiplayer.Foundation.RimWorld
             foreach (LobbySummary room in available.Skip(start).Take(5))
             {
                 Rect roomRect = new Rect(x, y, width - 110f, 28f);
+                bool locked = room.Phase != SetupPhase.Lobby;
                 Widgets.Label(roomRect, room.Name + " – " + room.HostName + " (" + room.PlayerCount + "/" + room.Capacity + ")" +
-                    ModsHint(room.HostMods));
+                    (locked ? " [Einrichtung]" : "") + ModsHint(room.HostMods));
                 if (room.HostMods != null)
                     TooltipHandler.TipRegion(roomRect, "Host: " + room.HostMods.GameVersion + ", " + room.HostMods.ModCount +
                         " Mods, Prüfsumme " + room.HostMods.ShortHash + "\nDu: " +
                         (manifestSummary == null ? "Mod-Prüfung läuft …" : manifestSummary.GameVersion + ", " +
                         manifestSummary.ModCount + " Mods, Prüfsumme " + manifestSummary.ShortHash));
-                if (Widgets.ButtonText(new Rect(x + width - 105f, y, 100f, 28f), "Beitreten"))
+                if (Widgets.ButtonText(new Rect(x + width - 105f, y, 100f, 28f), "Beitreten", true, true, !locked))
                     Send(MessageType.JoinLobby, LobbyPayloads.GuidValue(room.Id));
                 y += 33f;
             }
@@ -406,6 +408,7 @@ namespace Multiplayer.Foundation.RimWorld
             if (lobby == null || client == null) return;
             Widgets.Label(new Rect(x, y, width, 28f), lobby.Name + " (" + lobby.Players.Count + "/" + lobby.Capacity + ")");
             y += 33f;
+            if (lobby.Phase != SetupPhase.Lobby) { DrawSetup(x, ref y, width); return; }
             foreach (PlayerView player in lobby.Players)
             {
                 string label = player.Name + (player.Id == lobby.HostId ? " [Host]" : "") +
@@ -451,7 +454,58 @@ namespace Multiplayer.Foundation.RimWorld
                 Widgets.Label(new Rect(x, y, width, 25f), "Mod-Prüfung läuft …");
                 y += 27f;
             }
-            Widgets.Label(new Rect(x, y, width, 25f), "Spielstart nicht verfügbar (Version 0.1)");
+            DrawStart(x, ref y, width);
+        }
+
+        // START-001: the host starts once at least two players are ready and all mods match.
+        private void DrawStart(float x, ref float y, float width)
+        {
+            if (lobby == null || client == null) return;
+            if (lobby.HostId != client.SessionId)
+            {
+                bool startable = LobbyRegistry.StartBlockReason(lobby, lobby.HostId) == null;
+                Widgets.Label(new Rect(x, y, width, 25f), startable ? "Alle bereit – der Host kann starten." : "Warte auf den Host …");
+                return;
+            }
+            string? reason = LobbyRegistry.StartBlockReason(lobby, client.SessionId) ??
+                (Current.ProgramState != ProgramState.Entry ? "Nur im Hauptmenü möglich." : null);
+            if (Widgets.ButtonText(new Rect(x, y, 180f, 32f), "Spiel starten", true, true, reason == null))
+            {
+                LobbyView confirmed = lobby;
+                Find.WindowStack.Add(Dialog_MessageBox.CreateConfirmation(
+                    "Spiel mit " + confirmed.Players.Count + " Spielern starten? Die Lobby wird gesperrt.",
+                    () => Send(MessageType.StartSetupRequest, Array.Empty<byte>()), false, "Spiel starten", WindowLayer.Dialog));
+            }
+            if (reason != null) Widgets.Label(new Rect(x + 190f, y + 4f, width - 190f, 28f), reason);
+            y += 38f;
+        }
+
+        // Shown while the lobby is in setup. The shared setup pages follow with SETUP-001;
+        // until then nothing here may look like a running game (docs/SPEC.md).
+        private void DrawSetup(float x, ref float y, float width)
+        {
+            if (lobby == null || client == null) return;
+            Widgets.Label(new Rect(x, y, width, 27f), "Spieleinrichtung läuft – Lobby gesperrt");
+            y += 31f;
+            foreach (PlayerView player in lobby.Players)
+            {
+                Widgets.Label(new Rect(x, y, width, 27f), player.Name + (player.Id == lobby.HostId ? " [Host]" : ""));
+                y += 27f;
+            }
+            y += 8f;
+            const string info = "Der Start wurde angenommen. Die gemeinsamen Einrichtungsseiten (Szenario, Erzähler, Welt, " +
+                "Startort, Figuren) folgen mit dem nächsten Ausbauschritt. In dieser Testversion kann der Host die Einrichtung nur abbrechen.";
+            float infoHeight = Text.CalcHeight(info, width);
+            Widgets.Label(new Rect(x, y, width, infoHeight), info);
+            y += infoHeight + 10f;
+            if (lobby.HostId == client.SessionId)
+            {
+                if (Widgets.ButtonText(new Rect(x, y, 200f, 30f), "Einrichtung abbrechen"))
+                    Send(MessageType.AbortSetupRequest, Array.Empty<byte>());
+            }
+            else if (Widgets.ButtonText(new Rect(x, y, 125f, 30f), "Verlassen"))
+                Send(MessageType.LeaveLobby, Array.Empty<byte>());
+            y += 36f;
         }
 
         private static string StatusText(ModStatus modStatus, out Color color)

@@ -59,6 +59,44 @@ plain.Join(p2, plainRoom);
 Assert(plain.Ready(p2, true).State!.Players.All(p => p.ModStatus == ModStatus.Unchecked), "no manifests stay unchecked");
 Console.WriteLine("PASS: mod manifest status, ready gate and host change");
 
+// START-001: start gate, lobby lock, abort and host leaving during setup.
+var setup = new LobbyRegistry(8);
+Guid sHost = Guid.NewGuid(), sGuest = Guid.NewGuid(), sLate = Guid.NewGuid(), sThird = Guid.NewGuid();
+foreach (var (id, name) in new[] { (sHost, "Host"), (sGuest, "Guest"), (sLate, "Late"), (sThird, "Third") })
+{ setup.AddMember(id, name); setup.SetManifest(id, hostMods); }
+Guid sRoom = setup.Create(sHost, "Setup", 4).State!.Id;
+Expect(6, () => setup.StartSetup(sHost)); // alone
+setup.Join(sGuest, sRoom);
+Expect(3, () => setup.StartSetup(sGuest)); // not host
+Expect(6, () => setup.StartSetup(sHost)); // nobody ready
+setup.Ready(sHost, true); setup.Ready(sGuest, true);
+setup.SetManifest(sGuest, otherMods);
+Expect(8, () => setup.StartSetup(sHost)); // mismatch also cleared the guest's ready flag
+setup.SetManifest(sGuest, hostMods); setup.Ready(sGuest, true);
+Assert(LobbyRegistry.StartBlockReason(setup.Ready(sHost, true).State!, sHost) == null, "client-side reason agrees");
+LobbyView started = setup.StartSetup(sHost).State!;
+Assert(started.Phase == SetupPhase.Scenario, "phase scenario");
+Assert(setup.List().Single().Phase == SetupPhase.Scenario, "browser shows setup");
+Expect(9, () => setup.Join(sLate, sRoom));
+Expect(6, () => setup.Ready(sGuest, false));
+Expect(3, () => setup.AbortSetup(sGuest));
+LobbyView aborted = setup.AbortSetup(sHost).State!;
+Assert(aborted.Phase == SetupPhase.Lobby && aborted.Players.All(p => !p.Ready), "abort back to lobby, ready cleared");
+setup.Join(sThird, sRoom);
+foreach (Guid id in new[] { sHost, sGuest, sThird }) setup.Ready(id, true);
+setup.StartSetup(sHost);
+LobbyView hostGone = setup.Leave(sHost).State!;
+Assert(hostGone.Phase == SetupPhase.Lobby && hostGone.HostId == sGuest && hostGone.Players.All(p => !p.Ready),
+    "host leaving aborts setup before host role moves");
+foreach (Guid id in new[] { sGuest, sThird }) setup.Ready(id, true);
+setup.StartSetup(sGuest);
+LobbyView guestGone = setup.Leave(sThird).State!;
+Assert(guestGone.Phase == SetupPhase.Scenario && guestGone.Players.Count == 1, "non-host leaving keeps setup");
+var phaseRoundTrip = LobbyPayloads.ReadState(LobbyPayloads.State(guestGone));
+Assert(phaseRoundTrip.Phase == SetupPhase.Scenario, "phase in state payload");
+Assert(LobbyPayloads.ReadList(LobbyPayloads.List(setup.List())).Single().Phase == SetupPhase.Scenario, "phase in list payload");
+Console.WriteLine("PASS: start gate, lobby lock, abort and host leave during setup");
+
 static void Assert(bool condition, string name)
 { if (!condition) throw new Exception("FAIL: " + name); }
 static void Expect(byte code, Action action)

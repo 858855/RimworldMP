@@ -47,7 +47,7 @@ namespace Multiplayer.Foundation.Lobby
             lock (gate)
                 return rooms.Values.OrderBy(r => r.Name, StringComparer.Ordinal).ThenBy(r => r.Id)
                     .Select(r => new LobbySummary(r.Id, r.Name, members[r.Host].Name, (byte)r.Members.Count, r.Capacity,
-                        members[r.Host].Mods)).ToArray();
+                        members[r.Host].Mods, r.Phase)).ToArray();
         }
 
         /// <summary>Stores a member's mod manifest summary; returns the lobby change when the member is in a lobby.</summary>
@@ -117,6 +117,7 @@ namespace Multiplayer.Foundation.Lobby
             {
                 Member member = GetMember(actor); RequireFree(member);
                 Room room = GetRoom(lobbyId);
+                if (room.Phase != SetupPhase.Lobby) throw new LobbyRuleException(9, "Spieleinrichtung läuft – Beitritt gesperrt.");
                 if (room.Members.Count >= room.Capacity) throw new LobbyRuleException(5, "Lobby is full.");
                 room.Members.Add(actor); member.Room = room.Id; room.Revision++;
                 return Change(room, actor);
@@ -128,6 +129,7 @@ namespace Multiplayer.Foundation.Lobby
             lock (gate)
             {
                 Member member = GetMember(actor); Room room = GetCurrentRoom(member);
+                if (room.Phase != SetupPhase.Lobby) throw new LobbyRuleException(6, "Während der Spieleinrichtung nicht möglich.");
                 if (ready)
                 {
                     ModStatus status = StatusOf(room, member);
@@ -146,9 +148,62 @@ namespace Multiplayer.Foundation.Lobby
                 Member member = GetMember(actor); Room room = GetCurrentRoom(member);
                 member.Room = null; member.Ready = false; room.Members.Remove(actor); room.Revision++;
                 if (room.Members.Count == 0) { rooms.Remove(room.Id); return new LobbyChange(null, Array.Empty<Guid>(), actor); }
-                if (room.Host == actor) { room.Host = room.Members[0]; ClearReadyWithoutMatch(room); }
+                if (room.Host == actor)
+                {
+                    // Only the old host holds the generated setup state, so setup aborts before the host role moves.
+                    if (room.Phase != SetupPhase.Lobby) ResetToLobby(room);
+                    room.Host = room.Members[0]; ClearReadyWithoutMatch(room);
+                }
                 return Change(room, actor);
             }
+        }
+
+        /// <summary>START-001: host starts the shared setup when at least two players are ready and all mods match.</summary>
+        public LobbyChange StartSetup(Guid actor)
+        {
+            lock (gate)
+            {
+                Member member = GetMember(actor); Room room = GetCurrentRoom(member);
+                var blocked = StartBlock(Change(room, actor).State!, actor);
+                if (blocked != null) throw new LobbyRuleException(blocked.Value.Code, blocked.Value.Reason);
+                room.Phase = SetupPhase.Scenario; room.Revision++;
+                return Change(room, actor);
+            }
+        }
+
+        public LobbyChange AbortSetup(Guid actor)
+        {
+            lock (gate)
+            {
+                Member member = GetMember(actor); Room room = GetCurrentRoom(member);
+                if (room.Host != actor) throw new LobbyRuleException(3, "Nur der Host kann die Einrichtung abbrechen.");
+                if (room.Phase == SetupPhase.Lobby) throw new LobbyRuleException(6, "Keine Spieleinrichtung aktiv.");
+                ResetToLobby(room); room.Revision++;
+                return Change(room, actor);
+            }
+        }
+
+        /// <summary>First reason why the host may not start yet, or null. Same rules the client shows next to the button.</summary>
+        public static string? StartBlockReason(LobbyView lobby, Guid actor) => StartBlock(lobby, actor)?.Reason;
+
+        // Error codes: 3 = not host, 6 = invalid state, 8 = mods.
+        private static (byte Code, string Reason)? StartBlock(LobbyView lobby, Guid actor)
+        {
+            if (lobby.HostId != actor) return (3, "Nur der Host kann das Spiel starten.");
+            if (lobby.Phase != SetupPhase.Lobby) return (6, "Spieleinrichtung läuft bereits.");
+            if (lobby.Players.Count < 2) return (6, "Mindestens 2 Spieler nötig.");
+            if (lobby.Players.Any(p => p.ModStatus == ModStatus.Checking)) return (8, "Mod-Prüfung läuft …");
+            string[] mismatched = lobby.Players.Where(p => p.ModStatus != ModStatus.Match).Select(p => p.Name).ToArray();
+            if (mismatched.Length > 0) return (8, "Mods stimmen nicht überein: " + string.Join(", ", mismatched));
+            int ready = lobby.Players.Count(p => p.Ready);
+            if (ready < lobby.Players.Count) return (6, "Warte auf Bereitschaft: " + ready + "/" + lobby.Players.Count + " bereit");
+            return null;
+        }
+
+        private void ResetToLobby(Room room)
+        {
+            room.Phase = SetupPhase.Lobby;
+            foreach (Guid id in room.Members) members[id].Ready = false;
         }
 
         public LobbyChange Close(Guid actor)
@@ -210,7 +265,8 @@ namespace Multiplayer.Foundation.Lobby
         {
             var players = room.Members.Select(id => new PlayerView(id, members[id].Name, members[id].Ready,
                 StatusOf(room, members[id]))).ToArray();
-            return new LobbyChange(new LobbyView(room.Id, room.Name, room.Host, room.Revision, room.Capacity, players), room.Members.ToArray(), actor);
+            return new LobbyChange(new LobbyView(room.Id, room.Name, room.Host, room.Revision, room.Capacity, players, room.Phase),
+                room.Members.ToArray(), actor);
         }
         private sealed class Member
         {
@@ -230,6 +286,7 @@ namespace Multiplayer.Foundation.Lobby
             public Guid Host { get; set; }
             public byte Capacity { get; }
             public ulong Revision { get; set; } = 1;
+            public SetupPhase Phase { get; set; } = SetupPhase.Lobby;
             public List<Guid> Members { get; } = new List<Guid>();
         }
     }

@@ -16,21 +16,25 @@ namespace Multiplayer.Foundation.Protocol
 
     public sealed class LobbyView
     {
-        public LobbyView(Guid id, string name, Guid hostId, ulong revision, byte capacity, IReadOnlyList<PlayerView> players)
-        { Id = id; Name = name; HostId = hostId; Revision = revision; Capacity = capacity; Players = players; }
+        public LobbyView(Guid id, string name, Guid hostId, ulong revision, byte capacity, IReadOnlyList<PlayerView> players,
+            SetupPhase phase = SetupPhase.Lobby)
+        { Id = id; Name = name; HostId = hostId; Revision = revision; Capacity = capacity; Players = players; Phase = phase; }
         public Guid Id { get; }
         public string Name { get; }
         public Guid HostId { get; }
         public ulong Revision { get; }
         public byte Capacity { get; }
         public IReadOnlyList<PlayerView> Players { get; }
+        public SetupPhase Phase { get; }
     }
 
     public sealed class LobbySummary
     {
         public LobbySummary(Guid id, string name, string hostName, byte playerCount, byte capacity,
-            ModManifestSummary? hostMods = null)
-        { Id = id; Name = name; HostName = hostName; PlayerCount = playerCount; Capacity = capacity; HostMods = hostMods; }
+            ModManifestSummary? hostMods = null, SetupPhase phase = SetupPhase.Lobby)
+        { Id = id; Name = name; HostName = hostName; PlayerCount = playerCount; Capacity = capacity; HostMods = hostMods; Phase = phase; }
+        /// <summary>Anything other than <see cref="SetupPhase.Lobby"/> means the lobby is locked for joins.</summary>
+        public SetupPhase Phase { get; }
         public Guid Id { get; }
         public string Name { get; }
         public string HostName { get; }
@@ -94,6 +98,13 @@ namespace Multiplayer.Foundation.Protocol
             return (name, key);
         }
 
+        private static SetupPhase ReadPhase(PayloadReader reader)
+        {
+            var phase = (SetupPhase)reader.ReadByte();
+            if (!Enum.IsDefined(typeof(SetupPhase), phase)) throw new ProtocolException("Invalid setup phase.");
+            return phase;
+        }
+
         public static byte[] String(string value, int maxBytes = 160)
         { var writer = new PayloadWriter(); writer.WriteString(value, maxBytes); return writer.ToArray(); }
         public static string ReadString(byte[] bytes, int maxBytes = 160)
@@ -122,7 +133,7 @@ namespace Multiplayer.Foundation.Protocol
         {
             var writer = new PayloadWriter();
             writer.WriteGuid(state.Id); writer.WriteString(state.Name, 160); writer.WriteGuid(state.HostId);
-            writer.WriteUInt64(state.Revision); writer.WriteByte(state.Capacity);
+            writer.WriteUInt64(state.Revision); writer.WriteByte(state.Capacity); writer.WriteByte((byte)state.Phase);
             if (state.Players.Count > 64) throw new ProtocolException("Too many players.");
             writer.WriteByte((byte)state.Players.Count);
             foreach (PlayerView player in state.Players)
@@ -133,7 +144,8 @@ namespace Multiplayer.Foundation.Protocol
         {
             var reader = new PayloadReader(bytes);
             Guid id = reader.ReadGuid(); string name = reader.ReadString(160); Guid host = reader.ReadGuid();
-            ulong revision = reader.ReadUInt64(); byte capacity = reader.ReadByte(); byte count = reader.ReadByte();
+            ulong revision = reader.ReadUInt64(); byte capacity = reader.ReadByte(); SetupPhase phase = ReadPhase(reader);
+            byte count = reader.ReadByte();
             if (count > 64 || count > capacity) throw new ProtocolException("Invalid player count.");
             var players = new List<PlayerView>();
             for (int i = 0; i < count; i++)
@@ -143,7 +155,7 @@ namespace Multiplayer.Foundation.Protocol
                 if (!Enum.IsDefined(typeof(ModStatus), status)) throw new ProtocolException("Invalid mod status.");
                 players.Add(new PlayerView(playerId, playerName, ready, status));
             }
-            reader.EnsureComplete(); return new LobbyView(id, name, host, revision, capacity, players);
+            reader.EnsureComplete(); return new LobbyView(id, name, host, revision, capacity, players, phase);
         }
         public static byte[] List(IReadOnlyList<LobbySummary> lobbies)
         {
@@ -153,7 +165,7 @@ namespace Multiplayer.Foundation.Protocol
             {
                 writer.WriteGuid(lobby.Id); writer.WriteString(lobby.Name, 160); writer.WriteString(lobby.HostName, 160);
                 writer.WriteByte(lobby.PlayerCount); writer.WriteByte(lobby.Capacity);
-                writer.WriteBool(lobby.HostMods != null); lobby.HostMods?.Write(writer);
+                writer.WriteBool(lobby.HostMods != null); lobby.HostMods?.Write(writer); writer.WriteByte((byte)lobby.Phase);
             }
             return writer.ToArray();
         }
@@ -167,7 +179,7 @@ namespace Multiplayer.Foundation.Protocol
                 Guid id = reader.ReadGuid(); string name = reader.ReadString(160), host = reader.ReadString(160);
                 byte players = reader.ReadByte(), capacity = reader.ReadByte();
                 ModManifestSummary? mods = reader.ReadBool() ? ModManifestSummary.Read(reader) : null;
-                lobbies.Add(new LobbySummary(id, name, host, players, capacity, mods));
+                lobbies.Add(new LobbySummary(id, name, host, players, capacity, mods, ReadPhase(reader)));
             }
             reader.EnsureComplete(); return lobbies;
         }

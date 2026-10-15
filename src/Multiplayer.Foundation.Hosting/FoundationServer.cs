@@ -259,6 +259,14 @@ public sealed class FoundationServer : IAsyncDisposable
                         catch (IOException) { chatTarget.Connection.Dispose(); }
                         catch (ObjectDisposedException) { }
                 break;
+            case MessageType.StartSetupRequest:
+                RequireEmpty(message.Payload);
+                await PublishAsync(lobbies.StartSetup(peer.Id), null, token, message.RequestId).ConfigureAwait(false);
+                break;
+            case MessageType.AbortSetupRequest:
+                RequireEmpty(message.Payload);
+                await PublishAsync(lobbies.AbortSetup(peer.Id), null, token, message.RequestId).ConfigureAwait(false);
+                break;
             case MessageType.ModManifestSummary:
                 LobbyChange? modsChanged = lobbies.SetManifest(peer.Id, ModManifestSummary.Read(message.Payload));
                 if (modsChanged != null) await PublishAsync(modsChanged, null, token).ConfigureAwait(false);

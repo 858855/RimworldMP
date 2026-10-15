@@ -318,6 +318,27 @@ await mGuest.SendAsync(new WireMessage(MessageType.PlayerReadyChanged, 6, LobbyP
 Assert(LobbyPayloads.ReadState((await ReceiveType(mGuest, MessageType.LobbyStateUpdate)).Payload)
     .Players.Single(p => p.Name == "ModGuest").Ready, "ready accepted after match");
 Console.WriteLine("PASS: mod manifest status, ready gate, browser summary and mod-list request over TCP");
+
+// START-001 over TCP: the host starts; both see the phase; joins are locked; abort returns to the lobby.
+await mHost.SendAsync(new WireMessage(MessageType.StartSetupRequest, 7, Array.Empty<byte>()));
+Assert((await ReceiveType(mHost, MessageType.Error)).RequestId == 7, "start rejected while host not ready");
+await mHost.SendAsync(new WireMessage(MessageType.PlayerReadyChanged, 8, LobbyPayloads.Bool(true)));
+await ReceiveType(mHost, MessageType.LobbyStateUpdate);
+await ReceiveType(mGuest, MessageType.LobbyStateUpdate);
+await mGuest.SendAsync(new WireMessage(MessageType.StartSetupRequest, 7, Array.Empty<byte>()));
+Assert((await ReceiveType(mGuest, MessageType.Error)).RequestId == 7, "guest may not start");
+await mHost.SendAsync(new WireMessage(MessageType.StartSetupRequest, 9, Array.Empty<byte>()));
+WireMessage startedForHost = await ReceiveType(mHost, MessageType.LobbyStateUpdate);
+LobbyView startedForGuest = LobbyPayloads.ReadState((await ReceiveType(mGuest, MessageType.LobbyStateUpdate)).Payload);
+Assert(startedForHost.RequestId == 9 && LobbyPayloads.ReadState(startedForHost.Payload).Phase == SetupPhase.Scenario &&
+    startedForGuest.Phase == SetupPhase.Scenario, "both see setup phase");
+using var mLate = (await HandshakeClient.ConnectAsync("127.0.0.1", xferServer.BoundPort, "ModLate", TimeSpan.FromSeconds(3))).Connection;
+await mLate.SendAsync(new WireMessage(MessageType.JoinLobby, 2, LobbyPayloads.GuidValue(modRoom.Id)));
+Assert((await ReceiveType(mLate, MessageType.Error)).RequestId == 2, "join locked during setup");
+await mHost.SendAsync(new WireMessage(MessageType.AbortSetupRequest, 10, Array.Empty<byte>()));
+LobbyView backInLobby = LobbyPayloads.ReadState((await ReceiveType(mGuest, MessageType.LobbyStateUpdate)).Payload);
+Assert(backInLobby.Phase == SetupPhase.Lobby && backInLobby.Players.All(p => !p.Ready), "abort returns to lobby");
+Console.WriteLine("PASS: start button gate, setup phase broadcast, join lock and abort over TCP");
 await xferServer.StopAsync();
 
 // Routes acks and aborts for one upload; answers pings. Stops when the upload's token is cancelled.

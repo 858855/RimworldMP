@@ -641,11 +641,12 @@ tasks:
   - 'Alle Aktivierungsbedingungen und Begründungstexte korrekt'
   - 'Server prüft beim Start erneut'
   - 'Lobby-Sperre, Abbruch und keine Host-Migration während der Einrichtung getestet'
-  implementation: planned
-  verification: not_tested
+  implementation: implemented
+  verification: tests_passed
   integration: not_submitted
-  branch: null
+  branch: feat/lobby-hardening
   evidence: []
+  blocker: 'Startbedingungen, Sperre, Abbruch und Host-Verlassen automatisiert geprüft (.NET-8-Harness); Mod gebaut. Die Einrichtungsseiten selbst folgen mit SETUP-001: nach dem Start zeigt die Mod eine ehrliche Einrichtungsansicht mit Abbrechen. Spieltest mit zwei Clients offen.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: XFER-001
   title: 'Chunk-Kanal für große Übertragungen'
