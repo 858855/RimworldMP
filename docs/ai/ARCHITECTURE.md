@@ -2,7 +2,7 @@
 
 ## Implementiert
 
-`Multiplayer.Foundation.Protocol` ist eine `netstandard2.0`-Bibliothek ohne Verse-/Unity-/Waylith-Referenz. `FrameCodec` liest TCP-Byte-Streams bis zu einem kompletten, auf 64 KiB begrenzten Frame und schreibt Version, Typ, Request-ID und Payload. `PayloadWriter`/`PayloadReader` kodieren begrenzte Strings und primitive Werte. Fünf ausführbare Testgruppen prüfen Format und Fehlerfälle. Nachrichtenspezifische Lobby-Payloads und echte Verbindungen fehlen noch.
+`Multiplayer.Foundation.Protocol` ist eine `netstandard2.0`-Bibliothek ohne Verse-/Unity-/Waylith-Referenz. `FrameCodec` liest TCP-Byte-Streams bis zu einem kompletten, auf 64 KiB begrenzten Frame und schreibt Version, Typ, Request-ID und Payload. `PayloadWriter`/`PayloadReader` kodieren begrenzte Strings und primitive Werte. Fünf ausführbare Testgruppen prüfen Format und Fehlerfälle. Nachrichtenspezifische Lobby-Payloads fehlen noch. `Multiplayer.Foundation.Network` ergänzt eine echte TCP-Verbindung mit serialisierten Sendungen und einem Handshake-Client. Eine dauerhafte Nachrichtenpumpe und Heartbeats fehlen noch.
 
 ## Ziel für 0.1 (geplant)
 

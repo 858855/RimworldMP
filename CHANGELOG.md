@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Netzwerk
+
+- TCP-Verbindung und Handshake mit Timeout ergänzt; Loopback-Tests decken echte Verbindung, gleichzeitige Sendungen und Ablehnung ab. Heartbeat und Server fehlen noch.
+
 ### Protokoll
 
 - Versioniertes, auf 64 KiB begrenztes TCP-Framing und strikte Payload-Kodierung implementiert; fünf automatisierte Testgruppen bestanden. Noch keine echte Client-Server-Verbindung.

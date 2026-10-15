@@ -34,8 +34,8 @@ components:
     verification: tests_passed
     integration: not_submitted
   network_core:
-    implementation: planned
-    verification: not_tested
+    implementation: in_progress
+    verification: tests_passed
     integration: not_submitted
   lobby_core:
     implementation: planned
@@ -54,6 +54,8 @@ verified_capabilities:
 - Drei XML-Beispiele syntaktisch geprüft; kein RimWorld-Laufzeitnachweis.
 - Lokale RimWorld-Version und Steam-Build aus Installationsdateien gelesen.
 - 'Wire-Version 1: 5 automatisierte Protokoll-Testgruppen bestanden (Frame/Payload).'
+- 'TCP-Loopback: Handshake, paralleles Senden, Ablehnung und Timeout mit Network.Tests
+  bestanden.'
 known_issues:
 - Bisher kein produktiver Multiplayer-Code und keine C#-Builds.
 blockers:
@@ -61,8 +63,8 @@ blockers:
 - 1.7-Multiplayer wegen Prepatcher und fehlenden Tests ungeklärt.
 active_tasks:
 - NET-001
-next_action: 'NET-001: TCP-Client, Handshake, Timeout und Heartbeat auf Basis des
-  geprüften FrameCodec ergänzen.'
+next_action: 'NET-001: Heartbeat und dauerhafte Nachrichtenverarbeitung ergänzen;
+  danach Server- und Lobby-Branch.'
 documentation_refs:
   tasks: docs/ai/TASKS.yaml
   handoff: docs/ai/SESSION_HANDOFF.md
@@ -72,4 +74,5 @@ documentation_refs:
   architecture: docs/ai/ARCHITECTURE.md
   review: docs/reviews/2026-10-15-governance-v2.md
   protocol_verification: docs/verification/2026-10-15-protocol.md
+  network_verification: docs/verification/2026-10-15-network.md
 last_updated: '2026-10-15'
