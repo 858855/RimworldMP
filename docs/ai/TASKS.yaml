@@ -300,3 +300,37 @@ tasks:
   base_commit: 4a6b129
   evidence:
   - docs/verification/2026-10-15-server-heartbeat-shutdown.md
+- id: PKG-001
+  title: Installierbares RimWorld-1.6-Mod-ZIP auf GitHub bereitstellen
+  goal: Reproduzierbares ZIP mit Mod-Ordner und Anleitung für manuelle Installation veröffentlichen.
+  description: Bestehenden Mod-Build paketieren, Archivinhalt prüfen und den Arbeitsbranch mit ZIP auf GitHub hochladen.
+  priority: high
+  components:
+  - rimworld_adapter
+  - deployment
+  depends_on:
+  - CLIENT-001
+  - SERVER-002
+  scope:
+  - scripts/package-mod.py
+  - releases/
+  - docs/build.md
+  - docs/verification/
+  non_goals:
+  - Steam-Workshop-Veröffentlichung, Gameplay-Synchronisation, Spiel-Laufzeitfreigabe
+  acceptance:
+  - ZIP enthält einen direkt unter RimWorld/Mods entpackbaren Mod-Ordner
+  - About.xml und drei eigene Assemblies sind enthalten, keine proprietären Spiel-DLLs
+  - Archiv und SHA-256 geprüft
+  - Installationsanleitung und GitHub-Downloadlink vorhanden
+  test_strategy: Release-Build gegen lokale 1.6-Assemblies, ZIP-Strukturprüfung und Prüfsumme.
+  risks:
+  - Mod-UI im Spiel weiterhin ungetestet
+  implementation: implemented
+  verification: tests_passed
+  integration: ready_for_human_review
+  branch: release/mod-install-0.1-dev
+  base_branch: fix/server-heartbeat
+  base_commit: 1192eb5
+  evidence:
+  - docs/verification/2026-10-15-installable-mod-zip.md

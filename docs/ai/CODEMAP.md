@@ -22,3 +22,4 @@
 | `src/Multiplayer.Foundation.RimWorld/FoundationMod.cs`, `FoundationSettings.cs` | Mod-Einstellungen, Verbindung und Lobby-UI | Release-Build; Game-Test offen | gebaut, Laufzeit offen |
 | `mod/About/About.xml`, `scripts/build-mod.sh` | Mod-Metadaten und Paketbau | XML/Paketprüfung | geprüft |
 | `tests/ProcessIntegration.Tests/Program.cs` | Server und zwei Client-Prozesse über echte TCP-Lobby steuern | `dotnet run --project ...` | acht Prozess-Testschritte bestanden |
+| `scripts/package-mod.py`, `mod/INSTALLATION.md` | Geprüftes Mod-ZIP aus Release-Build und manuelle Installation | ZIP-Extraktionsprüfung | fünf Einträge geprüft, Spiel-Laufzeit offen |

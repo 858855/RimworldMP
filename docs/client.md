@@ -14,7 +14,7 @@ Nach Aktivierung des Mods in RimWorld unter **Optionen → Mod-Einstellungen →
 DOTNET_BIN=/home/fabiok/.local/share/dotnet-rimworldmp/dotnet bash scripts/build-mod.sh
 ```
 
-Das Skript erzeugt `dist/RimWorldMultiplayerFoundation/` mit `About/About.xml` und drei eigenen DLLs in `Assemblies/`. Für andere Installationen `RIMWORLD_MANAGED` auf das lokale `RimWorldLinux_Data/Managed`-Verzeichnis setzen. Zum manuellen Installieren das Paket als Unterordner in RimWorld `Mods/` kopieren und im Mod-Menü aktivieren. Es werden keine proprietären Spiel-DLLs gepackt.
+Das Skript erzeugt `dist/RimWorldMultiplayerFoundation/` mit `About/About.xml` und drei eigenen DLLs in `Assemblies/`. Für andere Installationen `RIMWORLD_MANAGED` auf das lokale `RimWorldLinux_Data/Managed`-Verzeichnis setzen. Zum manuellen Installieren das [ZIP](../releases/RimWorldMultiplayerFoundation-0.1.0-dev-rw1.6.zip) direkt in RimWorld `Mods/` entpacken und im Mod-Menü aktivieren. Der Archivordner enthält `About/`, `Assemblies/` und eine [Anleitung](../mod/INSTALLATION.md). Das Paket enthält keine proprietären Spiel-DLLs und keinen Server.
 
 ## Verifizierungsgrenze
 

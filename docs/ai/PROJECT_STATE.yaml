@@ -14,11 +14,11 @@ target_rimworld_version:
   runtime: Unity/Mono
   game_runtime_tested: true
   other_versions_verified: []
-current_phase: dedicated_server_stability_verified
+current_phase: installable_mod_zip_built
 git:
-  branch: fix/server-heartbeat
-  base_branch: test/multi-player-process
-  base_commit: 4a6b129
+  branch: release/mod-install-0.1-dev
+  base_branch: fix/server-heartbeat
+  base_commit: 1192eb5
   current_commit_ref: HEAD
   pushed: false
   merged: false
@@ -29,6 +29,7 @@ git:
   - feat/rimworld-client
   - test/multi-player-process
   - fix/server-heartbeat
+  - release/mod-install-0.1-dev
 components:
   governance:
     implementation: implemented
@@ -58,6 +59,10 @@ components:
     implementation: implemented
     verification: build_passed
     integration: merged
+  mod_package:
+    implementation: implemented
+    verification: tests_passed
+    integration: ready_for_human_review
 verified_capabilities:
 - 'Archiv: 49 Einträge gegen eingebettetes Manifest geprüft.'
 - Drei XML-Beispiele syntaktisch geprüft; kein RimWorld-Laufzeitnachweis.
@@ -75,6 +80,7 @@ verified_capabilities:
   nach Disconnect übertragen; insgesamt 13 Integrationstestgruppen bestanden.'
 - 'Mehrprozess-Test: eigenständiger Server und zwei unabhängige Client-Prozesse, Lobby-Liste, Join, gleiche Snapshots, Ready und Disconnect bestanden.'
 - 'Server: verzögertes gültiges Pong akzeptiert, Duplikat und ungesendete Nonce abgelehnt; SIGTERM beendet den Linux-Prozess mit verbundenem Client geordnet.'
+- 'Mod-ZIP: Release-Build gegen lokale 1.6-Assemblies, fünf Archiveinträge, Entpacken nach RimWorld/Mods und SHA-256 geprüft; kein Spiel-Laufzeittest.'
 known_issues:
 - 'RimWorld-UI im Spiel nicht verifiziert: -nographics verursacht Atlasfehler; grafischer Start
   kam auch im 180-s-Wiederholungsversuch nicht bis zu belegten Mod-Ladeeinträgen.'
@@ -85,7 +91,8 @@ blockers:
 - 1.7-Unterstützung ungeklärt.
 active_tasks:
 - TEST-001
-next_action: RimWorld-Mod im grafischen Spielstart laden und die Lobby-UI mit zwei Spielclients gegen den dedizierten Server prüfen; bisheriger Laufzeitblocker bleibt offen.
+- PKG-001
+next_action: Installierbares ZIP auf den GitHub-Arbeitsbranch pushen und Download prüfen; danach RimWorld-UI mit zwei Spielclients gegen den dedizierten Server verifizieren.
 documentation_refs:
   tasks: docs/ai/TASKS.yaml
   handoff: docs/ai/SESSION_HANDOFF.md
@@ -103,6 +110,7 @@ documentation_refs:
   extended_integration: docs/verification/2026-10-15-integration-extended.md
   process_integration: docs/verification/2026-10-15-multi-process-lobby.md
   server_stability: docs/verification/2026-10-15-server-heartbeat-shutdown.md
+  mod_package: docs/verification/2026-10-15-installable-mod-zip.md
   prompt_history: docs/governance/PROMPT_HISTORY.md
   prompt_review: docs/reviews/2026-10-15-prompt-archive.md
   prompt_archive_verification: docs/verification/2026-10-15-prompt-archive.md

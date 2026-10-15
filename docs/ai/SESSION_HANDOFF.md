@@ -1,9 +1,9 @@
 # Sitzungsübergabe
 
-- **Bereich:** `TEST-002` Mehrprozess-Verbindung und `SERVER-002` dedizierter Server bei Heartbeat-Verzug und SIGTERM.
-- **Branch:** `fix/server-heartbeat`, Basis `test/multi-player-process` bei `4a6b129`, dessen Basis `main` bei `9d96665` liegt. Aktuellen Commit per `git log -1 --oneline` prüfen; beide Arbeitsbranches sind lokal, kein Push oder Merge.
-- **Arbeitsstand:** Zwei unabhängige Client-Prozesse und Serverprozess verbinden sich; Lobby, Ready und Disconnect geprüft. Verzögertes Pong wird angenommen, doppelte/ungesendete Werte abgewiesen. Linux-SIGTERM stoppt den Server trotz aktiver Verbindung; Client erkennt die Trennung.
-- **Prüfung:** 16 TCP-Integrationstestgruppen und acht Mehrprozess-Schritte mit .NET 10 auf Linux bestanden; Details unter `docs/verification/2026-10-15-multi-process-lobby.md` und `docs/verification/2026-10-15-server-heartbeat-shutdown.md`.
-- **Offen:** RimWorld-UI-Laufzeit und zwei echte Spielprozesse; 1.7; Authentifizierung/TLS. `Version.txt` rev598 vs. Runtime rev600; grafischer Start erreichte bisher keinen belegten Mod-Ladeeintrag.
-- **Nächster Schritt:** Mit bereinigter, isolierter Modliste den grafischen RimWorld-Start bis zum Hauptmenü und die Foundation-Mod-Einstellungen prüfen; danach zwei Spielclients mit dediziertem Server verbinden. Vorige 180-s-Wiederholung nicht ohne neue Diagnose wiederholen.
-- **Dateien/Befehle:** `src/Multiplayer.Foundation.Server/FoundationServer.cs`, `Program.cs`, `tests/Integration.Tests/Program.cs`, `tests/ProcessIntegration.Tests/Program.cs`; Testbefehle in den genannten Nachweisen.
+- **Bereich:** `PKG-001`, manuell installierbares Mod-ZIP für RimWorld 1.6.
+- **Branch:** `release/mod-install-0.1-dev`, Basis `fix/server-heartbeat` bei `1192eb5`; davor `test/multi-player-process` bei `4a6b129`. Aktuellen Commit mit `git log -1 --oneline` prüfen.
+- **Stand:** Frischer 1.6-Release-Build und ZIP mit `About.xml`, drei eigenen Assemblies und Anleitung erstellt. Archivstruktur und Entpacken in `RimWorld/Mods/` geprüft; SHA-256 unter `docs/verification/2026-10-15-installable-mod-zip.md`.
+- **Offen:** GitHub-Upload/Download prüfen und URL festhalten. RimWorld-UI im Spiel und zwei tatsächliche Spielclients bleiben ungeprüft. 1.7 und Authentifizierung/TLS offen.
+- **Bekanntes Problem:** `Version.txt` rev598, frühere Runtime rev600; grafischer Start erreichte bislang keinen belegten Mod-Ladeeintrag.
+- **Nächster Schritt:** Lokalen Paket-Commit erstellen, Branch mit ZIP zu GitHub pushen, Download/Prüfsumme verifizieren, Status nachführen. Danach manuellen Spieltest durchführen.
+- **Dateien/Befehle:** `scripts/build-mod.sh`, `scripts/package-mod.py`, `mod/INSTALLATION.md`, `releases/RimWorldMultiplayerFoundation-0.1.0-dev-rw1.6.zip`; Build-/Prüfbefehle im Verifizierungsbericht.

@@ -18,3 +18,12 @@ DOTNET_BIN=/home/fabiok/.local/share/dotnet-rimworldmp/dotnet bash scripts/build
 ```
 
 Für andere Installationen `RIMWORLD_MANAGED` setzen. Das Paket liegt danach unter `dist/RimWorldMultiplayerFoundation/`.
+
+## Installierbares Mod-ZIP (RimWorld 1.6)
+
+```bash
+DOTNET_BIN=/home/fabiok/.local/share/dotnet-rimworldmp/dotnet bash scripts/build-mod.sh
+python3 scripts/package-mod.py
+```
+
+Das zweite Kommando prüft `About.xml`, die drei eigenen Assemblies und den Archivinhalt und erzeugt `releases/RimWorldMultiplayerFoundation-0.1.0-dev-rw1.6.zip`. Die [Installationsanleitung](../mod/INSTALLATION.md) liegt auch im ZIP. Entpacken direkt in `RimWorld/Mods/`; der Archivordner ist bereits `RimWorldMultiplayerFoundation/`. Das ZIP enthält keinen Server. Laufzeit und UI im Spiel sind weiterhin nicht verifiziert.
