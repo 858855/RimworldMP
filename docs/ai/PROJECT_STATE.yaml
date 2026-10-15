@@ -20,7 +20,7 @@ git:
   base_branch: main
   base_commit: bfc9fcd
   current_commit_ref: HEAD
-  pushed: false
+  pushed: true
   merged: false
   dependent_branches:
   - docs/project-governance
