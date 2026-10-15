@@ -41,6 +41,8 @@ Strings sind `length:u16` plus strikt gültige UTF-8-Bytes. Allgemeine Strings: 
 | 30 | SetupSettings | C→S→C | Seitenname, bis zu 24 Paare Bezeichnung/Wert; nur Host, nur während der Einrichtung |
 | 31 | WorldReady | C→S | Welt-Fingerabdruck (32 Byte); nur Host, nur in `WorldTransfer` |
 | 32 | WorldLoaded | C→S | Fingerabdruck der geladenen Welt (32 Byte); nur Gäste, nur in `WorldTransfer` |
+| 33 | PawnRoster | C→S→C | `count:u8` (≤ 24) Figurenkarten; nur Host, nur in `Characters` |
+| 34 | PawnRequest | C→S→C | Art `u8`, Figur `u32`, andere Figur `u32`, Text (≤ 64 Byte), optional `PlayerKey`; nur Gäste, nur in `Characters`, an den Host |
 
 Listen- und Zustandsupdates sind in `LobbyPayloads.cs` kodiert: Liste mit `count:u8`, je Lobby GUID, Name, Hostname, Spielerzahl und Kapazität; Snapshot mit GUID, Name, Host-GUID, Revision `u64`, Kapazität, Setup-Phase `u8`, optional gewähltes Feld und Spielerarray (Session-GUID, Name, Ready, PlayerKey, optional Fähnchen). Die Liste trägt je Lobby zusätzlich die Phase. Der TCP-Server verwendet diese Payloads; zwei unabhängige TCP-Testclients bestanden die Integrationstests. RimWorld-Client-Kompatibilität ist noch offen. Fehlercodes: `1=InvalidMessage`, `2=VersionMismatch`, `3=Unauthorized`, `4=NotFound`, `5=Capacity`, `6=InvalidState`, `7=ServerBusy`.
 
@@ -84,3 +86,7 @@ Debug-Option: Ein Host-Server mit `AllowSoloStart` nimmt `SetupAdvance(Scenario)
 ## Weltübertragung (SETUP-002, ADR 0020)
 
 In `WorldTransfer` trägt jeder Spieler im Lobbyzustand zusätzlich `WorldStatus:u8` (`0` außerhalb der Phase, `1` wartet, `2` passt, `3` weicht ab). Die Welt selbst geht als Chunk-Übertragung der Art `2`. `SetupAdvance(SiteSelection)` verlangt eine Host-Meldung und „passt“ bei allen Gästen; Abweichung ergibt Code 8, fehlende Meldungen Code 6. Ein neues `WorldReady` setzt alle Gastmeldungen zurück.
+
+## Figurenwahl (SETUP-004, ADR 0022)
+
+Figuren gibt es nur im Spiel des Hosts. Eine Karte in `PawnRoster`: Thing-ID `u32`, Startgruppe `bool`, optional Besitzer (`PlayerKey`), fünf Texte (Name, Kurzname, Kurzbeschreibung, Kindheit, Erwachsenenleben, je ≤ 160 Byte), dann Listen mit `count:u8` (≤ 24): Merkmale, Fertigkeiten (Name, Stufe `u8` mit `255` = unfähig, Leidenschaft `u8`), Unfähigkeiten, Gesundheit. Der Server leitet die Liste an die Gäste weiter, bildet je Spieler einen SHA-256 über dessen Karten und löscht Fertig, wenn sich der Wert ändert oder der Spieler keine Figur der Startgruppe mehr hat. Fertig in `Characters` verlangt eine eigene Figur der Startgruppe (Code 6). `PawnRequest`-Arten: `1` übernehmen, `2` freigeben, `3` neu würfeln, `4` tauschen, `5` umbenennen. Der Server ersetzt den mitgeschickten `PlayerKey` durch den des Absenders und leitet an den Host; ob eine Anfrage erlaubt ist, entscheidet der Host.

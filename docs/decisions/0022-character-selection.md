@@ -1,0 +1,19 @@
+# ADR 0022 – Figurenwahl je Spieler (SETUP-004, Spielseite)
+
+- **Status:** angenommen für `feat/mod-check-setup-ui`. Designnotiz nach `AGENTS.md` Regel 4. Setzt die Charakterwahl aus ADR 0015 um (kein Erzwingen, alle fertig); Phasenregeln aus ADR 0017 unverändert.
+- **Ziel:** Jeder Spieler übernimmt genau eine Figur der Startgruppe, kann sie neu würfeln, mit einer zurückgelassenen tauschen und umbenennen und meldet sich fertig. Weiter geht es erst, wenn alle fertig sind.
+- **Wo die Figuren leben:** nur im Spiel des Hosts, in der vanilla-Liste `GameInitData.startingAndOptionalPawns` (Startgruppe = die ersten `startingPawnCount`). Alle Zufallswürfe macht vanilla beim Host (`StartingPawnUtility`). Die Gäste bekommen nur Karten zur Anzeige; ihre Spiele erzeugen keine Figuren.
+- **Protokoll (Wire-Version 3):**
+  - `PawnRoster` (Code 33, Host → Server → Gäste): alle Figuren als Karten, Startgruppe zuerst: Thing-ID, Startgruppe ja/nein, Besitzer (`PlayerKey`), Name, Kurzname, Kurzbeschreibung (Geschlecht, Alter, Xenotyp), Kindheit, Erwachsenenleben, Merkmale, Fertigkeiten (Stufe, `255` = unfähig, Leidenschaft), Unfähigkeiten, sichtbare Gesundheit. Höchstens 24 Karten und 24 Einträge je Liste, ein Frame.
+  - `PawnRequest` (Code 34, Gast → Server → Host): Art (`1` übernehmen, `2` freigeben, `3` neu würfeln, `4` tauschen, `5` umbenennen), Figur, andere Figur, Text. Der Server setzt den `PlayerKey` des Absenders ein; was der Gast mitschickt, zählt nicht.
+- **Server:** nimmt `PawnRoster` nur vom Host und nur in `Characters` an. Je Spieler bildet er einen SHA-256 über dessen Karten; ändert sich der Wert (neu gewürfelt, getauscht, umbenannt, anderer Besitz) oder besitzt der Spieler keine Figur der Startgruppe mehr, wird sein Fertig gelöscht. Fertig verlangt eine eigene Figur der Startgruppe (Code 6). `PawnRequest` nur von Gästen und nur in `Characters`; der Host ändert Figuren in seinem eigenen Spiel. Phasenwechsel und Abbruch löschen die Liste.
+- **Host (`CharacterHost`):**
+  - Besitz wird nach Thing-ID gehalten. Ersetzt vanilla eine Figur an derselben Stelle (Neu würfeln auf der vanilla-Seite), erbt die neue Figur den Besitzer. Figuren von Spielern, die gegangen sind, werden frei.
+  - Die Startgruppe wird auf eine Figur je Spieler angehoben: erst die erste zurückgelassene Figur, sonst `StartingPawnUtility.AddNewPawn`.
+  - Anfragen: Übernehmen nur in der Startgruppe, nur freie Figuren, eine je Spieler. Freigeben, neu würfeln (`RandomizeInPlace`), umbenennen (Spitzname, 1–24 druckbare Zeichen) nur die eigene. Tauschen nur die eigene Figur der Startgruppe gegen eine freie zurückgelassene; die Plätze wechseln und `ReorderRequests` hält die vanilla-Erzeugungswünsche je Platz passend.
+  - Der Host übernimmt die gerade auf der vanilla-Seite gezeigte Figur über sein Feld oben rechts und meldet sich dort fertig. Die Liste wird nur gesendet, wenn sie sich geändert hat.
+- **Gast:** Beim Wechsel auf `Characters` öffnet sich das Figurenfenster: links Startgruppe und zurückgelassene Figuren mit Besitzern, rechts die Karte und die erlaubten Knöpfe, unten **Fertig** (nur mit eigener Figur) und **Chat / Lobby**. Abgelehnte Anfragen meldet der Host im Log; die Anzeige folgt immer der nächsten Liste.
+- **Start:** Der letzte vanilla-Start bleibt gesperrt (SETUP-005); die Meldung nennt jetzt, auf wen gewartet wird.
+- **Persistenz:** keine. Der Besitz gilt nur in der Einrichtung; der gemeinsame Start (SETUP-005) und der Spielstand (OWN-001) übernehmen ihn.
+- **Tests:** Lobby-, Hosting- und Protokolltests für Liste, Anfragen, Fertig-Regeln. Selbsttest im Spiel (`-mpWorldSelfTest`): Host-Logik auf echten vanilla-Startfiguren, alle Prüfungen PASS. Zwei-Spieler-Lauf: **offen**.
+- **Rollback:** Commits zurücknehmen; die Charakterwahl hat dann wieder keine Figurenzuordnung.

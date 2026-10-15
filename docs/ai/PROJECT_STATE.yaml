@@ -150,7 +150,8 @@ active_tasks:
 - SETUP-001
 - SETUP-002
 - SETUP-003
-next_action: 'Zwei-Spieler-Test von Seitenspiegel, Weltübertragung und Fähnchen (Prüfpunkte 1–7 in docs/reviews/2026-10-15-mod-check-setup-ui.md); danach SETUP-004 (Figurenwahl je Spieler).'
+- SETUP-004
+next_action: 'Zwei-Spieler-Test von Seitenspiegel, Weltübertragung, Fähnchen und Figurenwahl (Prüfpunkte 1–8 in docs/reviews/2026-10-15-mod-check-setup-ui.md); danach SETUP-005 (gemeinsamer Spielstart).'
 documentation_refs:
   tasks: docs/ai/TASKS.yaml
   handoff: docs/ai/SESSION_HANDOFF.md
@@ -200,4 +201,6 @@ documentation_refs:
   world_transfer_decision: docs/decisions/0020-world-transfer.md
   world_transfer_verification: docs/verification/2026-10-15-world-transfer.md
   site_flags_decision: docs/decisions/0021-site-flags-on-the-map.md
+  character_selection_decision: docs/decisions/0022-character-selection.md
+  character_selection_verification: docs/verification/2026-10-15-character-selection.md
 last_updated: '2026-10-15'

@@ -110,3 +110,16 @@ Wichtiger Unterschied: `Multiplayer.Client.Multiplayer` ist eine interne Clientk
 | `Verse.Widgets.DrawBoxSolid(Rect, Color)`; `Verse.Text.Font`, `.Anchor`; `UnityEngine.ScreenCapture.CaptureScreenshot(string)` (`UnityEngine.ScreenCaptureModule`, nur Kompilierreferenz) | public | BESTÄTIGT (Metadaten/Build) |
 
 **VER-001, Laufzeitteil:** Die Startortseite zeigt beim Gast die übertragene Welt (Selbsttest PASS). Offen bleibt nur: Threads im Tickpfad.
+
+## SETUP-004: Figurenwahl (2026-10-15, gleiche Quelle)
+
+| Symbol | Signatur in 1.6.4871 | Status |
+|---|---|---|
+| `Verse.StartingPawnUtility.AddNewPawn(int index)`, `.RandomizeInPlace(Pawn)` → `Pawn`, `.ReorderRequests(int from, int to)` | public static | BESTÄTIGT (Metadaten); im Selbsttest genutzt |
+| `Verse.GameInitData.startingPawnCount`, `.startingAndOptionalPawns`, `.playerFaction` | public field | BESTÄTIGT (Metadaten), im Selbsttest genutzt |
+| `RimWorld.Page_ConfigureStartingPawns.curPawnIndex` (Feld), `.DoNext()` | nonpublic | BESTÄTIGT (Metadaten); Feld nur gelesen (`AccessTools.FieldRefAccess`) |
+| `Verse.NameTriple(string first, string nick, string last)`, `.First`, `.Last`; `Verse.NameSingle(string, bool)`; `Verse.Name.ToStringFull`, `.ToStringShort`; `Verse.Pawn.Name` | public | BESTÄTIGT (Metadaten), Umbenennen im Selbsttest geprüft |
+| `RimWorld.SkillRecord.TotallyDisabled`, `.Level`, `.passion`; `RimWorld.SkillDef.skillLabel`; `Verse.Pawn.CombinedDisabledWorkTags`; `Verse.WorkTypeDefsUtility.LabelTranslated(WorkTags)` | public | BESTÄTIGT (Metadaten) |
+| `Verse.GenderUtility.GetLabel(Gender, bool animal)`; `RimWorld.Pawn_GeneTracker.XenotypeLabelCap`; `RimWorld.BackstoryDef.TitleCapFor(Gender)`; `RimWorld.Trait.LabelCap`; `Verse.Hediff.Visible`, `.LabelCap` | public | BESTÄTIGT (Metadaten), Karte im Selbsttest gefüllt |
+| `RimWorld.Scenario.PostIdeoChosen()`; `RimWorld.Faction.OfPlayer`; `Verse.Thing.thingIDNumber` | public | BESTÄTIGT (Metadaten), im Selbsttest genutzt |
+| Neue Startfiguren (`AddNewPawn`) brauchen einen Erzähler mit `def` | – | **Laufzeitbefund**: der `Game`-Konstruktor legt einen Erzähler ohne `def` an; ohne gesetzten Erzähler NullReferenceException |

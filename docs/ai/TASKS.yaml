@@ -822,16 +822,19 @@ tasks:
   - 'Anfragen von Nicht-Besitzern werden abgelehnt'
   - 'Start erst, wenn alle verbundenen Spieler fertig sind; der Server lehnt einen früheren Start ab; kein Erzwingen'
   - 'Pawn-Änderung setzt Fertig des Spielers zurück'
-  implementation: in_progress
+  implementation: implemented
   verification: tests_passed
-  integration: not_submitted
-  branch: feat/setup-rules
+  integration: ready_for_human_review
+  branch: feat/mod-check-setup-ui
   base_branch: feat/player-key
   base_commit: 2221608
   evidence:
   - docs/verification/2026-10-15-setup-rules.md
   - docs/decisions/0017-setup-phase-rules.md
-  blocker: 'Serverseite fertig und getestet (alle fertig, kein Erzwingen). Fehlen: Charakterfenster, Pawn-Besitz und Rücksetzen von Fertig bei Pawn-Änderung im Spiel.'
+  - docs/decisions/0022-character-selection.md
+  - docs/verification/2026-10-15-character-selection.md
+  - docs/reviews/2026-10-15-mod-check-setup-ui.md
+  blocker: 'Serverregeln und Spielseite gebaut und getestet; Host-Logik auf vanilla-Startfiguren im Selbsttest geprüft (ADR 0022). Offen: Zwei-Spieler-Lauf (Prüfpunkt 8).'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: SETUP-005
   title: 'Spielstandübertragung und pausierte Landung'
