@@ -306,6 +306,14 @@ public sealed class FoundationServer : IAsyncDisposable
                 await PublishAsync(lobbies.ReportWorld(peer.Id, SetupPayloads.ReadFingerprint(message.Payload)), null, token,
                     message.RequestId).ConfigureAwait(false);
                 break;
+            case MessageType.GameReady:
+                await PublishAsync(lobbies.SetHostGame(peer.Id, SetupPayloads.ReadFingerprint(message.Payload)), null, token,
+                    message.RequestId).ConfigureAwait(false);
+                break;
+            case MessageType.GameLoaded:
+                await PublishAsync(lobbies.ReportGame(peer.Id, SetupPayloads.ReadFingerprint(message.Payload)), null, token,
+                    message.RequestId).ConfigureAwait(false);
+                break;
             case MessageType.SetupSettings:
                 SetupSettings.Read(message.Payload); // validate before relaying
                 foreach (Guid viewer in lobbies.SetupSettingsRecipients(peer.Id))

@@ -151,6 +151,8 @@ await Run("setup payloads and lobby state", () =>
     Equal(false, SetupPayloads.ReadFlag(SetupPayloads.Flag(null)).HasValue);
     Equal(SetupPhase.Characters, SetupPayloads.ReadAdvance(SetupPayloads.Advance(SetupPhase.Characters)));
     Throws<ProtocolException>(() => SetupPayloads.Advance((SetupPhase)200));
+    Equal(SetupPhase.Playing, SetupPayloads.ReadAdvance(SetupPayloads.Advance(SetupPhase.Playing)));     // SETUP-005
+    Throws<ProtocolException>(() => SetupPayloads.ReadAdvance(new byte[] { 10 }));
     Throws<ProtocolException>(() => SetupPayloads.ReadAdvance(new byte[] { 200 }));
     Throws<ArgumentOutOfRangeException>(() => new SiteTile(-1, 0));
     Throws<ArgumentOutOfRangeException>(() => new SiteTile(0, -1));

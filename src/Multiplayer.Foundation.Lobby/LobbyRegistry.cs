@@ -181,7 +181,7 @@ namespace Multiplayer.Foundation.Lobby
             lock (gate)
             {
                 Room room = GetHostedRoom(actor);
-                if (room.Phase == SetupPhase.Generating) throw new LobbyRuleException(6, "The next setup step is not available yet.");
+                if (room.Phase == SetupPhase.Playing) throw new LobbyRuleException(6, "Setup is complete; time runs with lockstep (SYNC-001).");
                 if (target != room.Phase + 1) throw new LobbyRuleException(6, "Unexpected setup step.");
                 switch (room.Phase)
                 {
@@ -205,6 +205,14 @@ namespace Multiplayer.Foundation.Lobby
                     case SetupPhase.Characters:
                         // ADR 0015: everyone must be done; the host cannot force-start.
                         RequireEveryoneReady(room, "Not every player is done choosing characters.");
+                        break;
+                    case SetupPhase.Generating:
+                        // SETUP-005: every guest must have loaded the host's starting game with the same fingerprint.
+                        if (room.HostGame == null) throw new LobbyRuleException(6, "The game has not been sent yet.");
+                        if (room.Members.Any(id => WorldStatusOf(room, members[id]) == WorldStatus.Mismatch))
+                            throw new LobbyRuleException(8, "The game differs for at least one player.");
+                        if (room.Members.Any(id => WorldStatusOf(room, members[id]) != WorldStatus.Match))
+                            throw new LobbyRuleException(6, "Not every player has loaded the game yet.");
                         break;
                 }
                 EnterPhase(room, target);
@@ -259,6 +267,33 @@ namespace Multiplayer.Foundation.Lobby
                 if (room.Phase != SetupPhase.WorldTransfer) throw new LobbyRuleException(6, "The world is reported during world transfer.");
                 if (room.Host == actor) throw new LobbyRuleException(6, "The host announces its world with WorldReady.");
                 member.World = fingerprint; room.Revision++;
+                return Change(room, actor);
+            }
+        }
+
+        /// <summary>SETUP-005: the host announces the fingerprint of the starting game it is about to send.</summary>
+        public LobbyChange SetHostGame(Guid actor, byte[] fingerprint)
+        {
+            lock (gate)
+            {
+                Room room = GetHostedRoom(actor);
+                if (room.Phase != SetupPhase.Generating) throw new LobbyRuleException(6, "The game is sent while it is generated.");
+                room.HostGame = fingerprint;
+                foreach (Guid id in room.Members) members[id].Game = null;
+                room.Revision++;
+                return Change(room, actor);
+            }
+        }
+
+        /// <summary>SETUP-005: a guest reports the fingerprint of the game it loaded.</summary>
+        public LobbyChange ReportGame(Guid actor, byte[] fingerprint)
+        {
+            lock (gate)
+            {
+                Member member = GetMember(actor); Room room = GetCurrentRoom(member);
+                if (room.Phase != SetupPhase.Generating) throw new LobbyRuleException(6, "The game is reported while it is generated.");
+                if (room.Host == actor) throw new LobbyRuleException(6, "The host announces its game with GameReady.");
+                member.Game = fingerprint; room.Revision++;
                 return Change(room, actor);
             }
         }
@@ -372,17 +407,24 @@ namespace Multiplayer.Foundation.Lobby
         }
         private void ResetSetup(Room room)
         {
-            room.Phase = SetupPhase.Lobby; room.Site = null; room.HostWorld = null; room.Roster = null;
+            room.Phase = SetupPhase.Lobby; room.Site = null; room.HostWorld = null; room.Roster = null; room.HostGame = null;
             foreach (Guid id in room.Members)
-            { members[id].Ready = false; members[id].Flag = null; members[id].World = null; members[id].PawnHash = null; }
+            {
+                members[id].Ready = false; members[id].Flag = null; members[id].World = null; members[id].PawnHash = null;
+                members[id].Game = null;
+            }
         }
+        // One status for the copy that matters now: the world in WorldTransfer, the starting game from Generating on.
         private WorldStatus WorldStatusOf(Room room, Member member)
         {
-            if (room.Phase != SetupPhase.WorldTransfer) return WorldStatus.None;
-            if (room.HostWorld == null) return WorldStatus.Waiting;
+            byte[]? hostCopy, ownCopy;
+            if (room.Phase == SetupPhase.WorldTransfer) { hostCopy = room.HostWorld; ownCopy = member.World; }
+            else if (room.Phase >= SetupPhase.Generating) { hostCopy = room.HostGame; ownCopy = member.Game; }
+            else return WorldStatus.None;
+            if (hostCopy == null) return WorldStatus.Waiting;
             if (member.Id == room.Host) return WorldStatus.Match;
-            if (member.World == null) return WorldStatus.Waiting;
-            return member.World.SequenceEqual(room.HostWorld) ? WorldStatus.Match : WorldStatus.Mismatch;
+            if (ownCopy == null) return WorldStatus.Waiting;
+            return ownCopy.SequenceEqual(hostCopy) ? WorldStatus.Match : WorldStatus.Mismatch;
         }
         private static void RequireFree(Member member)
         { if (member.Room != null) throw new LobbyRuleException(6, "Already in a lobby."); }
@@ -407,6 +449,7 @@ namespace Multiplayer.Foundation.Lobby
             public ModManifestSummary? Mods { get; set; }
             public byte[]? World { get; set; }
             public byte[]? PawnHash { get; set; }
+            public byte[]? Game { get; set; }
             public Guid? Room { get; set; }
             public bool Ready { get; set; }
             public SiteTile? Flag { get; set; }
@@ -422,6 +465,7 @@ namespace Multiplayer.Foundation.Lobby
             public SetupPhase Phase { get; set; } = SetupPhase.Lobby;
             public SiteTile? Site { get; set; }
             public byte[]? HostWorld { get; set; }
+            public byte[]? HostGame { get; set; }
             public PawnRoster? Roster { get; set; }
             public List<Guid> Members { get; } = new List<Guid>();
         }

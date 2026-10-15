@@ -114,13 +114,32 @@ setup.Ready(g2, true);
 Expect(6, () => setup.AdvanceSetup(host, SetupPhase.Generating));                     // g1 took it back
 setup.Ready(g1, true);
 Assert(setup.AdvanceSetup(host, SetupPhase.Generating).State!.Phase == SetupPhase.Generating, "all done: characters continue");
-Expect(6, () => setup.AdvanceSetup(host, (SetupPhase)9));                             // later phases not yet
+// SETUP-005: landing waits until every guest loaded the host's game with the same fingerprint.
+byte[] game = Enumerable.Repeat((byte)7, 32).ToArray(), otherGame = Enumerable.Repeat((byte)6, 32).ToArray();
+Expect(6, () => setup.AdvanceSetup(host, SetupPhase.Playing));                        // game not sent yet
+Expect(3, () => setup.SetHostGame(g1, game));                                         // only the host sends the game
+Expect(6, () => setup.ReportGame(host, game));                                        // the host does not report
+Expect(6, () => setup.ReportWorld(g1, game));                                         // world reports are over
+Assert(setup.SetHostGame(host, game).State!.Players.Count(p => p.WorldStatus == WorldStatus.Waiting) == 2, "guests wait for the game");
+setup.ReportGame(g1, game);
+Assert(setup.ReportGame(g2, otherGame).State!.Players.Single(p => p.Id == g2).WorldStatus == WorldStatus.Mismatch, "a differing game shows");
+Expect(8, () => setup.AdvanceSetup(host, SetupPhase.Playing));
+Assert(setup.SetHostGame(host, game).State!.Players.Single(p => p.Id == g1).WorldStatus == WorldStatus.Waiting,
+    "a new host game resets earlier reports");
+setup.ReportGame(g1, game); setup.ReportGame(g2, game);
+LobbyView landed = setup.AdvanceSetup(host, SetupPhase.Playing).State!;
+Assert(landed.Phase == SetupPhase.Playing && landed.Players.All(p => p.WorldStatus == WorldStatus.Match), "all loaded: everyone landed");
+Expect(6, () => setup.ReportGame(g1, game));                                          // only while the game starts
+Expect(6, () => setup.AdvanceSetup(host, (SetupPhase)10));                            // nothing after landing yet
+Expect(6, () => setup.Ready(g1, true));
+Expect(6, () => setup.Join(late, room));                                              // still locked
 Expect(3, () => setup.AbortSetup(g1));
 LobbyView aborted = setup.AbortSetup(host).State!;
-Assert(aborted.Phase == SetupPhase.Lobby && aborted.Site == null && aborted.Players.All(p => !p.Ready), "host abort resets to lobby");
+Assert(aborted.Phase == SetupPhase.Lobby && aborted.Site == null && aborted.Players.All(p => !p.Ready && p.WorldStatus == WorldStatus.None),
+    "host abort resets to lobby");
 Expect(6, () => setup.AbortSetup(host));
 setup.Join(late, room);                                                               // unlocked again
-Console.WriteLine("PASS: setup phases, lock, host-only steps, flags and host site choice, everyone done before characters continue");
+Console.WriteLine("PASS: setup phases, lock, host-only steps, flags and host site choice, everyone done before characters continue, landing after every guest loaded the game (SETUP-005)");
 
 // A guest who leaves stops counting; a host who leaves ends the setup before the role moves.
 setup.Leave(late);

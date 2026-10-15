@@ -4,7 +4,8 @@ using System.Linq;
 
 namespace Multiplayer.Foundation.Protocol
 {
-    // Phases of the shared new-game setup (plan §6.2, ADR 0017). Later phases arrive with SETUP-005.
+    // Phases of the shared new-game setup (plan §6.2, ADR 0017). SETUP-005 (ADR 0023): in Generating the host starts
+    // the game and sends it; Playing means every player loaded it. Time stays paused until lockstep (SYNC-001).
     public enum SetupPhase : byte
     {
         Lobby = 0,
@@ -15,7 +16,8 @@ namespace Multiplayer.Foundation.Protocol
         SiteSelection = 5,
         Ideology = 6,
         Characters = 7,
-        Generating = 8
+        Generating = 8,
+        Playing = 9
     }
 
     // A world tile as RimWorld 1.6 addresses it: RimWorld.Planet.PlanetTile is (tileId, layerId), because
@@ -90,10 +92,13 @@ namespace Multiplayer.Foundation.Protocol
         }
     }
 
-    /// <summary>SETUP-002: has this member loaded the host's world, and does its fingerprint match?</summary>
+    /// <summary>
+    /// SETUP-002: has this member loaded the host's world, and does its fingerprint match? From Generating on
+    /// (SETUP-005) the same status reports the host's starting game instead.
+    /// </summary>
     public enum WorldStatus : byte
     {
-        /// <summary>Outside the world-transfer phase.</summary>
+        /// <summary>Outside world transfer and the game start.</summary>
         None = 0,
         Waiting = 1,
         Match = 2,

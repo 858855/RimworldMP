@@ -294,11 +294,20 @@ await using (var setupHost = await ListenHost.StartAsync("127.0.0.1", 0, "Host",
     await StateAsync(setupGuest, MessageType.PlayerReadyChanged, ++request, LobbyPayloads.Bool(true));
     LobbyView generating = await StateAsync(hostClient, MessageType.SetupAdvance, ++request, SetupPayloads.Advance(SetupPhase.Generating));
     Assert(generating.Phase == SetupPhase.Generating, "everyone done: setup continues");
+    byte[] rulesGame = Enumerable.Repeat((byte)3, 32).ToArray();
+    Assert(await ErrorCodeAsync(setupGuest, MessageType.GameReady, ++request, SetupPayloads.Fingerprint(rulesGame)) == 3, "only the host sends the game");
+    await StateAsync(hostClient, MessageType.GameReady, ++request, SetupPayloads.Fingerprint(rulesGame));
+    Assert(await ErrorCodeAsync(hostClient, MessageType.SetupAdvance, ++request, SetupPayloads.Advance(SetupPhase.Playing)) == 6,
+        "landing waits for the guest's game");
+    LobbyView guestLoaded = await StateAsync(setupGuest, MessageType.GameLoaded, ++request, SetupPayloads.Fingerprint(rulesGame));
+    Assert(guestLoaded.Players.All(p => p.WorldStatus == WorldStatus.Match), "guest loaded the same game");
+    LobbyView landed = await StateAsync(hostClient, MessageType.SetupAdvance, ++request, SetupPayloads.Advance(SetupPhase.Playing));
+    Assert(landed.Phase == SetupPhase.Playing, "everyone loaded the game: landed (SETUP-005)");
     Assert(await ErrorCodeAsync(setupGuest, MessageType.SetupAbort, ++request, Array.Empty<byte>()) == 3, "guest cannot abort");
     LobbyView reset = await StateAsync(hostClient, MessageType.SetupAbort, ++request, Array.Empty<byte>());
     Assert(reset.Phase == SetupPhase.Lobby && reset.Site == null, "host abort returns to the lobby");
 }
-Console.WriteLine("PASS: setup rules hold over the network: guest refused for host steps, start and characters wait for everyone");
+Console.WriteLine("PASS: setup rules hold over the network: guest refused for host steps, start, characters and landing wait for everyone");
 
 // MOD-001 end to end over a Steam-like link: status in the snapshot, Ready refused, host's list requested and transferred.
 await using (var modHost = await ListenHost.StartAsync("127.0.0.1", 0, "ModHost", "Mod Room", 4, PlayerKey.Steam(76561198000000050UL)))
