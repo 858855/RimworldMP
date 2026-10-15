@@ -103,7 +103,7 @@ tasks:
   - GitHub-Branch mit Prompt und Review-Unterlage hochgeladen
   implementation: implemented
   verification: tests_passed
-  integration: ready_for_human_review
+  integration: merged
   branch: docs/continuation-prompt
   base_branch: main
   evidence:

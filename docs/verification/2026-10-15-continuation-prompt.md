@@ -7,3 +7,5 @@
 - **Nicht ausgeführt:** C#-Build, TCP-Tests und grafischer RimWorld-Test, weil nur Projektdokumentation geändert wird. Die früheren Ergebnisse stehen in den verlinkten Verifizierungsberichten; sie werden nicht als neue Tests ausgegeben.
 
 - **GitHub-Verifikation:** `git push -u origin docs/continuation-prompt` → Exit 0; `git fetch origin` → Exit 0; `git rev-parse HEAD origin/docs/continuation-prompt` → zweimal `637572beb7cca4c077d91711af165c2a12bbcb3d`; `main`/`origin/main` unverändert `bfc9fcd722687e1108794c20056633dab1be4ce5`. Kein Merge.
+
+- **Prüfung vor freigegebenem Merge:** `git fetch origin` → Exit 0; `git rev-list --left-right --count origin/main...docs/continuation-prompt` → `0 2`; `git diff --check origin/main...docs/continuation-prompt` → Exit 0; `python3 scripts/validate_project_state.py` → Exit 0 (22 Pflichtdateien, 11 Aufgaben); Arbeitsbaum sauber. Nur Dokumentation geändert.

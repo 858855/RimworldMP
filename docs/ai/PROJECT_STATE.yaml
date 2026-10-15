@@ -16,12 +16,12 @@ target_rimworld_version:
   other_versions_verified: []
 current_phase: client_integration_verification
 git:
-  branch: docs/continuation-prompt
-  base_branch: main
-  base_commit: bfc9fcd
+  branch: main
+  base_branch: null
+  base_commit: null
   current_commit_ref: HEAD
   pushed: true
-  merged: false
+  merged: true
   dependent_branches:
   - docs/project-governance
   - feat/network-protocol
