@@ -236,3 +236,35 @@ tasks:
   branch: null
   evidence: []
   blocker: Lizenzwunsch des Rechteinhabers noch nicht festgelegt; technische Arbeit kann fortgesetzt werden.
+- id: TEST-002
+  title: Mehrere unabhängige Spielerprozesse verbinden
+  goal: Zwei eigene Client-Prozesse verbinden sich mit dem Serverprozess und sehen denselben Lobbyzustand.
+  description: Prozessgrenze für die bestehende TCP- und Lobby-Implementierung nachweisen.
+  priority: critical
+  components:
+  - network_core
+  - lobby_core
+  - dedicated_server
+  depends_on:
+  - NET-001
+  - SERVER-001
+  - LOBBY-001
+  scope:
+  - tests/ProcessIntegration.Tests/
+  - docs/verification/
+  non_goals:
+  - RimWorld-UI und Gameplay-Synchronisation
+  acceptance:
+  - Eigenständiger Serverprozess und zwei Client-Prozesse starten
+  - Beide Clients erhalten denselben Lobbyzustand nach Join und Ready
+  - Disconnect entfernt den Spieler aus dem Zustand des verbleibenden Clients
+  test_strategy: Release-Build und automatisierter Mehrprozess-TCP-Test auf Loopback.
+  risks:
+  - Port-Belegung zwischen Reservierung und Serverstart
+  implementation: implemented
+  verification: tests_passed
+  integration: ready_for_human_review
+  branch: test/multi-player-process
+  base_branch: main
+  evidence:
+  - docs/verification/2026-10-15-multi-process-lobby.md

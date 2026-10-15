@@ -14,10 +14,11 @@
 | `docs/ai/PROJECT_STATE.yaml`, `TASKS.yaml` | Ist-Zustand und Aufgaben | Dokumentationsvalidator | vorhanden |
 | `scripts/validate_structure.py`, `verify_knowledge_archive.py` | Archiv-XML und ZIP prüfen | drei XML-Dateien, 49 Archiveinträge | ausgeführt |
 | `examples/` | Illustrative RimWorld-/MP-Muster | kein produktiver API-Nachweis | unkompiliert |
-| `src/Multiplayer.Foundation.Lobby/LobbyRegistry.cs` | Autoritativer In-Memory-Zustand, Rechte und Revisionen | `tests/Lobby.Tests/Program.cs` | Domänenkern getestet, TCP ausstehend |
+| `src/Multiplayer.Foundation.Lobby/LobbyRegistry.cs` | Autoritativer In-Memory-Zustand, Rechte und Revisionen | `tests/Lobby.Tests/Program.cs` | Domänenkern und TCP-Anbindung getestet |
 | `src/Multiplayer.Foundation.Server/FoundationServer.cs` | TCP-Listener, Sitzungen, Nachrichtenrouting, Broadcast und Heartbeat | `tests/Integration.Tests/Program.cs` | 13 Gruppen bestanden |
 | `src/Multiplayer.Foundation.Server/ServerConfig.cs`, `Program.cs` | Konfiguration und Serverstart | Integrationstests/Build | implementiert |
 | `tests/Integration.Tests/Program.cs` | Reale Zwei-Client-TCP-Lobby und Fehlerfälle | `dotnet run --project ...` | bestanden |
 | `src/Multiplayer.Foundation.Network/LobbyClient.cs` | Ein Reader, UI-Nachrichtenqueue, Ping/Pong und Disconnect | `tests/Client.Tests/Program.cs` | TCP-Test bestanden |
 | `src/Multiplayer.Foundation.RimWorld/FoundationMod.cs`, `FoundationSettings.cs` | Mod-Einstellungen, Verbindung und Lobby-UI | Release-Build; Game-Test offen | gebaut, Laufzeit offen |
 | `mod/About/About.xml`, `scripts/build-mod.sh` | Mod-Metadaten und Paketbau | XML/Paketprüfung | geprüft |
+| `tests/ProcessIntegration.Tests/Program.cs` | Server und zwei Client-Prozesse über echte TCP-Lobby steuern | `dotnet run --project ...` | sieben Prozess-Testschritte bestanden |
