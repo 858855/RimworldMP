@@ -75,6 +75,14 @@ namespace Multiplayer.Foundation.RimWorld
         private string? hostScenarioName;
         // SETUP-003: a guest's own starting-site page, where "Next" sets the guest's flag.
         private bool guestSiteMapActive;
+        // SETUP-004: the host owns the pawns (CharacterHost); guests see the latest roster.
+        private readonly CharacterHost characterHost = new CharacterHost();
+        private byte[] lastRosterPayload = System.Array.Empty<byte>();
+        private PawnRoster? pawnRoster;
+        private int? chosenPawnId;
+        private string renameText = "";
+        private static readonly AccessTools.FieldRef<Page_ConfigureStartingPawns, int> CurPawnIndex =
+            AccessTools.FieldRefAccess<Page_ConfigureStartingPawns, int>("curPawnIndex");
         internal bool HostSetupActive => hostSetupActive;
         internal bool GuestSiteMapActive => guestSiteMapActive;
         internal static FoundationMod? Instance { get; private set; }
@@ -532,6 +540,15 @@ namespace Multiplayer.Foundation.RimWorld
                 if (Widgets.ButtonText(new Rect(x, y, 200f, 30f), "Weltkarte öffnen")) OpenGuestSiteMap();
                 y += 36f;
             }
+            if (lobby.Phase == SetupPhase.Characters)
+            {
+                Widgets.Label(new Rect(x, y, width, 25f), DoneLine());
+                y += 29f;
+                if (lobby.HostId != client.SessionId && !Find.WindowStack.IsOpen<CharacterSelectionWindow>() &&
+                    Widgets.ButtonText(new Rect(x, y, 200f, 30f), "Figurenwahl öffnen"))
+                    Find.WindowStack.Add(new CharacterSelectionWindow(this));
+                y += 36f;
+            }
             if (lobby.HostId == client.SessionId)
             {
                 if (Widgets.ButtonText(new Rect(x, y, 200f, 30f), "Einrichtung abbrechen"))
@@ -655,8 +672,160 @@ namespace Multiplayer.Foundation.RimWorld
                 if (isHost && Widgets.ButtonText(new Rect(inRect.x, inRect.yMax - 30f, 140f, 28f), "Abbrechen")) ConfirmAbort();
                 return;
             }
+            if (lobby?.Phase == SetupPhase.Characters && isHost)
+            {
+                DrawHostCharacterPanel(inRect, buttonY);
+                return;
+            }
             if (Widgets.ButtonText(new Rect(inRect.x, buttonY, 140f, 30f), "Chat / Lobby")) OpenWindow();
             if (isHost && Widgets.ButtonText(new Rect(inRect.x + 150f, buttonY, 140f, 30f), "Abbrechen")) ConfirmAbort();
+        }
+
+        // SETUP-004, host: claim the pawn shown on the vanilla page, mark yourself done, see who owns what.
+        private void DrawHostCharacterPanel(Rect inRect, float buttonY)
+        {
+            if (lobby == null || client == null) return;
+            PlayerView? me = lobby.Players.FirstOrDefault(p => p.Id == client.SessionId);
+            Pawn? shown = null;
+            if (SetupMirror.CurrentPage() is Page_ConfigureStartingPawns page && Find.GameInitData != null)
+            {
+                int index = CurPawnIndex(page);
+                if (index >= 0 && index < Find.GameInitData.startingAndOptionalPawns.Count) shown = Find.GameInitData.startingAndOptionalPawns[index];
+            }
+            PlayerKey? shownOwner = shown == null ? null : characterHost.OwnerOf(shown);
+            if (me != null && shown != null)
+            {
+                bool mine = shownOwner == me.Key;
+                if (Widgets.ButtonText(new Rect(inRect.x, buttonY, 105f, 30f), mine ? "Freigeben" : "Übernehmen", true, true, mine || shownOwner == null))
+                {
+                    string? error = characterHost.Apply(new PawnRequest(mine ? PawnRequestKind.Release : PawnRequestKind.Claim,
+                        shown.thingIDNumber, 0, "", me.Key), Find.GameInitData!);
+                    if (error != null) Messages.Message(error, MessageTypeDefOf.RejectInput, false);
+                    nextMirrorAt = 0f; // publish the roster right away
+                }
+            }
+            bool myDone = me?.Ready ?? false;
+            if (Widgets.ButtonText(new Rect(inRect.x + 110f, buttonY, 95f, 30f), myDone ? "Nicht fertig" : "Fertig"))
+                Send(MessageType.PlayerReadyChanged, LobbyPayloads.Bool(!myDone));
+            if (Widgets.ButtonText(new Rect(inRect.x + 210f, buttonY, 110f, 30f), "Chat / Lobby")) OpenWindow();
+            float listY = buttonY + 36f;
+            Widgets.Label(new Rect(inRect.x, listY, inRect.width, 24f), DoneLine());
+            listY += 26f;
+            if (Find.GameInitData != null)
+                foreach (PlayerView player in lobby.Players.Take(4))
+                {
+                    Pawn? owned = Find.GameInitData.startingAndOptionalPawns.FirstOrDefault(p => characterHost.OwnerOf(p) == player.Key);
+                    Widgets.Label(new Rect(inRect.x, listY, inRect.width, 24f), player.Name + ": " + (owned?.Name?.ToStringShort ?? "keine Figur") +
+                        (player.Ready ? " ✓" : ""));
+                    listY += 24f;
+                }
+            if (Widgets.ButtonText(new Rect(inRect.x, inRect.yMax - 30f, 140f, 28f), "Abbrechen")) ConfirmAbort();
+        }
+
+        private string DoneLine()
+        {
+            if (lobby == null) return "";
+            string[] waiting = lobby.Players.Where(p => !p.Ready).Select(p => p.Name).ToArray();
+            return "Fertig: " + lobby.Players.Count(p => p.Ready) + "/" + lobby.Players.Count +
+                (waiting.Length > 0 ? " · Warte auf: " + string.Join(", ", waiting) : " · alle fertig");
+        }
+
+        /// <summary>Text for the blocked final start on the host's character page.</summary>
+        internal string StartGuardText() =>
+            lobby != null && lobby.Players.All(p => p.Ready)
+                ? "Alle sind fertig. Der gemeinsame Spielstart folgt mit SETUP-005."
+                : "Noch nicht alle fertig – " + DoneLine() + ". Der gemeinsame Spielstart folgt mit SETUP-005.";
+
+        // SETUP-004, guest window.
+        internal void DrawCharacterSelection(Rect inRect)
+        {
+            if (lobby == null || client == null || lobby.Phase != SetupPhase.Characters)
+            { Widgets.Label(inRect, "Keine Figurenwahl aktiv."); return; }
+            PlayerView? me = lobby.Players.FirstOrDefault(p => p.Id == client.SessionId);
+            PlayerKey? myKey = me?.Key;
+            Widgets.Label(new Rect(inRect.x, inRect.y, inRect.width, 28f), "Figurenwahl – " + DoneLine());
+            if (pawnRoster == null) { Widgets.Label(new Rect(inRect.x, inRect.y + 34f, inRect.width, 28f), "Warte auf die Figuren des Hosts …"); return; }
+            PawnCard? myPawn = pawnRoster.Cards.FirstOrDefault(c => c.Selected && c.Owner == myKey);
+            if (chosenPawnId == null || pawnRoster.Cards.All(c => c.PawnId != chosenPawnId))
+                chosenPawnId = (myPawn ?? pawnRoster.Cards.FirstOrDefault())?.PawnId;
+            float top = inRect.y + 34f, bottom = inRect.yMax - 44f;
+            // Left: starting group and left-behind pawns.
+            Rect list = new Rect(inRect.x, top, 290f, bottom - top);
+            Widgets.DrawMenuSection(list);
+            float y = list.y + 8f;
+            foreach (bool selected in new[] { true, false })
+            {
+                Widgets.Label(new Rect(list.x + 8f, y, list.width - 16f, 24f), selected ? "Startgruppe" : "Zurückgelassen");
+                y += 26f;
+                foreach (PawnCard card in pawnRoster.Cards.Where(c => c.Selected == selected))
+                {
+                    string ownerName = card.Owner == null ? "frei" : lobby.Players.FirstOrDefault(p => p.Key == card.Owner)?.Name ?? "?";
+                    if (card.PawnId == chosenPawnId) GUI.color = new Color(1f, 0.85f, 0.45f);
+                    else if (card.Owner == myKey && myKey != null) GUI.color = new Color(0.55f, 0.9f, 0.55f);
+                    if (Widgets.ButtonText(new Rect(list.x + 8f, y, list.width - 16f, 28f), card.ShortName + " – " + ownerName)) chosenPawnId = card.PawnId;
+                    GUI.color = Color.white;
+                    y += 31f;
+                }
+                y += 6f;
+            }
+            // Right: the chosen pawn's card and what this player may do with it.
+            PawnCard? chosen = pawnRoster.Cards.FirstOrDefault(c => c.PawnId == chosenPawnId);
+            Rect detail = new Rect(list.xMax + 10f, top, inRect.width - list.width - 10f, bottom - top);
+            Widgets.DrawMenuSection(detail);
+            if (chosen != null) DrawPawnCard(chosen, myKey, myPawn, detail.ContractedBy(10f));
+            // Bottom: done and chat.
+            bool myDone = me?.Ready ?? false;
+            if (Widgets.ButtonText(new Rect(inRect.x, inRect.yMax - 36f, 160f, 32f), myDone ? "Nicht fertig" : "Fertig", true, true, myDone || myPawn != null))
+                Send(MessageType.PlayerReadyChanged, LobbyPayloads.Bool(!myDone));
+            if (myPawn == null) Widgets.Label(new Rect(inRect.x + 170f, inRect.yMax - 32f, 320f, 28f), "Erst eine Figur der Startgruppe übernehmen.");
+            if (Widgets.ButtonText(new Rect(inRect.xMax - 150f, inRect.yMax - 36f, 150f, 32f), "Chat / Lobby")) OpenWindow();
+        }
+
+        private void DrawPawnCard(PawnCard card, PlayerKey? myKey, PawnCard? myPawn, Rect rect)
+        {
+            float y = rect.y;
+            void Line(string text, float gap = 2f)
+            {
+                float h = Text.CalcHeight(text, rect.width);
+                Widgets.Label(new Rect(rect.x, y, rect.width, h), text);
+                y += h + gap;
+            }
+            Line(card.Name, 4f);
+            Line(card.Summary);
+            if (card.Childhood.Length > 0) Line("Kindheit: " + card.Childhood);
+            if (card.Adulthood.Length > 0) Line("Erwachsen: " + card.Adulthood);
+            if (card.Traits.Count > 0) Line("Merkmale: " + string.Join(", ", card.Traits));
+            if (card.Incapable.Count > 0) Line("Unfähig zu: " + string.Join(", ", card.Incapable));
+            if (card.Health.Count > 0) Line("Gesundheit: " + string.Join(", ", card.Health));
+            y += 4f;
+            float column = (rect.width - 10f) / 2f;
+            for (int i = 0; i < card.Skills.Count; i++)
+            {
+                var (skill, level, passion) = card.Skills[i];
+                string text = skill + ": " + (level == 255 ? "–" : level.ToString()) + (passion == 2 ? " ++" : passion == 1 ? " +" : "");
+                Widgets.Label(new Rect(rect.x + (i % 2) * (column + 10f), y + (i / 2) * 22f, column, 22f), text);
+            }
+            y += ((card.Skills.Count + 1) / 2) * 22f + 10f;
+            bool mine = card.Owner == myKey && myKey != null;
+            float x = rect.x;
+            void Button(string label, PawnRequest request)
+            {
+                if (Widgets.ButtonText(new Rect(x, y, 150f, 30f), label))
+                    SendBackground(new WireMessage(MessageType.PawnRequest, requestId++, request.ToPayload()));
+                x += 158f;
+            }
+            if (card.Selected && card.Owner == null && myPawn == null) Button("Übernehmen", new PawnRequest(PawnRequestKind.Claim, card.PawnId));
+            if (mine)
+            {
+                Button("Neu würfeln", new PawnRequest(PawnRequestKind.Reroll, card.PawnId));
+                Button("Freigeben", new PawnRequest(PawnRequestKind.Release, card.PawnId));
+                y += 38f; x = rect.x;
+                renameText = Widgets.TextField(new Rect(x, y, 200f, 30f), renameText);
+                x += 208f;
+                if (renameText.Trim().Length > 0) Button("Umbenennen", new PawnRequest(PawnRequestKind.Rename, card.PawnId, 0, renameText.Trim()));
+            }
+            if (!card.Selected && card.Owner == null && myPawn != null)
+                Button("Mit meiner Figur tauschen", new PawnRequest(PawnRequestKind.Swap, myPawn.PawnId, card.PawnId));
         }
 
         private void ConfirmAbort() =>
@@ -710,6 +879,12 @@ namespace Multiplayer.Foundation.RimWorld
             if (lobby == null || client == null) return;
             if (before == SetupPhase.Lobby && now != SetupPhase.Lobby && lobby.HostId == client.SessionId) BeginHostSetup();
             bool guest = lobby.HostId != client.SessionId;
+            if (now != SetupPhase.Characters && before == SetupPhase.Characters) ResetCharacters();
+            if (guest && now == SetupPhase.Characters && before != SetupPhase.Characters)
+            {
+                Find.WindowStack.TryRemove(typeof(FoundationWindow), false);
+                Find.WindowStack.Add(new CharacterSelectionWindow(this));
+            }
             if (guest && now == SetupPhase.SiteSelection && before != SetupPhase.SiteSelection && guestWorldLoaded) OpenGuestSiteMap();
             if (guest && before == SetupPhase.SiteSelection && now != SetupPhase.SiteSelection && guestSiteMapActive)
             {
@@ -770,6 +945,8 @@ namespace Multiplayer.Foundation.RimWorld
                 lastMirror = mirror;
             SetupPhase? wanted = SetupMirror.PhaseOf(page);
             if (lobby.Phase == SetupPhase.WorldTransfer && !HostWorldReady()) return;
+            if (lobby.Phase == SetupPhase.Characters && page is Page_ConfigureStartingPawns && Find.GameInitData != null)
+                PublishRoster(Find.GameInitData);
             if (wanted == null || advancePending || lobby.Phase >= wanted.Value) return;
             // The server only accepts the next phase, so walk forward one step per answer.
             if (lobby.Phase == SetupPhase.SiteSelection)
@@ -782,6 +959,16 @@ namespace Multiplayer.Foundation.RimWorld
             else
                 advancePending = SendBackground(new WireMessage(MessageType.SetupAdvance, requestId++,
                     SetupPayloads.Advance((SetupPhase)((byte)lobby.Phase + 1))));
+        }
+
+        // SETUP-004, host: one pawn per player at least, then the roster whenever it changed.
+        private void PublishRoster(GameInitData init)
+        {
+            if (lobby == null) return;
+            characterHost.EnsurePawnCount(init, lobby.Players.Count);
+            byte[] payload = characterHost.Build(init, lobby.Players.Select(p => p.Key).ToList()).ToPayload();
+            if (payload.SequenceEqual(lastRosterPayload)) return;
+            if (SendBackground(new WireMessage(MessageType.PawnRoster, requestId++, payload))) lastRosterPayload = payload;
         }
 
         // SETUP-002, host: prepares and sends the generated world; true once every guest loaded it with the same fingerprint.
@@ -840,8 +1027,15 @@ namespace Multiplayer.Foundation.RimWorld
             });
         }
 
+        private void ResetCharacters()
+        {
+            characterHost.Clear(); lastRosterPayload = System.Array.Empty<byte>(); pawnRoster = null; chosenPawnId = null; renameText = "";
+            Find.WindowStack.TryRemove(typeof(CharacterSelectionWindow), false);
+        }
+
         private void ResetWorld()
         {
+            ResetCharacters();
             CloseGuestSiteMap(false); // before the world goes away
             SiteFlags.Shown = Array.Empty<(string, PlanetTile, Color)>();
             sentWorld = null; preparedWorld = null; worldUpload = null; worldDownload = null; pendingWorldReport = null; worldText = "";
@@ -1116,6 +1310,18 @@ namespace Multiplayer.Foundation.RimWorld
                                 lobby = received;
                                 advancePending = false;
                                 OnPhaseChanged(before, received.Phase);
+                            }
+                            break;
+                        case MessageType.PawnRoster:
+                            pawnRoster = PawnRoster.Read(message.Payload);
+                            break;
+                        case MessageType.PawnRequest:
+                            PawnRequest pawnRequest = PawnRequest.Read(message.Payload);
+                            if (hostSetupActive && lobby?.Phase == SetupPhase.Characters && Find.GameInitData != null)
+                            {
+                                string? refused = characterHost.Apply(pawnRequest, Find.GameInitData);
+                                if (refused != null) Log.Message("Multiplayer Foundation: pawn request refused: " + refused);
+                                nextMirrorAt = 0f; // publish the result right away
                             }
                             break;
                         case MessageType.SetupSettings:

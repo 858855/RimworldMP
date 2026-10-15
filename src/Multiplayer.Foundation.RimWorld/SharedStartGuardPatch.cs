@@ -15,8 +15,7 @@ namespace Multiplayer.Foundation.RimWorld
         private static bool Prefix()
         {
             if (FoundationMod.Instance?.HostSetupActive != true) return true;
-            Messages.Message("Der gemeinsame Spielstart folgt mit einem späteren Ausbauschritt (SETUP-005). " +
-                "Die Einrichtung kann angesehen und über das Multiplayer-Feld abgebrochen werden.", MessageTypeDefOf.RejectInput, false);
+            Messages.Message(FoundationMod.Instance.StartGuardText(), MessageTypeDefOf.RejectInput, false);
             return false;
         }
     }
