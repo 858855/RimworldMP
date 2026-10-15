@@ -1,9 +1,10 @@
 # Sitzungsübergabe
 
-- **Bereich:** `MOD-001`, Spielseite von `START-001`, `SETUP-001`, `VER-001` (Metadatenteil), auf Basis von `feat/setup-rules` (ADR 0013–0017).
+- **Bereich:** `MOD-001`, Spielseite von `START-001`, `SETUP-001`, `SETUP-002`, `VER-001`, auf Basis von `feat/setup-rules` (ADR 0013–0017).
 - **Branch:** `feat/mod-check-setup-ui`, lokal unter `E:/RimworldMP`, abgezweigt von `origin/feat/setup-rules` @ `5798f95`. Ersetzt `origin/feat/lobby-hardening` (gleiche Funktionen auf eigenem Protokoll; auf Wunsch des Benutzers hierher übertragen).
 - **Stand:** Mod-Prüfung (Prüfsumme nur über Mods), Bereit-Sperre, Unterschiedsbericht über den Chunk-Kanal, **Spiel starten** mit Begründung; nach dem Start öffnet der Host die vanilla-Seiten, die Mod spiegelt Seite und Auswahl an die Gäste (Code 30) und schaltet die Serverphasen nach; der letzte Start ist während einer gemeinsamen Einrichtung gesperrt. ADR 0018 und 0019.
 - **Geprüft:** Sechs Testprojekte im .NET-8-Harness bestanden; Mod ohne Warnungen gebaut, installiert, Rauchtest (Manifest im Log, Patches geladen). Details: `docs/verification/2026-10-15-mod-check-setup-ui.md`.
-- **Offen:** Zwei-Spieler-Spieltest der übertragenen Fassung und des Seitenspiegels; `SETUP-002` (Weltübertragung, Fingerabdruck), `SETUP-003` (Fähnchen auf der Weltkarte), `SETUP-004` (Figurenwahl je Spieler), `SETUP-005` (gemeinsamer Start).
-- **Nächster Schritt:** Spieltest nach `docs/reviews/2026-10-15-mod-check-setup-ui.md`; danach `SETUP-002`.
+- **Offen:** Zwei-Spieler-Spieltest von Seitenspiegel und Weltübertragung; `SETUP-003` (Weltkarte mit Fähnchen beim Gast), `SETUP-004` (Figurenwahl je Spieler), `SETUP-005` (gemeinsamer Start); VER-001 Tickpfad-Threads.
+- **Nächster Schritt:** Spieltest nach `docs/reviews/2026-10-15-mod-check-setup-ui.md` (Punkte 1–6); danach `SETUP-003`. Selbsttest der Weltübertragung: `RimWorldWin64.exe -mpWorldSelfTest -mpQuitAfterSelfTest`, Ergebnis im `Player.log`.
 - **Dateien/Befehle:** `src/Multiplayer.Foundation.Protocol/ModManifest.cs`, `SetupPayloads.cs`, `src/Multiplayer.Foundation.Lobby/LobbyRegistry.cs`, `src/Multiplayer.Foundation.Hosting/FoundationServer.cs`, `src/Multiplayer.Foundation.RimWorld/{FoundationMod,SetupMirror,SetupOverlayWindow,SharedStartGuardPatch,ModManifestBuilder,ModDiffWindow}.cs`; Build: `RIMWORLD_MANAGED=E:/SteamLibrary/steamapps/common/RimWorld/RimWorldWin64_Data/Managed DOTNET_BIN=dotnet bash scripts/build-mod.sh`.
+- **SETUP-002:** Host sendet die Welt nach „Welt erstellen“ (Scribe + gzip, Chunk-Art `World`), Gäste laden sie im Hauptmenü und melden einen Fingerabdruck (nur diskrete Werte); `SiteSelection` erst, wenn alle passen. ADR 0020, Verifikation `docs/verification/2026-10-15-world-transfer.md`.

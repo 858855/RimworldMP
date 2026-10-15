@@ -84,6 +84,7 @@ components:
     verification: build_passed
     integration: merged
 verified_capabilities:
+- 'SETUP-002 Selbsttest im Spiel: Welt ohne Karte erzeugt, gespeichert und im Hauptmenü wie ein Gast geladen, Fingerabdruck gleich (5/30/50 % Abdeckung; 50 % = 1,9 MB gzip, Laden 1,75 s).'
 - 'Archiv: 49 Einträge gegen eingebettetes Manifest geprüft.'
 - Drei XML-Beispiele syntaktisch geprüft; kein RimWorld-Laufzeitnachweis.
 - Lokale RimWorld-Version und Steam-Build aus Installationsdateien gelesen.
@@ -147,7 +148,8 @@ active_tasks:
 - MOD-001
 - START-001
 - SETUP-001
-next_action: 'Spieltest mit zwei Spielern: Start, Seitenspiegel, gesperrter letzter Start, Abbruch; danach SETUP-002 (Weltübertragung) und SETUP-003 (Fähnchen auf der Weltkarte).'
+- SETUP-002
+next_action: 'Zwei-Spieler-Test von Seitenspiegel und Weltübertragung (Prüfpunkte in docs/reviews/2026-10-15-mod-check-setup-ui.md); danach SETUP-003 (Weltkarte mit Fähnchen beim Gast).'
 documentation_refs:
   tasks: docs/ai/TASKS.yaml
   handoff: docs/ai/SESSION_HANDOFF.md
@@ -194,4 +196,6 @@ documentation_refs:
   setup_mirror_decision: docs/decisions/0019-setup-page-mirror.md
   mod_check_setup_ui_verification: docs/verification/2026-10-15-mod-check-setup-ui.md
   mod_check_setup_ui_review: docs/reviews/2026-10-15-mod-check-setup-ui.md
+  world_transfer_decision: docs/decisions/0020-world-transfer.md
+  world_transfer_verification: docs/verification/2026-10-15-world-transfer.md
 last_updated: '2026-10-15'

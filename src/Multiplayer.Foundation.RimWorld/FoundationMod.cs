@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using HarmonyLib;
 using Multiplayer.Foundation.Network;
 using RimWorld;
+using RimWorld.Planet;
 using Multiplayer.Foundation.Hosting;
 using Multiplayer.Foundation.Lobby;
 using Multiplayer.Foundation.Protocol;
@@ -63,6 +64,15 @@ namespace Multiplayer.Foundation.RimWorld
         private float nextMirrorAt;
         private float? pageMissingSince;
         private bool advancePending;
+        // SETUP-002: the host sends its generated world once per world object; guests load it and report.
+        private World? sentWorld;
+        private (byte[] Fingerprint, byte[] Data)? preparedWorld;
+        private TransferSender? worldUpload;
+        private TransferReceiver? worldDownload;
+        private byte[]? pendingWorldReport;
+        private bool guestWorldLoaded;
+        private string worldText = "";
+        private string? hostScenarioName;
         internal bool HostSetupActive => hostSetupActive;
         internal static FoundationMod? Instance { get; private set; }
         private static bool menuPatched;
@@ -546,11 +556,49 @@ namespace Multiplayer.Foundation.RimWorld
                 }
                 y += 6f;
             }
+            if (lobby.Phase == SetupPhase.WorldTransfer) DrawWorldTransfer(x, ref y, width);
             const string info = "Startort-Fähnchen, eigene Figurenwahl und der gemeinsame Spielstart folgen in den nächsten " +
-                "Ausbauschritten (SETUP-002 bis SETUP-005). Bis dahin kann der Host die Einrichtung ansehen und abbrechen.";
+                "Ausbauschritten (SETUP-003 bis SETUP-005). Bis dahin kann der Host die Einrichtung ansehen und abbrechen.";
             float infoHeight = Text.CalcHeight(info, width);
             Widgets.Label(new Rect(x, y, width, infoHeight), info);
             y += infoHeight + 10f;
+        }
+
+        private void DrawWorldTransfer(float x, ref float y, float width)
+        {
+            if (lobby == null || client == null) return;
+            string own = worldText;
+            if (worldDownload != null && worldDownload.Begin.ChunkCount > 0)
+                own = "Welt wird empfangen: " + (100 * worldDownload.ReceivedChunks / worldDownload.Begin.ChunkCount) + " %";
+            if (own.Length > 0) { Widgets.Label(new Rect(x, y, width, 25f), own); y += 27f; }
+            foreach (PlayerView player in lobby.Players)
+            {
+                string label = "  " + player.Name + ": " + WorldStatusText(player.WorldStatus, out Color color);
+                GUI.color = color;
+                Widgets.Label(new Rect(x, y, width, 25f), label);
+                GUI.color = Color.white;
+                y += 25f;
+            }
+            if (lobby.Players.Any(p => p.WorldStatus == WorldStatus.Mismatch))
+            {
+                const string hint = "Die geladene Welt weicht ab. Meist liegt das an Mods, die Biome, Fraktionen oder Weltobjekte ändern.";
+                float hintHeight = Text.CalcHeight(hint, width);
+                Widgets.Label(new Rect(x, y, width, hintHeight), hint);
+                y += hintHeight;
+            }
+            y += 8f;
+        }
+
+        private static string WorldStatusText(WorldStatus worldStatus, out Color color)
+        {
+            color = Color.white;
+            switch (worldStatus)
+            {
+                case WorldStatus.Match: return "Welt geladen, passt";
+                case WorldStatus.Mismatch: color = new Color(1f, 0.45f, 0.45f); return "Welt weicht ab";
+                case WorldStatus.Waiting: color = new Color(1f, 0.85f, 0.45f); return "wartet auf die Welt";
+                default: return "";
+            }
         }
 
         // Panel above the host's setup pages.
@@ -558,8 +606,16 @@ namespace Multiplayer.Foundation.RimWorld
         {
             Widgets.Label(new Rect(inRect.x, inRect.y, inRect.width, 26f),
                 "Multiplayer-Einrichtung · " + (lobby == null ? "getrennt" : PhaseName(lobby.Phase)));
-            Widgets.Label(new Rect(inRect.x, inRect.y + 26f, inRect.width, 26f),
-                (lobby?.Players.Count ?? 0) + " Spieler sehen deine Auswahl live.");
+            string second = (lobby?.Players.Count ?? 0) + " Spieler sehen deine Auswahl live.";
+            if (lobby?.Phase == SetupPhase.WorldTransfer)
+            {
+                int loaded = lobby.Players.Count(p => p.WorldStatus == WorldStatus.Match);
+                string[] differ = lobby.Players.Where(p => p.WorldStatus == WorldStatus.Mismatch).Select(p => p.Name).ToArray();
+                second = differ.Length > 0 ? "Welt weicht ab bei: " + string.Join(", ", differ)
+                    : worldUpload != null ? "Welt wird gesendet: " + (100 * worldUpload.AcknowledgedChunks / Math.Max(1u, worldUpload.ChunkCount)) + " %"
+                    : "Welt geladen: " + loaded + "/" + lobby.Players.Count;
+            }
+            Widgets.Label(new Rect(inRect.x, inRect.y + 26f, inRect.width, 26f), second);
             float buttonY = inRect.y + 58f;
             if (Widgets.ButtonText(new Rect(inRect.x, buttonY, 140f, 30f), "Chat / Lobby")) OpenWindow();
             if (Widgets.ButtonText(new Rect(inRect.x + 150f, buttonY, 140f, 30f), "Abbrechen"))
@@ -574,6 +630,7 @@ namespace Multiplayer.Foundation.RimWorld
             if (now == SetupPhase.Lobby && before != SetupPhase.Lobby)
             {
                 hostSettings = null; lastMirror = null;
+                ResetWorld();
                 if (hostSetupActive) { EndHostSetup(true); status = "Einrichtung abgebrochen"; }
             }
         }
@@ -623,6 +680,7 @@ namespace Multiplayer.Foundation.RimWorld
             if (!mirror.SameAs(lastMirror) && SendBackground(new WireMessage(MessageType.SetupSettings, 0, mirror.ToPayload())))
                 lastMirror = mirror;
             SetupPhase? wanted = SetupMirror.PhaseOf(page);
+            if (lobby.Phase == SetupPhase.WorldTransfer && !HostWorldReady()) return;
             if (wanted == null || advancePending || lobby.Phase >= wanted.Value) return;
             // The server only accepts the next phase, so walk forward one step per answer.
             if (lobby.Phase == SetupPhase.SiteSelection)
@@ -635,6 +693,68 @@ namespace Multiplayer.Foundation.RimWorld
             else
                 advancePending = SendBackground(new WireMessage(MessageType.SetupAdvance, requestId++,
                     SetupPayloads.Advance((SetupPhase)((byte)lobby.Phase + 1))));
+        }
+
+        // SETUP-002, host: prepares and sends the generated world; true once every guest loaded it with the same fingerprint.
+        private bool HostWorldReady()
+        {
+            if (lobby == null || LongEventHandler.AnyEventNowOrWaiting) return false;
+            World? world = Find.World;
+            if (world == null) return false;
+            if (!ReferenceEquals(world, sentWorld))
+            {
+                sentWorld = world;
+                worldUpload = null;
+                worldText = "Welt wird vorbereitet …";
+                LongEventHandler.QueueLongEvent(() =>
+                {
+                    WorldCodec.Standardize(world);
+                    preparedWorld = (WorldFingerprint.Compute(world), WorldCodec.Save(world));
+                }, "LoadingLongEvent", false, error =>
+                {
+                    Log.Error("Multiplayer world save failed: " + error);
+                    worldText = "Welt konnte nicht gespeichert werden: " + error.Message;
+                });
+                return false;
+            }
+            if (preparedWorld != null)
+            {
+                var (fingerprint, data) = preparedWorld.Value;
+                preparedWorld = null;
+                SendBackground(new WireMessage(MessageType.WorldReady, requestId++, SetupPayloads.Fingerprint(fingerprint)));
+                if (lobby.Players.Count > 1)
+                {
+                    worldUpload = new TransferSender(TransferKind.World, Guid.Empty, data);
+                    SendAllBackground(worldUpload.Start(NowMs()));
+                }
+                worldText = "Welt gesendet (" + (data.Length / 1024) + " KiB, Prüfsumme " + WorldFingerprint.Short(fingerprint) + ")";
+                Log.Message("Multiplayer Foundation: " + worldText);
+                return false;
+            }
+            return !advancePending && lobby.Players.All(p => p.WorldStatus == WorldStatus.Match);
+        }
+
+        // SETUP-002, guest: loads a received world in the main menu and reports its fingerprint.
+        private void LoadGuestWorld(byte[] data)
+        {
+            if (Current.ProgramState != ProgramState.Entry) { worldText = "Welt nur im Hauptmenü ladbar"; return; }
+            worldText = "Welt wird geladen …";
+            LongEventHandler.QueueLongEvent(() =>
+            {
+                World world = WorldCodec.Load(data, hostScenarioName);
+                guestWorldLoaded = true;
+                pendingWorldReport = WorldFingerprint.Compute(world);
+            }, "LoadingLongEvent", false, error =>
+            {
+                Log.Error("Multiplayer world load failed: " + error);
+                worldText = "Welt konnte nicht geladen werden: " + error.Message;
+            });
+        }
+
+        private void ResetWorld()
+        {
+            sentWorld = null; preparedWorld = null; worldUpload = null; worldDownload = null; pendingWorldReport = null; worldText = "";
+            if (guestWorldLoaded) { guestWorldLoaded = false; WorldCodec.Discard(); }
         }
 
         private static string PhaseName(SetupPhase phase)
@@ -717,6 +837,24 @@ namespace Multiplayer.Foundation.RimWorld
                 if (upload.State == TransferState.Failed) Log.Warning("Multiplayer mod-list transfer failed: " + upload.Failure?.Reason);
                 if (upload.State != TransferState.Active) upload = null;
             }
+            if (worldUpload != null)
+            {
+                SendAllBackground(worldUpload.Poll(NowMs()));
+                if (worldUpload.State == TransferState.Failed)
+                {
+                    // e.g. a guest left mid-transfer: prepare and send again to whoever is still there
+                    Log.Warning("Multiplayer world transfer failed: " + worldUpload.Failure?.Reason);
+                    sentWorld = null;
+                }
+                if (worldUpload.State != TransferState.Active) worldUpload = null;
+            }
+            if (pendingWorldReport != null && client != null)
+            {
+                byte[] report = pendingWorldReport;
+                pendingWorldReport = null;
+                SendBackground(new WireMessage(MessageType.WorldLoaded, requestId++, SetupPayloads.Fingerprint(report)));
+                worldText = "Welt geladen (Prüfsumme " + WorldFingerprint.Short(report) + ")";
+            }
             if (upload == null && client != null && manifest != null && manifestRequests.Count > 0)
             {
                 upload = new TransferSender(TransferKind.ModManifest, manifestRequests.Dequeue(), manifest.Serialize());
@@ -737,6 +875,19 @@ namespace Multiplayer.Foundation.RimWorld
                 SendAllBackground(upload.Handle(message, NowMs()));
                 return;
             }
+            if (worldUpload != null && worldUpload.Owns(message))
+            {
+                SendAllBackground(worldUpload.Handle(message, NowMs()));
+                return;
+            }
+            if (worldDownload != null && worldDownload.Owns(message))
+            {
+                SendAllBackground(worldDownload.Handle(message));
+                if (worldDownload.State == TransferState.Completed) { byte[] data = worldDownload.Data!; worldDownload = null; LoadGuestWorld(data); }
+                else if (worldDownload.State == TransferState.Failed)
+                { worldText = "Weltübertragung abgebrochen: " + worldDownload.Failure?.Reason; worldDownload = null; }
+                return;
+            }
             if (message.Type == MessageType.TransferBegin)
             {
                 TransferBegin begin = TransferPayloads.ReadBegin(message.Payload);
@@ -744,6 +895,12 @@ namespace Multiplayer.Foundation.RimWorld
                 {
                     try { download = new TransferReceiver(begin); }
                     catch (ProtocolException error) { diffRequested = false; status = "Mod-Liste des Hosts unlesbar: " + error.Message; }
+                }
+                else if (begin.Kind == TransferKind.World && lobby?.Phase == SetupPhase.WorldTransfer && lobby.HostId != client?.SessionId)
+                {
+                    // A newer world (host generated again) replaces an unfinished one.
+                    try { worldDownload = new TransferReceiver(begin); worldText = "Welt wird empfangen …"; }
+                    catch (ProtocolException error) { worldText = "Welt unlesbar: " + error.Message; }
                 }
                 else
                     SendBackground(new WireMessage(MessageType.TransferAbort, 0, TransferPayloads.Abort(
@@ -777,6 +934,7 @@ namespace Multiplayer.Foundation.RimWorld
         {
             upload = null; download = null; diffRequested = false; manifestRequests.Clear(); manifestSentTo = null;
             hostSettings = null; lastMirror = null;
+            ResetWorld();
             if (hostSetupActive) EndHostSetup(true);
         }
 
@@ -870,6 +1028,8 @@ namespace Multiplayer.Foundation.RimWorld
                             break;
                         case MessageType.SetupSettings:
                             hostSettings = SetupSettings.Read(message.Payload);
+                            if (hostSettings.Page == "Szenario" && hostSettings.Entries.Count > 0 && hostSettings.Entries[0].Label == "Szenario")
+                                hostScenarioName = hostSettings.Entries[0].Value;
                             break;
                         case MessageType.LeaveLobby:
                             lobby = null; chatMessages.Clear(); status = "Lobby verlassen";

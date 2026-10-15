@@ -575,7 +575,8 @@ tasks:
   evidence:
   - references/verified-apis.md
   - docs/verification/2026-10-15-mod-check-setup-ui.md
-  blocker: 'Metadatenteil erledigt (Teil A-B und SETUP-001-Felder gegen 1.6.4871 Windows). Offen: Welt ohne Karte speichern/laden, Größen messen, Tickpfad-Threads – braucht laufendes Spiel.'
+  - docs/verification/2026-10-15-world-transfer.md
+  blocker: 'Metadatenteil erledigt; Laufzeit: Welt ohne Karte speichern/laden im Hauptmenü nachgewiesen, Größen gemessen (Selbsttest, ADR 0020). Offen: Anzeige auf der Startortseite beim Gast (SETUP-003), Threads im Tickpfad.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: ID-001
   title: 'Persistente Spieleridentität (PlayerKey)'
@@ -765,11 +766,15 @@ tasks:
   acceptance:
   - 'Zwei Clients laden die Host-Welt mit gleichem Fingerprint'
   - 'Eine erzwungene Mod-Abweichung bricht mit Bericht ab'
-  implementation: planned
-  verification: not_tested
-  integration: not_submitted
-  branch: null
-  evidence: []
+  implementation: implemented
+  verification: tests_passed
+  integration: ready_for_human_review
+  branch: feat/mod-check-setup-ui
+  evidence:
+  - docs/decisions/0020-world-transfer.md
+  - docs/verification/2026-10-15-world-transfer.md
+  - docs/reviews/2026-10-15-mod-check-setup-ui.md
+  blocker: 'Automatisierte Tests bestanden; Speichern und Laden der Welt im Spiel per Selbsttest geprüft (5/30/50 %). Offen: Übertragung zwischen zwei echten Spielern; Abbruch mit Mod-Abweichung im Spiel.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: SETUP-003
   title: 'Startort: Fähnchen aller Spieler, Wahl durch den Host'

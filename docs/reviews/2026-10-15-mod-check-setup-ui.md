@@ -21,9 +21,15 @@ Siehe ADR 0018 und 0019: Manifest und Prüfsumme nur über Mods, Status je Spiel
 - Die Serverphase folgt der am weitesten erreichten Seite; geht der Host zurück und wählt einen anderen Startort, bleibt das zuerst gemeldete Feld.
 - Tests unter .NET 8 statt .NET 10.
 
+## Nachtrag: SETUP-002
+
+Weltübertragung und Fingerabdruck (ADR 0020, Codes 31/32, `WorldStatus` im Lobbyzustand). Verifikation: `docs/verification/2026-10-15-world-transfer.md`.
+
 ## Manuelle Prüfpunkte
 
 1. Zwei Spieler, gleiche Mods: **Spiel starten** → beim Host öffnen sich die Seiten mit dem Multiplayer-Feld; der Gast sieht Szenario, Erzähler, Welt, Startort, Ideoligion, Figuren live.
 2. Host klickt auf der Figurenseite **Start**: Meldung, kein Einzelspieler-Spiel.
 3. **Abbrechen** im Feld und „Zurück“ auf der ersten Seite: beide landen wieder in der Lobby.
 4. Abweichende Mods: rot, Bereit gesperrt, **Unterschiede anzeigen**.
+5. Nach „Welt erstellen“: Feld des Hosts zeigt „Welt wird gesendet …“, beim Gast „Welt wird empfangen …“, dann „Welt geladen, passt“ für alle; erst dann öffnet sich beim Server die Startortwahl (Phase „Startort“ beim Gast).
+6. Allein (Debug): nach „Welt erstellen“ geht es ohne Übertragung weiter; `Player.log` zeigt „Welt gesendet (… KiB, Prüfsumme …)“.

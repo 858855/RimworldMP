@@ -82,3 +82,19 @@ Wichtiger Unterschied: `Multiplayer.Client.Multiplayer` ist eine interne Clientk
 | `Verse.Find.WorldSelector` → `RimWorld.Planet.WorldSelector.SelectedTile` (`PlanetTile`); `Verse.Find.WorldGrid[PlanetTile]` → `Tile.PrimaryBiome` | public | BESTÄTIGT (Metadaten) |
 | `RimWorld.Planet.PlanetTile.tileId`, `.Layer` → `PlanetLayer.LayerID`, `.Valid`; `Verse.GameInitData.permadeathChosen` | public | BESTÄTIGT (Metadaten) |
 | `RimWorld.Page_ConfigureStartingPawns.DoNext()` | nonpublic, eigene Überschreibung (Harmony-Prefix) | BESTÄTIGT (Metadaten); Patch im Spiel ohne Fehler geladen |
+
+## SETUP-002: Welt speichern und laden (2026-10-15, gleiche Quelle)
+
+| Symbol | Signatur in 1.6.4871 | Status |
+|---|---|---|
+| `RimWorld.Planet.World()`, `.ExposeData()`, `.FinalizeInit(bool fromLoad)`, `.info`, `.grid`, `.factionManager`, `.worldObjects`, `.PlanetCoverage` | public | BESTÄTIGT (Metadaten); Laden im Hauptmenü **im Spiel geprüft** (Selbsttest) |
+| `RimWorld.Planet.WorldGrid.Surface` (`SurfaceLayer`), `.TilesCount`, `.StandardizeTileData()`; `PlanetLayer.TilesCount`, `this[int]`, `PlanetTileForID(int)` | public | BESTÄTIGT (Metadaten), im Spiel genutzt |
+| `RimWorld.Planet.Tile.PrimaryBiome`, `.hilliness`, `.elevation`, `.temperature`, `.rainfall`, `.swampiness`; `SurfaceTile.Rivers`, `.Roads` | public | BESTÄTIGT (Metadaten); `elevation`/`swampiness` driften beim Laden an Rundungsgrenzen (Selbsttest) |
+| `RimWorld.FactionManager.AllFactionsListForReading`; `Faction.loadID`, `.def`, `.Name`; `WorldObjectsHolder.Settlements`; `WorldObject.Tile`, `.Faction`; `Settlement.Name` | public | BESTÄTIGT (Metadaten) |
+| `Verse.ScribeLoader.InitLoading`, `.FinalizeLoading`, `.crossRefs.RegisterForCrossRefResolve(IExposable)`, `.initer.RegisterForPostLoadInit(IExposable)`; `Verse.Scribe.EnterNode(string)`, `.ExitNode()`, `.ForceStop()`; `ScribeSaver.ForceStop()` | public | BESTÄTIGT (Metadaten), im Spiel genutzt |
+| `RimWorld.Planet.WorldGrid.ExposeData` liest beim Laden `Find.World` (Planetenabdeckung) | – | **Laufzeitbefund**: ohne vorab gesetztes `Current.Game.World` NullReferenceException in `CalculateViewCenterAndAngle` |
+| `RimWorld.Planet.WorldGenerator.GenerateWorld(...)` braucht einen Erzähler (`Game.storyteller`) | – | **Laufzeitbefund**: sonst NullReferenceException in `StorytellerUtilityPopulation.CalculatePopulationIntent` |
+| `Verse.Profile.MemoryUtility.ClearAllMapsAndWorld()`; `RimWorld.ScenarioLister.AllScenarios()`; `ScenarioDefOf.Crashlanded`; `Scenario.CopyForEditing()`, `.PreConfigure()`; `FactionGenerator.ConfigurableFactions`; `FactionDef.startingCountAtWorldCreation`; `Storyteller(StorytellerDef, DifficultyDef)`; `StorytellerDefOf.Cassandra`; `DifficultyDefOf.Rough` | public | BESTÄTIGT (Metadaten), im Selbsttest genutzt |
+| `Verse.Steam.SteamManager.Initialized` | public static | BESTÄTIGT (Metadaten); Steam-Pumpe pausiert danach beim Beenden |
+
+**VER-001, Laufzeitteil:** Eine Welt ohne Karte lässt sich speichern und im Hauptmenü wieder laden (Selbsttest, 5/30/50 % Abdeckung, PASS). Größen: 50 % Welt 1,9 MB gzip. Anzeige auf der Startortseite beim Gast: mit `SETUP-003`. Threads im Tickpfad: weiter offen.

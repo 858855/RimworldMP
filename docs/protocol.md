@@ -39,6 +39,8 @@ Strings sind `length:u16` plus strikt gültige UTF-8-Bytes. Allgemeine Strings: 
 | 28 | ModManifestSummary | C→S | Mod-Prüfsumme SHA-256 (32 Byte), Spielversion (nur Hinweis), Mod-Anzahl `u16` |
 | 29 | ModManifestRequest | C→S, S→C | Anfrage: Session-ID des Hosts; an den Host weitergeleitet: Session-ID des Anfragenden |
 | 30 | SetupSettings | C→S→C | Seitenname, bis zu 24 Paare Bezeichnung/Wert; nur Host, nur während der Einrichtung |
+| 31 | WorldReady | C→S | Welt-Fingerabdruck (32 Byte); nur Host, nur in `WorldTransfer` |
+| 32 | WorldLoaded | C→S | Fingerabdruck der geladenen Welt (32 Byte); nur Gäste, nur in `WorldTransfer` |
 
 Listen- und Zustandsupdates sind in `LobbyPayloads.cs` kodiert: Liste mit `count:u8`, je Lobby GUID, Name, Hostname, Spielerzahl und Kapazität; Snapshot mit GUID, Name, Host-GUID, Revision `u64`, Kapazität, Setup-Phase `u8`, optional gewähltes Feld und Spielerarray (Session-GUID, Name, Ready, PlayerKey, optional Fähnchen). Die Liste trägt je Lobby zusätzlich die Phase. Der TCP-Server verwendet diese Payloads; zwei unabhängige TCP-Testclients bestanden die Integrationstests. RimWorld-Client-Kompatibilität ist noch offen. Fehlercodes: `1=InvalidMessage`, `2=VersionMismatch`, `3=Unauthorized`, `4=NotFound`, `5=Capacity`, `6=InvalidState`, `7=ServerBusy`.
 
@@ -78,3 +80,7 @@ Die Lobby-Prüfsumme ist ein SHA-256 nur über die Mods in Ladereihenfolge (Pack
 `SetupSettings` ist reine Anzeige: was der Host auf seiner vanilla-Seite gerade sieht. Der Server prüft nur Absender (Host, sonst Code 3), Phase (nicht `Lobby`, sonst Code 6) und Format und leitet an die übrigen Mitglieder weiter.
 
 Debug-Option: Ein Host-Server mit `AllowSoloStart` nimmt `SetupAdvance(Scenario)` schon mit einem Spieler an; Standard sind mindestens zwei (ADR 0018, Nachtrag).
+
+## Weltübertragung (SETUP-002, ADR 0020)
+
+In `WorldTransfer` trägt jeder Spieler im Lobbyzustand zusätzlich `WorldStatus:u8` (`0` außerhalb der Phase, `1` wartet, `2` passt, `3` weicht ab). Die Welt selbst geht als Chunk-Übertragung der Art `2`. `SetupAdvance(SiteSelection)` verlangt eine Host-Meldung und „passt“ bei allen Gästen; Abweichung ergibt Code 8, fehlende Meldungen Code 6. Ein neues `WorldReady` setzt alle Gastmeldungen zurück.
