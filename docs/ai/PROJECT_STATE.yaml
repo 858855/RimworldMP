@@ -70,7 +70,7 @@ components:
   steam_p2p:
     implementation: in_progress
     verification: build_passed
-    integration: not_submitted
+    integration: approved
 verified_capabilities:
 - 'Archiv: 49 Einträge gegen eingebettetes Manifest geprüft.'
 - Drei XML-Beispiele syntaktisch geprüft; kein RimWorld-Laufzeitnachweis.
@@ -129,6 +129,7 @@ documentation_refs:
   dual_mode_review: docs/reviews/2026-10-15-dual-mode-merge.md
   steam_home_host_design: docs/decisions/0010-steam-home-host.md
   steam_transport_verification: docs/verification/2026-10-15-steam-transport.md
+  steam_transport_review: docs/reviews/2026-10-15-steam-transport-merge.md
   prompt_history: docs/governance/PROMPT_HISTORY.md
   prompt_review: docs/reviews/2026-10-15-prompt-archive.md
   prompt_archive_verification: docs/verification/2026-10-15-prompt-archive.md

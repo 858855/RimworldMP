@@ -11,3 +11,12 @@
 - **Lokale Installation:** Das Vorschau-ZIP wurde nach `/mnt/Spiele_1/SteamLibrary/steamapps/common/RimWorld/Mods/` kopiert und dort als `RimWorldMultiplayerFoundation/` entpackt. Vorher lag dort kein Mod-Ordner, der überschrieben werden musste. Alle sieben entpackten Dateien wurden bytegenau gegen das ZIP verglichen; keine Abweichung. Dies ist ein Dateitest, kein Spiel-Laufzeittest.
 - **Nicht geprüft:** Steam-Overlay, Steam-Lobby-Erstellung und Einladung, P2P-/Relay-Verbindung, Empfang im tatsächlichen RimWorld-Prozess, zwei Steam-Konten an verschiedenen Heimanschlüssen. Das Ergebnis beweist deshalb noch keine funktionierende Internetverbindung.
 - **Bekannte Grenze:** Einladung bei laufendem Spiel vorgesehen; Kaltstart per Steam-Einladung nicht implementiert. Das veröffentlichte ZIP auf `main` enthält den Steam-Arbeitsbranch noch nicht. Das neue Vorschau-ZIP liegt nur lokal auf dem Arbeitsbranch.
+
+## Merge-Gate am 2026-10-15
+
+- `python3 scripts/validate_project_state.py` → Exit 0; 22 Pflichtdateien und 16 Aufgaben geprüft. Der zuvor doppelte `evidence`-Schlüssel in `STEAM-001` wurde behoben. Eine gezielte Probe mit doppeltem YAML-Schlüssel wurde vom erweiterten Validator abgewiesen.
+- `dotnet run --project tests/Network.Tests/Network.Tests.csproj -c Release --nologo` → Exit 0, drei Gruppen.
+- `dotnet run --project tests/Hosting.Tests/Hosting.Tests.csproj -c Release --nologo` → Exit 0, fünf Gruppen.
+- `dotnet run --project tests/Integration.Tests/Integration.Tests.csproj -c Release --nologo` → Exit 0, 16 Gruppen.
+- `dotnet build src/Multiplayer.Foundation.RimWorld/Multiplayer.Foundation.RimWorld.csproj -c Release --nologo -p:RimWorldManaged=/mnt/Spiele_1/SteamLibrary/steamapps/common/RimWorld/RimWorldLinux_Data/Managed` → Exit 0, null Warnungen/Fehler.
+- Die ausdrückliche menschliche Merge-Freigabe ist im [Review-Bericht](../reviews/2026-10-15-steam-transport-merge.md) dokumentiert. Diese Prüfungen ersetzen keinen Steam-Laufzeittest.
