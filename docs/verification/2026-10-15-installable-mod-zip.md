@@ -1,5 +1,7 @@
 # Installierbares RimWorld-1.6-Mod-ZIP, 15.10.2026
 
+Historischer Paketstand ohne Direkt-Hosting. Der aktuelle Stand mit beiden Wegen ist unter `docs/verification/2026-10-15-direct-host.md` nachgewiesen.
+
 - Branch: `release/mod-install-0.1-dev`; Basis `fix/server-heartbeat` bei `1192eb5`. Paket-Commit `7e0707a3e5521c5351ce6f80a6b2f18f085d517e` wurde auf `origin/release/mod-install-0.1-dev` gepusht; kein Merge.
 - Ziel: RimWorld 1.6.4871, lokale `Version.txt` rev598; frühere Spiel-Runtime meldete rev600. .NET SDK 10.0.402, Client-Ziel `netstandard2.1`.
 - Build-Befehl: `DOTNET_BIN=/home/fabiok/.local/share/dotnet-rimworldmp/dotnet bash scripts/build-mod.sh`. Exit 0; 0 Warnungen, 0 Fehler. Build referenziert lokale RimWorld-Assemblies, verteilt sie aber nicht.

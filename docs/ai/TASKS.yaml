@@ -320,7 +320,7 @@ tasks:
   - Steam-Workshop-Veröffentlichung, Gameplay-Synchronisation, Spiel-Laufzeitfreigabe
   acceptance:
   - ZIP enthält einen direkt unter RimWorld/Mods entpackbaren Mod-Ordner
-  - About.xml und drei eigene Assemblies sind enthalten, keine proprietären Spiel-DLLs
+  - About.xml und alle benötigten eigenen Assemblies sind enthalten, keine proprietären Spiel-DLLs
   - Archiv und SHA-256 geprüft
   - Installationsanleitung und GitHub-Downloadlink vorhanden
   test_strategy: Release-Build gegen lokale 1.6-Assemblies, ZIP-Strukturprüfung und Prüfsumme.
@@ -334,3 +334,46 @@ tasks:
   base_commit: 1192eb5
   evidence:
   - docs/verification/2026-10-15-installable-mod-zip.md
+  - docs/verification/2026-10-15-direct-host.md
+- id: HOST-001
+  title: Lobby ohne separaten Serverprozess aus der Mod hosten
+  goal: Ein Spieler startet die autoritative Lobby direkt im RimWorld-Mod und ein Kollege verbindet sich per LAN-IP.
+  description: Serverkern in spielunabhängige netstandard2.1-Bibliothek auslagern; Listen-Host und UI ergänzen.
+  priority: critical
+  components:
+  - dedicated_server
+  - lobby_core
+  - network_core
+  - rimworld_adapter
+  - mod_package
+  depends_on:
+  - LOBBY-001
+  - CLIENT-001
+  - PKG-001
+  scope:
+  - src/Multiplayer.Foundation.Hosting/
+  - src/Multiplayer.Foundation.Server/
+  - src/Multiplayer.Foundation.RimWorld/
+  - tests/Hosting.Tests/
+  - scripts/build-mod.sh
+  - scripts/package-mod.py
+  - releases/
+  non_goals:
+  - Gameplay-Synchronisation, Peer-to-Peer-Protokoll ohne Host-Autorität, öffentlicher Internetbetrieb
+  acceptance:
+  - In-Game-Host benötigt keinen separaten Serverprozess
+  - Zweiter Client kann per TCP beitreten und gleichen Lobby-/Ready-Zustand sehen
+  - Host-Stopp trennt den Gast und gibt den Listener frei
+  - Dedizierter Server und bestehende Tests bleiben funktionsfähig
+  - Aktualisiertes installierbares ZIP liegt auf GitHub
+  test_strategy: Hosting-Integration, bestehende Server-/Mehrprozess-Tests, Mod-Release-Build und ZIP-Prüfung.
+  risks:
+  - RimWorld-1.6-Mono-Laufzeit des Mod-Adapters bleibt ohne Spieltest unbestätigt
+  - Host-IP muss für Kollegen erreichbar und LAN-Firewall geöffnet sein
+  implementation: implemented
+  verification: tests_passed
+  integration: ready_for_human_review
+  branch: release/mod-install-0.1-dev
+  base_branch: fix/server-heartbeat
+  evidence:
+  - docs/verification/2026-10-15-direct-host.md

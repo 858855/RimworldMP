@@ -1,6 +1,6 @@
 # Dedicated Server 0.1
 
-Der eigenständige .NET-10-Prozess bindet standardmäßig nur an `127.0.0.1:28491`. Er akzeptiert mehrere TCP-Clients, prüft den Handshake, verwaltet Sitzungen und autoritative Lobbys, verteilt Snapshots, sendet Heartbeats und entfernt getrennte Clients. Details zum Nachrichtenformat: `docs/protocol.md`.
+Der eigenständige .NET-10-Prozess nutzt denselben `netstandard2.1`-Hosting-Kern wie der direkte Host in der Mod und bindet standardmäßig nur an `127.0.0.1:28491`. Er akzeptiert mehrere TCP-Clients, prüft den Handshake, verwaltet Sitzungen und autoritative Lobbys, verteilt Snapshots, sendet Heartbeats und entfernt getrennte Clients. Details zum Nachrichtenformat: `docs/protocol.md`.
 
 ## Lokal bauen und starten
 

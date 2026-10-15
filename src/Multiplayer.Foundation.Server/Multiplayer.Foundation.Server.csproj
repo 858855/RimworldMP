@@ -7,7 +7,6 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../Multiplayer.Foundation.Network/Multiplayer.Foundation.Network.csproj" />
-    <ProjectReference Include="../Multiplayer.Foundation.Lobby/Multiplayer.Foundation.Lobby.csproj" />
+    <ProjectReference Include="../Multiplayer.Foundation.Hosting/Multiplayer.Foundation.Hosting.csproj" />
   </ItemGroup>
 </Project>

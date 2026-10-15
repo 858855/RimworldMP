@@ -14,13 +14,13 @@ target_rimworld_version:
   runtime: Unity/Mono
   game_runtime_tested: true
   other_versions_verified: []
-current_phase: installable_mod_zip_built
+current_phase: direct_host_built_and_tcp_verified
 git:
   branch: release/mod-install-0.1-dev
   base_branch: fix/server-heartbeat
   base_commit: 1192eb5
   current_commit_ref: HEAD
-  pushed: true
+  pushed: false
   merged: false
   dependent_branches:
   - docs/project-governance
@@ -54,12 +54,16 @@ components:
   dedicated_server:
     implementation: implemented
     verification: tests_passed
-    integration: merged
+    integration: ready_for_human_review
   rimworld_adapter:
     implementation: implemented
     verification: build_passed
-    integration: merged
+    integration: ready_for_human_review
   mod_package:
+    implementation: implemented
+    verification: tests_passed
+    integration: ready_for_human_review
+  listen_host:
     implementation: implemented
     verification: tests_passed
     integration: ready_for_human_review
@@ -80,7 +84,8 @@ verified_capabilities:
   nach Disconnect übertragen; insgesamt 13 Integrationstestgruppen bestanden.'
 - 'Mehrprozess-Test: eigenständiger Server und zwei unabhängige Client-Prozesse, Lobby-Liste, Join, gleiche Snapshots, Ready und Disconnect bestanden.'
 - 'Server: verzögertes gültiges Pong akzeptiert, Duplikat und ungesendete Nonce abgelehnt; SIGTERM beendet den Linux-Prozess mit verbundenem Client geordnet.'
-- 'Mod-ZIP: Release-Build gegen lokale 1.6-Assemblies, fünf Archiveinträge, Entpacken nach RimWorld/Mods und SHA-256 geprüft; kein Spiel-Laufzeittest.'
+- 'Mod-ZIP: Release-Build gegen lokale 1.6-Assemblies, sieben Archiveinträge, Entpacken nach RimWorld/Mods und SHA-256 geprüft; kein Spiel-Laufzeittest.'
+- 'Direkt-Hosting: Host und Gast verbinden sich über denselben TCP-Lobby-Kern, Join/Ready und Host-Stopp in vier Testgruppen bestanden; dedizierter Server bleibt erhalten.'
 known_issues:
 - 'RimWorld-UI im Spiel nicht verifiziert: -nographics verursacht Atlasfehler; grafischer Start
   kam auch im 180-s-Wiederholungsversuch nicht bis zu belegten Mod-Ladeeinträgen.'
@@ -91,7 +96,7 @@ blockers:
 - 1.7-Unterstützung ungeklärt.
 active_tasks:
 - TEST-001
-next_action: RimWorld-1.6-Mod aus dem GitHub-ZIP im grafischen Spielstart laden und die Lobby-UI mit zwei Spielclients gegen den dedizierten Server prüfen.
+next_action: Korrigiertes ZIP mit Direkt-Hosting zu GitHub pushen; dann beide Wege in RimWorld 1.6 mit zwei Spielclients manuell prüfen.
 documentation_refs:
   tasks: docs/ai/TASKS.yaml
   handoff: docs/ai/SESSION_HANDOFF.md
@@ -110,6 +115,7 @@ documentation_refs:
   process_integration: docs/verification/2026-10-15-multi-process-lobby.md
   server_stability: docs/verification/2026-10-15-server-heartbeat-shutdown.md
   mod_package: docs/verification/2026-10-15-installable-mod-zip.md
+  direct_host: docs/verification/2026-10-15-direct-host.md
   prompt_history: docs/governance/PROMPT_HISTORY.md
   prompt_review: docs/reviews/2026-10-15-prompt-archive.md
   prompt_archive_verification: docs/verification/2026-10-15-prompt-archive.md

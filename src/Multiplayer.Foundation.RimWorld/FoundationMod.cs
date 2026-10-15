@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Multiplayer.Foundation.Network;
+using Multiplayer.Foundation.Hosting;
 using Multiplayer.Foundation.Protocol;
 using UnityEngine;
 using Verse;
@@ -14,6 +15,8 @@ namespace Multiplayer.Foundation.RimWorld
         private readonly FoundationSettings settings;
         private LobbyClient? client;
         private Task<LobbyClient>? connecting;
+        private Task<ListenHost>? hosting;
+        private ListenHost? hosted;
         private Task? action;
         private IReadOnlyList<LobbySummary> available = Array.Empty<LobbySummary>();
         private LobbyView? lobby;
@@ -45,7 +48,22 @@ namespace Multiplayer.Foundation.RimWorld
                 Widgets.Label(new Rect(x, y, 110f, 26f), "Spielername");
                 settings.PlayerName = Widgets.TextField(new Rect(x + 110f, y, width - 110f, 26f), settings.PlayerName);
                 y += 34f;
-                if (connecting == null && Widgets.ButtonText(new Rect(x, y, 140f, 30f), "Verbinden")) Connect();
+                if (connecting == null && hosting == null && action == null &&
+                    Widgets.ButtonText(new Rect(x, y, 140f, 30f), "Verbinden")) Connect();
+                y += 42f;
+                Widgets.Label(new Rect(x, y, width, 28f), "Ohne separaten Server: Lobby auf diesem Rechner hosten");
+                y += 31f;
+                Widgets.Label(new Rect(x, y, 110f, 26f), "Host-IP");
+                settings.HostBindAddress = Widgets.TextField(new Rect(x + 110f, y, width - 110f, 26f), settings.HostBindAddress);
+                y += 31f;
+                Widgets.Label(new Rect(x, y, 110f, 26f), "Lobbyname");
+                lobbyName = Widgets.TextField(new Rect(x + 110f, y, width - 110f, 26f), lobbyName);
+                y += 31f;
+                Widgets.Label(new Rect(x, y, 110f, 26f), "Plätze");
+                lobbyCapacity = Widgets.TextField(new Rect(x + 110f, y, width - 110f, 26f), lobbyCapacity);
+                y += 34f;
+                if (connecting == null && hosting == null && action == null &&
+                    Widgets.ButtonText(new Rect(x, y, 240f, 30f), "Lobby direkt hosten")) HostLobby();
             }
             else
             {
@@ -67,12 +85,32 @@ namespace Multiplayer.Foundation.RimWorld
                 settings.PlayerName.Trim(), TimeSpan.FromSeconds(8));
         }
 
+        private void HostLobby()
+        {
+            if (!int.TryParse(settings.Port, out int port) || port < 1 || port > 65535)
+            { status = "Ungültiger Port"; return; }
+            if (!byte.TryParse(lobbyCapacity, out byte capacity) || capacity < 2 || capacity > 64)
+            { status = "Plätze müssen zwischen 2 und 64 liegen"; return; }
+            string name = lobbyName.Trim();
+            if (name.Length == 0 || name.Length > 40 || name.Any(char.IsControl))
+            { status = "Lobbyname muss 1–40 druckbare Zeichen haben"; return; }
+            status = "Lokale Lobby startet";
+            hosting = ListenHost.StartAsync(settings.HostBindAddress.Trim(), port,
+                settings.PlayerName.Trim(), name, capacity);
+        }
+
         private void Disconnect()
         {
             if (client == null) return;
             LobbyClient old = client;
             client = null; lobby = null; available = Array.Empty<LobbySummary>();
-            action = old.DisconnectAsync();
+            if (hosted != null)
+            {
+                ListenHost running = hosted;
+                hosted = null;
+                action = running.StopAsync();
+            }
+            else action = old.DisconnectAsync();
             status = "Nicht verbunden";
         }
 
@@ -148,6 +186,17 @@ namespace Multiplayer.Foundation.RimWorld
 
         private void UpdateNetwork()
         {
+            if (hosting != null && hosting.IsCompleted)
+            {
+                try
+                {
+                    hosted = hosting.GetAwaiter().GetResult();
+                    client = hosted.Client;
+                    status = "Lobby gehostet auf " + hosted.BindAddress + ":" + hosted.Port;
+                }
+                catch (Exception error) { status = "Host fehlgeschlagen: " + error.Message; }
+                hosting = null;
+            }
             if (connecting != null && connecting.IsCompleted)
             {
                 try
@@ -194,6 +243,12 @@ namespace Multiplayer.Foundation.RimWorld
             {
                 status = "Verbindung unterbrochen: " + (client.LastError ?? "Unbekannt");
                 client.Dispose(); client = null; lobby = null;
+                if (hosted != null)
+                {
+                    ListenHost running = hosted;
+                    hosted = null;
+                    action = running.StopAsync();
+                }
             }
         }
     }

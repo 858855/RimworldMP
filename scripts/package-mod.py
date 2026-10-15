@@ -16,6 +16,8 @@ FILES = (
     "About/About.xml",
     "Assemblies/Multiplayer.Foundation.Protocol.dll",
     "Assemblies/Multiplayer.Foundation.Network.dll",
+    "Assemblies/Multiplayer.Foundation.Lobby.dll",
+    "Assemblies/Multiplayer.Foundation.Hosting.dll",
     "Assemblies/Multiplayer.Foundation.RimWorld.dll",
 )
 INSTALL = ROOT / "mod" / "INSTALLATION.md"
