@@ -33,7 +33,7 @@ tasks:
   - Projektgedächtnis angelegt
   implementation: implemented
   verification: tests_passed
-  integration: ready_for_human_review
+  integration: merged
   branch: docs/project-governance
   evidence:
   - docs/verification/2026-10-14-project-baseline.md
@@ -48,7 +48,7 @@ tasks:
   - Version und Steam-Build aus lokalen Dateien ermittelt
   implementation: implemented
   verification: tests_passed
-  integration: not_submitted
+  integration: merged
   branch: docs/project-governance
   evidence:
   - docs/verification/RECOVERY_REPORT.md
@@ -66,7 +66,7 @@ tasks:
   - Governance-Dateien und Review-Bericht vorhanden
   implementation: implemented
   verification: tests_passed
-  integration: ready_for_human_review
+  integration: merged
   branch: docs/project-governance
   evidence:
   - docs/verification/2026-10-15-governance-v2.md
@@ -86,7 +86,7 @@ tasks:
   - Zwei TCP-Clients erreichbar
   implementation: implemented
   verification: tests_passed
-  integration: ready_for_human_review
+  integration: merged
   branch: feat/rimworld-client
   base_branch: feat/dedicated-server
   evidence:
@@ -106,7 +106,7 @@ tasks:
   - Shutdown schließt Verbindungen
   implementation: implemented
   verification: tests_passed
-  integration: ready_for_human_review
+  integration: merged
   branch: feat/dedicated-server
   base_branch: feat/network-protocol
   evidence:
@@ -127,7 +127,7 @@ tasks:
   - Doppelte Mitgliedschaft verhindert
   implementation: implemented
   verification: tests_passed
-  integration: ready_for_human_review
+  integration: merged
   branch: feat/dedicated-server
   base_branch: feat/network-protocol
   evidence:
@@ -150,7 +150,7 @@ tasks:
   - Lobby-Aktionen am Server sichtbar
   implementation: implemented
   verification: build_passed
-  integration: not_submitted
+  integration: merged
   branch: feat/rimworld-client
   base_branch: feat/dedicated-server
   evidence:
@@ -174,7 +174,7 @@ tasks:
   - RimWorld lädt Mod
   implementation: in_progress
   verification: tests_passed
-  integration: not_submitted
+  integration: merged
   branch: test/lobby-integration
   base_branch: feat/rimworld-client
   evidence:

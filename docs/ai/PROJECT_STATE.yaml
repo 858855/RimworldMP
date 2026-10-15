@@ -13,12 +13,12 @@ target_rimworld_version:
   other_versions_verified: []
 current_phase: client_integration_verification
 git:
-  branch: test/lobby-integration
-  base_branch: feat/rimworld-client
-  base_commit: d20a2e6
+  branch: main
+  base_branch: null
+  base_commit: null
   current_commit_ref: HEAD
-  pushed: false
-  merged: false
+  pushed: true
+  merged: true
   dependent_branches:
   - docs/project-governance
   - feat/network-protocol
@@ -28,31 +28,31 @@ components:
   governance:
     implementation: implemented
     verification: tests_passed
-    integration: ready_for_human_review
+    integration: merged
   knowledge_base:
     implementation: implemented
     verification: tests_passed
-    integration: ready_for_human_review
+    integration: merged
   protocol:
     implementation: implemented
     verification: tests_passed
-    integration: not_submitted
+    integration: merged
   network_core:
     implementation: implemented
     verification: tests_passed
-    integration: ready_for_human_review
+    integration: merged
   lobby_core:
     implementation: implemented
     verification: tests_passed
-    integration: ready_for_human_review
+    integration: merged
   dedicated_server:
     implementation: implemented
     verification: tests_passed
-    integration: ready_for_human_review
+    integration: merged
   rimworld_adapter:
     implementation: implemented
     verification: build_passed
-    integration: not_submitted
+    integration: merged
 verified_capabilities:
 - 'Archiv: 49 Einträge gegen eingebettetes Manifest geprüft.'
 - Drei XML-Beispiele syntaktisch geprüft; kein RimWorld-Laufzeitnachweis.
@@ -86,7 +86,8 @@ documentation_refs:
   recovery: docs/verification/RECOVERY_REPORT.md
   spec: docs/SPEC.md
   architecture: docs/ai/ARCHITECTURE.md
-  review: docs/reviews/2026-10-15-governance-v2.md
+  review: docs/reviews/2026-10-15-initial-integration.md
+  upload_verification: docs/verification/2026-10-15-initial-upload.md
   protocol_verification: docs/verification/2026-10-15-protocol.md
   network_verification: docs/verification/2026-10-15-network.md
   lobby_verification: docs/verification/2026-10-15-lobby-core.md

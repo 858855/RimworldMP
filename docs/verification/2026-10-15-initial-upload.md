@@ -10,3 +10,5 @@
 - **Integration:** `dotnet run --project tests/Integration.Tests/Integration.Tests.csproj -c Release --nologo` → Exit 0, 13 Gruppen mit echten TCP-Verbindungen.
 - **Release-Builds:** `env DOTNET_BIN=/home/fabiok/.local/share/dotnet-rimworldmp/dotnet bash scripts/build-server.sh` → Exit 0; derselbe Aufruf mit `scripts/build-mod.sh` → Exit 0, Mod-Build 0 Warnungen/Fehler.
 - **Grenze:** `dist/` ist generiert und ignoriert; das Spiel-UI wurde noch nicht erfolgreich geladen. Ein Build und TCP-Test sind keine RimWorld-Laufzeitabnahme. Keine 1.7-, Mod-Kompatibilitäts- oder Internet-Sicherheitszusage.
+
+- **Git-Integration und Remote-Nachweis:** `git merge --ff-only test/lobby-integration` → Exit 0; `git push origin main` mit authentifiziertem GitHub-Konto → Exit 0, Remote `0909d11..3a5e299`; `git fetch origin` → Exit 0; `git status --short --branch` → `## main...origin/main`, keine Änderungen. Keine History-Umschreibung.

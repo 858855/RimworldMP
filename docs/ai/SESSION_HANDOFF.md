@@ -1,7 +1,7 @@
 # Sitzungsübergabe
 
-- **Branch/Commit:** `test/lobby-integration`, Basis `feat/rimworld-client` bei `d20a2e6`; dahinter `feat/dedicated-server`/`61ee7fb`, `feat/network-protocol` und `docs/project-governance`. Aktuellen Commit mit `git rev-parse HEAD` lesen. Kein Merge/Push.
-- **Letzte Arbeit:** `TEST-001`: Reconnect, ungültige Wire-Version und Host-Übergabe nach Disconnect in echte TCP-Integration aufgenommen.
-- **Belegt:** 13 Integrationstestgruppen bestanden; `docs/verification/2026-10-15-integration-extended.md`. Client-Build und -Test: `docs/verification/2026-10-15-client.md`.
-- **Offen:** RimWorld-UI/Game-Test und zwei RimWorld-Prozesse. Grafikloser Start scheiterte an Unity-Atlanten; grafischer Start kam in 60 s nicht über die Initialisierung. Der temporäre Mod-Symlink wurde entfernt; Benutzer-Modliste blieb unverändert. Auth/TLS und 1.7 sind nicht geprüft.
-- **Nächster Schritt:** Wenn eine geeignete Spielumgebung bereitsteht, nur Core/DLC/`rimworldmp.foundation` aktivieren und zwei reale RimWorld-Clients gegen den Server testen. `docs/client.md` und `docs/testing.md` nennen Build/Start; `TASKS.yaml` enthält Akzeptanzkriterien.
+- **Branch/Commit:** `main`; aktuellen Stand mit `git rev-parse HEAD` lesen. Initialer Upload bis `3a5e299` auf `origin/main`; Statusabgleich folgt als eigener Commit. Alle Änderungen des initialen Branch-Stapels wurden nach ausdrücklicher Benutzerfreigabe per Fast-Forward integriert und ohne Force-Push hochgeladen.
+- **Letzte Arbeit:** Erster GitHub-Upload und Abgleich der Git-/Integrationsstatuswerte. Details: `docs/reviews/2026-10-15-initial-integration.md` und `docs/verification/2026-10-15-initial-upload.md`.
+- **Belegt:** Dokumentationsvalidator, 13 TCP-Integrationstestgruppen, drei Client-Testgruppen sowie Server- und Mod-Release-Build vor Upload bestanden. Das Spiel-UI ist weiterhin nicht verifiziert.
+- **Offen:** `TEST-001`: Mod in RimWorld 1.6 grafisch laden, UI und zwei echte Spielclients gegen den Server testen. `CLIENT-001` ist nur gebaut; die erreichte Integration ersetzt keine Laufzeitprüfung. Auth/TLS, 1.7 und Lizenzentscheidung `LIC-001` bleiben offen.
+- **Nächster Schritt:** Auf neuem Arbeitsbranch den RimWorld-Laufzeittest mit isolierter Modliste wiederholen und Ergebnisse unter `docs/verification/` erfassen. `docs/client.md` und `docs/testing.md` enthalten Build und Prüfpfade. Kein weiterer Merge oder Push ohne neue ausdrückliche Freigabe.
