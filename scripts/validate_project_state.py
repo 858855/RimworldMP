@@ -9,6 +9,27 @@ try:
 except ImportError:
     raise SystemExit("PyYAML is required: python3 -m pip install PyYAML")
 
+
+class UniqueKeyLoader(yaml.SafeLoader):
+    pass
+
+
+def construct_unique_mapping(loader, node):
+    result = {}
+    for key_node, value_node in node.value:
+        key = loader.construct_object(key_node)
+        if key in result:
+            raise yaml.constructor.ConstructorError(
+                None, None, f"duplicate YAML key: {key}", key_node.start_mark
+            )
+        result[key] = loader.construct_object(value_node)
+    return result
+
+
+UniqueKeyLoader.add_constructor(
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, construct_unique_mapping
+)
+
 root = Path(__file__).resolve().parents[1]
 required = [
     "AGENTS.md", "README.md", "CHANGELOG.md", "docs/SPEC.md",
@@ -25,7 +46,7 @@ errors = [f"missing: {path}" for path in required if not (root / path).is_file()
 
 def read_yaml(relative):
     try:
-        data = yaml.safe_load((root / relative).read_text(encoding="utf-8"))
+        data = yaml.load((root / relative).read_text(encoding="utf-8"), Loader=UniqueKeyLoader)
         if not isinstance(data, dict):
             errors.append(f"{relative}: root must be a mapping")
             return {}

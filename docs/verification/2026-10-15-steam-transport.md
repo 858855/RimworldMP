@@ -1,0 +1,22 @@
+# Prüfung: Steam-Transport im Arbeitsbranch
+
+- **Datum:** 2026-10-15; Branch `feat/steam-friends-p2p`, Ausgang `main` bei `5b533cd`.
+- **Umgebung:** Linux, lokales RimWorld 1.6.4871, lokal installierte `com.rlabrecque.steamworks.net.dll`, .NET SDK 10.
+- **API-Prüfung:** Die öffentliche Methodensignatur von Steamworks.NET für Matchmaking, P2P-Verbindung, Callback-Typen und Nachrichtenfreigabe wurde per Reflexion an der lokalen Assembly gelesen. Siehe `docs/decisions/0010-steam-home-host.md`. Keine Ausführung der Steam-Funktionen im Spiel.
+- **Build:** `dotnet build src/Multiplayer.Foundation.RimWorld/Multiplayer.Foundation.RimWorld.csproj -c Release --nologo -p:RimWorldManaged=/mnt/Spiele_1/SteamLibrary/steamapps/common/RimWorld/RimWorldLinux_Data/Managed` → Exit 0, null Warnungen, null Fehler.
+- **Netzwerk:** `dotnet run --project tests/Network.Tests/Network.Tests.csproj -c Release --nologo` → Exit 0, drei Gruppen bestanden.
+- **Hosting:** `dotnet run --project tests/Hosting.Tests/Hosting.Tests.csproj -c Release --nologo` → Exit 0, fünf Gruppen bestanden. Neue Gruppe: separat eingespeister Duplex-Stream führt Handshake, Lobby-Liste und Beitritt zusätzlich zum TCP-Gast aus.
+- **Serverintegration:** `dotnet run --project tests/Integration.Tests/Integration.Tests.csproj -c Release --nologo` → Exit 0, 16 Gruppen bestanden.
+- **Paket:** `DOTNET_BIN=/home/fabiok/.local/share/dotnet-rimworldmp/dotnet bash scripts/build-mod.sh` → Exit 0; `python3 scripts/package-mod.py RimWorldMultiplayerFoundation-0.1.0-dev-steam-preview-rw1.6.zip` → Exit 0, sieben geprüfte Archivdateien, 53113 Byte, SHA-256 `4464a83a8a79abca0848acade2d1af252ebf9416fadb8dd8003d02b8e65b7b2d`. Proprietäre Steamworks-/RimWorld-Assemblies sind nicht enthalten. Ein vorangegangener Skriptaufruf ohne `DOTNET_BIN` schlug wegen fehlendem `dotnet` im PATH mit Exit 127 fehl; mit explizitem SDK-Pfad bestand der Build.
+- **Lokale Installation:** Das Vorschau-ZIP wurde nach `/mnt/Spiele_1/SteamLibrary/steamapps/common/RimWorld/Mods/` kopiert und dort als `RimWorldMultiplayerFoundation/` entpackt. Vorher lag dort kein Mod-Ordner, der überschrieben werden musste. Alle sieben entpackten Dateien wurden bytegenau gegen das ZIP verglichen; keine Abweichung. Dies ist ein Dateitest, kein Spiel-Laufzeittest.
+- **Nicht geprüft:** Steam-Overlay, Steam-Lobby-Erstellung und Einladung, P2P-/Relay-Verbindung, Empfang im tatsächlichen RimWorld-Prozess, zwei Steam-Konten an verschiedenen Heimanschlüssen. Das Ergebnis beweist deshalb noch keine funktionierende Internetverbindung.
+- **Bekannte Grenze:** Einladung bei laufendem Spiel vorgesehen; Kaltstart per Steam-Einladung nicht implementiert. Das veröffentlichte ZIP auf `main` enthält den Steam-Arbeitsbranch noch nicht. Das neue Vorschau-ZIP liegt nur lokal auf dem Arbeitsbranch.
+
+## Merge-Gate am 2026-10-15
+
+- `python3 scripts/validate_project_state.py` → Exit 0; 22 Pflichtdateien und 16 Aufgaben geprüft. Der zuvor doppelte `evidence`-Schlüssel in `STEAM-001` wurde behoben. Eine gezielte Probe mit doppeltem YAML-Schlüssel wurde vom erweiterten Validator abgewiesen.
+- `dotnet run --project tests/Network.Tests/Network.Tests.csproj -c Release --nologo` → Exit 0, drei Gruppen.
+- `dotnet run --project tests/Hosting.Tests/Hosting.Tests.csproj -c Release --nologo` → Exit 0, fünf Gruppen.
+- `dotnet run --project tests/Integration.Tests/Integration.Tests.csproj -c Release --nologo` → Exit 0, 16 Gruppen.
+- `dotnet build src/Multiplayer.Foundation.RimWorld/Multiplayer.Foundation.RimWorld.csproj -c Release --nologo -p:RimWorldManaged=/mnt/Spiele_1/SteamLibrary/steamapps/common/RimWorld/RimWorldLinux_Data/Managed` → Exit 0, null Warnungen/Fehler.
+- Die ausdrückliche menschliche Merge-Freigabe ist im [Review-Bericht](../reviews/2026-10-15-steam-transport-merge.md) dokumentiert. Diese Prüfungen ersetzen keinen Steam-Laufzeittest.

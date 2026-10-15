@@ -62,20 +62,34 @@ public sealed class FoundationServer : IAsyncDisposable
             catch (OperationCanceledException) { break; }
             catch (ObjectDisposedException) { break; }
             catch (SocketException) when (cancellationToken.IsCancellationRequested) { break; }
-            if (Interlocked.Increment(ref pendingConnections) > config.MaxClients)
-            { Interlocked.Decrement(ref pendingConnections); client.Close(); continue; }
-            Guid taskId = Guid.NewGuid();
-            Task task = HandleClientAsync(client, cancellationToken);
-            peerTasks[taskId] = task;
-            _ = task.ContinueWith(completed => peerTasks.TryRemove(taskId, out var ignored), TaskScheduler.Default);
+            AttachConnection(NetworkConnection.FromAcceptedClient(client));
         }
     }
 
-    private async Task HandleClientAsync(TcpClient tcp, CancellationToken serverToken)
+    public bool AttachConnection(NetworkConnection connection)
+    {
+        if (connection == null) throw new ArgumentNullException(nameof(connection));
+        if (listener == null || stopping.IsCancellationRequested ||
+            Interlocked.Increment(ref pendingConnections) > config.MaxClients)
+        {
+            if (listener != null && !stopping.IsCancellationRequested)
+                Interlocked.Decrement(ref pendingConnections);
+            connection.Dispose();
+            return false;
+        }
+        Guid taskId = Guid.NewGuid();
+        Task task = HandleClientAsync(connection, stopping.Token);
+        peerTasks[taskId] = task;
+        _ = task.ContinueWith(completed => peerTasks.TryRemove(taskId, out _),
+            CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        return true;
+    }
+
+    private async Task HandleClientAsync(NetworkConnection connection, CancellationToken serverToken)
     {
         Guid sessionId = Guid.NewGuid();
         Peer? peer = null;
-        using NetworkConnection connection = NetworkConnection.FromAcceptedClient(tcp);
+        using (connection)
         try
         {
             WireMessage? hello;

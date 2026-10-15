@@ -14,14 +14,14 @@ target_rimworld_version:
   runtime: Unity/Mono
   game_runtime_tested: true
   other_versions_verified: []
-current_phase: dual_mode_integrated_runtime_pending
+current_phase: steam_home_to_home_development
 git:
-  branch: main
-  base_branch: null
-  base_commit: null
+  branch: feat/steam-friends-p2p
+  base_branch: main
+  base_commit: 5b533cd
   current_commit_ref: HEAD
-  pushed: true
-  merged: true
+  pushed: false
+  merged: false
   dependent_branches:
   - docs/project-governance
   - feat/network-protocol
@@ -67,6 +67,10 @@ components:
     implementation: implemented
     verification: tests_passed
     integration: merged
+  steam_p2p:
+    implementation: in_progress
+    verification: build_passed
+    integration: approved
 verified_capabilities:
 - 'Archiv: 49 Einträge gegen eingebettetes Manifest geprüft.'
 - Drei XML-Beispiele syntaktisch geprüft; kein RimWorld-Laufzeitnachweis.
@@ -86,6 +90,9 @@ verified_capabilities:
 - 'Server: verzögertes gültiges Pong akzeptiert, Duplikat und ungesendete Nonce abgelehnt; SIGTERM beendet den Linux-Prozess mit verbundenem Client geordnet.'
 - 'Mod-ZIP: Release-Build gegen lokale 1.6-Assemblies, sieben Archiveinträge, Entpacken nach RimWorld/Mods und SHA-256 geprüft; kein Spiel-Laufzeittest.'
 - 'Direkt-Hosting: Host und Gast verbinden sich über denselben TCP-Lobby-Kern, Join/Ready und Host-Stopp in vier Testgruppen bestanden; dedizierter Server bleibt erhalten.'
+- 'Stream-Anschluss: zusätzlicher Client über eingespeisten Duplex-Stream, Handshake und Lobby-Beitritt getestet; Steam-Netzwerk selbst nicht getestet.'
+- 'Steam-Adapter gegen lokal installierte RimWorld-1.6-Steamworks.NET-Assembly mit null Warnungen gebaut; kein Steam-Laufzeittest.'
+- 'Steam-Vorschau-ZIP: sieben Einträge und SHA-256 geprüft; weder Steam-Betrieb noch Spiel-UI nachgewiesen.'
 known_issues:
 - 'RimWorld-UI im Spiel nicht verifiziert: -nographics verursacht Atlasfehler; grafischer Start
   kam auch im 180-s-Wiederholungsversuch nicht bis zu belegten Mod-Ladeeinträgen.'
@@ -94,9 +101,11 @@ known_issues:
 blockers:
 - Vollständiger RimWorld-UI-Laufzeittest in dieser Umgebung offen.
 - 1.7-Unterstützung ungeklärt.
+- Zwei Steam-Konten auf getrennten Heimanschlüssen für den Internet-Laufzeittest erforderlich.
 active_tasks:
 - TEST-001
-next_action: Aktualisiertes ZIP mit zwei RimWorld-1.6-Spielclients installieren; Direkt-Hosting und dedizierten Server im Spiel und über LAN manuell prüfen.
+- STEAM-001
+next_action: Steam-Pfad im laufenden RimWorld mit zwei Steam-Konten auf getrennten Heimanschlüssen prüfen; erst danach Installations-ZIP und Integrationsreview abschließen.
 documentation_refs:
   tasks: docs/ai/TASKS.yaml
   handoff: docs/ai/SESSION_HANDOFF.md
@@ -118,6 +127,9 @@ documentation_refs:
   direct_host: docs/verification/2026-10-15-direct-host.md
   dual_mode_merge: docs/verification/2026-10-15-dual-mode-merge.md
   dual_mode_review: docs/reviews/2026-10-15-dual-mode-merge.md
+  steam_home_host_design: docs/decisions/0010-steam-home-host.md
+  steam_transport_verification: docs/verification/2026-10-15-steam-transport.md
+  steam_transport_review: docs/reviews/2026-10-15-steam-transport-merge.md
   prompt_history: docs/governance/PROMPT_HISTORY.md
   prompt_review: docs/reviews/2026-10-15-prompt-archive.md
   prompt_archive_verification: docs/verification/2026-10-15-prompt-archive.md

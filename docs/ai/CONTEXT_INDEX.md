@@ -12,6 +12,7 @@
 | Protokoll/Netzwerk | `docs/protocol.md`, `docs/ai/ARCHITECTURE.md`, `src/Multiplayer.Foundation.Protocol/`, `src/Multiplayer.Foundation.Network/`, zugehörige Tests |
 | Server/Lobby | `docs/dedicated-server.md`, `docs/protocol.md`, `src/Multiplayer.Foundation.Server/`, `src/Multiplayer.Foundation.Lobby/`, Integrationstests |
 | RimWorld-Client | `docs/client.md`, `docs/build.md`, `references/verified-apis.md`, `src/Multiplayer.Foundation.RimWorld/`, `src/Multiplayer.Foundation.Network/LobbyClient.cs`, `tests/Client.Tests/`, Mod-XML, `docs/verification/2026-10-15-client.md` |
+| Steam-Hosting | `docs/decisions/0010-steam-home-host.md`, `docs/client.md`, `src/Multiplayer.Foundation.RimWorld/SteamLobbyBridge.cs`, `SteamPeerStream.cs`, `docs/verification/2026-10-15-steam-transport.md` |
 | Fehler | Fehlermeldung/Logs, betroffene Quelldateien und Tests, passende ADRs |
 | Verifikation/Deployment | `docs/testing.md`, `docs/build.md`, `docs/verification/`, `deployment/` |
 
