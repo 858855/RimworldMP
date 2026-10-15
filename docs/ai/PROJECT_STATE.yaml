@@ -20,7 +20,7 @@ git:
   base_branch: fix/server-heartbeat
   base_commit: 1192eb5
   current_commit_ref: HEAD
-  pushed: false
+  pushed: true
   merged: false
   dependent_branches:
   - docs/project-governance
@@ -96,7 +96,7 @@ blockers:
 - 1.7-Unterstützung ungeklärt.
 active_tasks:
 - TEST-001
-next_action: Korrigiertes ZIP mit Direkt-Hosting zu GitHub pushen; dann beide Wege in RimWorld 1.6 mit zwei Spielclients manuell prüfen.
+next_action: Aktualisiertes ZIP mit zwei RimWorld-1.6-Spielclients installieren; Direkt-Hosting und dedizierten Server im Spiel und über LAN manuell prüfen.
 documentation_refs:
   tasks: docs/ai/TASKS.yaml
   handoff: docs/ai/SESSION_HANDOFF.md
