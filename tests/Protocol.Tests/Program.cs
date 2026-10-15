@@ -259,6 +259,25 @@ await Run("world fingerprint and world status", () =>
     Equal(WorldStatus.Mismatch, LobbyPayloads.ReadState(LobbyPayloads.State(view)).Players[0].WorldStatus);
     return Task.CompletedTask;
 });
+await Run("pawn roster and requests", () =>
+{
+    PlayerKey owner = PlayerKey.Steam(76561198000000002UL);
+    var card = new PawnCard(7, true, owner, "Malvina 'Nails' Kim", "Nails", "Frau, 55, Baseliner", "Kinderstar", "Geologin",
+        new[] { "Misandrist", "Wimp" }, new[] { ("Bergbau", (byte)13, (byte)2), ("Schießen", (byte)255, (byte)0) },
+        new[] { "Einfache Arbeit" }, Array.Empty<string>());
+    var roster = new PawnRoster(new[] { card, new PawnCard(8, false, null, "Hunin Hune", "Hunin", "", "", "", Array.Empty<string>(),
+        Array.Empty<(string, byte, byte)>(), Array.Empty<string>(), Array.Empty<string>()) });
+    PawnRoster back = PawnRoster.Read(roster.ToPayload());
+    Equal(2, back.Cards.Count); Equal("Nails", back.Cards[0].ShortName); Equal(owner, back.Cards[0].Owner!.Value);
+    Equal((byte)13, back.Cards[0].Skills[0].Level); Equal(false, back.Cards[1].Selected); Equal(true, back.OwnsSelectedPawn(owner));
+    Equal(true, back.OwnerHash(owner).SequenceEqual(roster.OwnerHash(owner)));
+    Equal(false, back.OwnerHash(owner).SequenceEqual(back.OwnerHash(PlayerKey.Local(Guid.NewGuid()))));
+    var request = PawnRequest.Read(new PawnRequest(PawnRequestKind.Rename, 7, 0, "Steini").WithRequester(owner).ToPayload());
+    Equal(PawnRequestKind.Rename, request.Kind); Equal("Steini", request.Text); Equal(owner, request.Requester!.Value);
+    Throws<ProtocolException>(() => PawnRequest.Read(new byte[] { 9, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0 }));
+    Throws<ProtocolException>(() => new PawnRoster(Enumerable.Range(0, 25).Select(i => card).ToArray()));
+    return Task.CompletedTask;
+});
 Console.WriteLine($"PASS: {passed} protocol test groups");
 
 async Task Run(string name, Func<Task> body)

@@ -135,6 +135,9 @@ namespace Multiplayer.Foundation.Lobby
                 // Ready means "ready to start" in the lobby and "done" in character selection; nowhere else.
                 if (room.Phase != SetupPhase.Lobby && room.Phase != SetupPhase.Characters)
                     throw new LobbyRuleException(6, "Ready is not used in this setup step.");
+                // SETUP-004: "done" needs a pawn of your own in the starting group (ADR 0015).
+                if (ready && room.Phase == SetupPhase.Characters && (room.Roster == null || !room.Roster.OwnsSelectedPawn(member.Key)))
+                    throw new LobbyRuleException(6, "Take a pawn before you are done.");
                 if (ready && room.Phase == SetupPhase.Lobby)
                 {
                     ModStatus status = StatusOf(room, member);
@@ -260,6 +263,43 @@ namespace Multiplayer.Foundation.Lobby
             }
         }
 
+        /// <summary>
+        /// SETUP-004: the host publishes the starting pawns. A member whose own pawns changed loses "done" (ADR 0015).
+        /// Returns the change and the members to forward the roster to.
+        /// </summary>
+        public (LobbyChange Change, IReadOnlyList<Guid> Viewers) SetRoster(Guid actor, PawnRoster roster)
+        {
+            if (roster == null) throw new ArgumentNullException(nameof(roster));
+            lock (gate)
+            {
+                Room room = GetHostedRoom(actor);
+                if (room.Phase != SetupPhase.Characters) throw new LobbyRuleException(6, "Pawns are chosen during character selection.");
+                room.Roster = roster;
+                foreach (Guid id in room.Members)
+                {
+                    Member member = members[id];
+                    byte[] hash = roster.OwnerHash(member.Key);
+                    if (member.PawnHash != null && !member.PawnHash.SequenceEqual(hash)) member.Ready = false;
+                    if (!roster.OwnsSelectedPawn(member.Key)) member.Ready = false;
+                    member.PawnHash = hash;
+                }
+                room.Revision++;
+                return (Change(room, actor), room.Members.Where(id => id != actor).ToArray());
+            }
+        }
+
+        /// <summary>SETUP-004: a guest's pawn request goes to the host, stamped with the guest's player key.</summary>
+        public (Guid Host, PlayerKey Requester) PawnRequestRoute(Guid actor)
+        {
+            lock (gate)
+            {
+                Member member = GetMember(actor); Room room = GetCurrentRoom(member);
+                if (room.Phase != SetupPhase.Characters) throw new LobbyRuleException(6, "Pawns are chosen during character selection.");
+                if (room.Host == actor) throw new LobbyRuleException(6, "The host changes pawns in its own game.");
+                return (room.Host, member.Key);
+            }
+        }
+
         /// <summary>SETUP-001: the host's page mirror goes to every other member while setup runs.</summary>
         public IReadOnlyList<Guid> SetupSettingsRecipients(Guid actor)
         {
@@ -327,13 +367,14 @@ namespace Multiplayer.Foundation.Lobby
         // Ready and flags belong to one phase; a lobby "ready" must never count as "done" later.
         private void EnterPhase(Room room, SetupPhase phase)
         {
-            room.Phase = phase; room.Revision++;
-            foreach (Guid id in room.Members) { members[id].Ready = false; members[id].Flag = null; }
+            room.Phase = phase; room.Revision++; room.Roster = null;
+            foreach (Guid id in room.Members) { members[id].Ready = false; members[id].Flag = null; members[id].PawnHash = null; }
         }
         private void ResetSetup(Room room)
         {
-            room.Phase = SetupPhase.Lobby; room.Site = null; room.HostWorld = null;
-            foreach (Guid id in room.Members) { members[id].Ready = false; members[id].Flag = null; members[id].World = null; }
+            room.Phase = SetupPhase.Lobby; room.Site = null; room.HostWorld = null; room.Roster = null;
+            foreach (Guid id in room.Members)
+            { members[id].Ready = false; members[id].Flag = null; members[id].World = null; members[id].PawnHash = null; }
         }
         private WorldStatus WorldStatusOf(Room room, Member member)
         {
@@ -365,6 +406,7 @@ namespace Multiplayer.Foundation.Lobby
             public PlayerKey Key { get; }
             public ModManifestSummary? Mods { get; set; }
             public byte[]? World { get; set; }
+            public byte[]? PawnHash { get; set; }
             public Guid? Room { get; set; }
             public bool Ready { get; set; }
             public SiteTile? Flag { get; set; }
@@ -380,6 +422,7 @@ namespace Multiplayer.Foundation.Lobby
             public SetupPhase Phase { get; set; } = SetupPhase.Lobby;
             public SiteTile? Site { get; set; }
             public byte[]? HostWorld { get; set; }
+            public PawnRoster? Roster { get; set; }
             public List<Guid> Members { get; } = new List<Guid>();
         }
     }

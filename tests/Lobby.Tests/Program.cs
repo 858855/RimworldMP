@@ -105,6 +105,8 @@ Expect(6, () => setup.DecideSite(host, a));
 
 LobbyView characters = setup.AdvanceSetup(host, SetupPhase.Characters).State!;
 Assert(characters.Players.All(p => !p.Ready), "lobby ready never counts as done");
+Expect(6, () => setup.Ready(g1, true));                                               // SETUP-004: done needs a pawn
+setup.SetRoster(host, RosterFor(characters.Players.Select(p => p.Key).ToArray()));
 setup.Ready(host, true); setup.Ready(g1, true);
 Expect(6, () => setup.AdvanceSetup(host, SetupPhase.Generating));                     // g2 not done, no force-start
 setup.Ready(g1, false);
@@ -128,7 +130,9 @@ foreach (SetupPhase next in new[] { SetupPhase.Storyteller, SetupPhase.WorldPara
     setup.AdvanceSetup(host, next);
 setup.SetHostWorld(host, world); setup.ReportWorld(g1, world); setup.ReportWorld(g2, world);
 setup.AdvanceSetup(host, SetupPhase.SiteSelection);
-setup.DecideSite(host, chosen); setup.AdvanceSetup(host, SetupPhase.Characters);
+setup.DecideSite(host, chosen);
+LobbyView againCharacters = setup.AdvanceSetup(host, SetupPhase.Characters).State!;
+setup.SetRoster(host, RosterFor(againCharacters.Players.Select(p => p.Key).ToArray()));
 setup.Ready(host, true); setup.Ready(g1, true);
 setup.Leave(g2);
 Assert(setup.AdvanceSetup(host, SetupPhase.Generating).State!.Phase == SetupPhase.Generating, "departed guest no longer blocks");
@@ -189,6 +193,49 @@ foreach (bool allowSolo in new[] { false, true })
 }
 Console.WriteLine("PASS: solo start only with the debug option");
 
+// SETUP-004: roster from the host only; done needs an own selected pawn; any change to your pawns resets done.
+var pawns = new LobbyRegistry(4, 1);
+Guid pHost = Guid.NewGuid(), pGuest = Guid.NewGuid();
+PlayerKey pHostKey = PlayerKey.Local(Guid.NewGuid()), pGuestKey = PlayerKey.Local(Guid.NewGuid());
+pawns.AddMember(pHost, "Host", pHostKey); pawns.AddMember(pGuest, "Guest", pGuestKey);
+pawns.Join(pGuest, pawns.Create(pHost, "Pawns", 4).State!.Id);
+pawns.Ready(pHost, true); pawns.Ready(pGuest, true);
+pawns.AdvanceSetup(pHost, SetupPhase.Scenario);
+foreach (SetupPhase next in new[] { SetupPhase.Storyteller, SetupPhase.WorldParams, SetupPhase.WorldTransfer })
+    pawns.AdvanceSetup(pHost, next);
+byte[] pWorld = Enumerable.Repeat((byte)4, 32).ToArray();
+pawns.SetHostWorld(pHost, pWorld); pawns.ReportWorld(pGuest, pWorld);
+pawns.AdvanceSetup(pHost, SetupPhase.SiteSelection); pawns.DecideSite(pHost, new SiteTile(9, 0));
+Expect(6, () => pawns.SetRoster(pHost, RosterFor(pHostKey)));                         // not yet in character selection
+pawns.AdvanceSetup(pHost, SetupPhase.Characters);
+Expect(3, () => pawns.SetRoster(pGuest, RosterFor(pGuestKey)));                       // only the host publishes pawns
+Expect(6, () => pawns.PawnRequestRoute(pHost));                                       // host changes pawns locally
+Assert(pawns.PawnRequestRoute(pGuest) == (pHost, pGuestKey), "guest requests go to the host with the guest's key");
+var onlyHost = pawns.SetRoster(pHost, RosterFor(pHostKey));
+Assert(onlyHost.Viewers.Single() == pGuest, "roster goes to the guest");
+Expect(6, () => pawns.Ready(pGuest, true));                                           // guest owns no pawn yet
+pawns.SetRoster(pHost, RosterFor(pHostKey, pGuestKey));
+pawns.Ready(pHost, true);
+Assert(pawns.Ready(pGuest, true).State!.Players.All(p => p.Ready), "both done with own pawns");
+Assert(pawns.SetRoster(pHost, RosterFor(pHostKey, pGuestKey)).Change.State!.Players.All(p => p.Ready), "unchanged roster keeps done");
+var renamed = RosterFor(pHostKey, pGuestKey);
+renamed = new PawnRoster(new[] { renamed.Cards[0], new PawnCard(101, true, pGuestKey, "Renamed", "R", "Age 30", "", "",
+    Array.Empty<string>(), Array.Empty<(string, byte, byte)>(), Array.Empty<string>(), Array.Empty<string>()) });
+LobbyView afterRename = pawns.SetRoster(pHost, renamed).Change.State!;
+Assert(afterRename.Players.Single(p => p.Id == pHost).Ready && !afterRename.Players.Single(p => p.Id == pGuest).Ready,
+    "a change to the guest's pawn resets only the guest");
+pawns.Ready(pGuest, true);
+var leftBehind = new PawnRoster(new[] { renamed.Cards[0], new PawnCard(101, false, pGuestKey, "Renamed", "R", "Age 30", "", "",
+    Array.Empty<string>(), Array.Empty<(string, byte, byte)>(), Array.Empty<string>(), Array.Empty<string>()) });
+Assert(!pawns.SetRoster(pHost, leftBehind).Change.State!.Players.Single(p => p.Id == pGuest).Ready,
+    "a pawn moved out of the starting group no longer counts");
+Expect(6, () => pawns.AdvanceSetup(pHost, SetupPhase.Generating));
+Console.WriteLine("PASS: pawn roster from the host, done needs an own pawn, changes reset done (SETUP-004)");
+
+// One selected pawn per given owner (SETUP-004 test helper).
+static PawnRoster RosterFor(params PlayerKey[] owners) => new PawnRoster(owners.Select((owner, i) => new PawnCard(100 + i, true, owner,
+    "Pawn " + i, "P" + i, "Age 30", "", "", Array.Empty<string>(), Array.Empty<(string, byte, byte)>(),
+    Array.Empty<string>(), Array.Empty<string>())).ToArray());
 static void Assert(bool condition, string name)
 { if (!condition) throw new Exception("FAIL: " + name); }
 static void Expect(byte code, Action action)

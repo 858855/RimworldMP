@@ -36,6 +36,9 @@ namespace Multiplayer.Foundation.Protocol
         SetupSettings = 30,
         // SETUP-002
         WorldReady = 31,
-        WorldLoaded = 32
+        WorldLoaded = 32,
+        // SETUP-004
+        PawnRoster = 33,
+        PawnRequest = 34
     }
 }

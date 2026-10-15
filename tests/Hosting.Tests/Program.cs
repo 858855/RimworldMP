@@ -287,6 +287,7 @@ await using (var setupHost = await ListenHost.StartAsync("127.0.0.1", 0, "Host",
     LobbyView decided = await StateAsync(hostClient, MessageType.SiteDecided, ++request, SetupPayloads.Site(suggestion));
     Assert(decided.Phase == SetupPhase.Ideology && decided.Site == suggestion, "host chose the flagged site");
     await StateAsync(hostClient, MessageType.SetupAdvance, ++request, SetupPayloads.Advance(SetupPhase.Characters));
+    await StateAsync(hostClient, MessageType.PawnRoster, ++request, RosterFor(PlayerKey.Steam(76561198000000030UL), setupGuestKey).ToPayload());
     await StateAsync(hostClient, MessageType.PlayerReadyChanged, ++request, LobbyPayloads.Bool(true));
     Assert(await ErrorCodeAsync(hostClient, MessageType.SetupAdvance, ++request, SetupPayloads.Advance(SetupPhase.Generating)) == 6,
         "host cannot continue while the guest is still choosing");
@@ -404,6 +405,45 @@ await using (var worldHost = await ListenHost.StartAsync("127.0.0.1", 0, "Host",
     Assert(siteSelection.Phase == SetupPhase.SiteSelection, "site selection opens once every fingerprint matches");
 }
 Console.WriteLine("PASS: world transfer and fingerprint check gate site selection (SETUP-002)");
+
+// SETUP-004 end to end: the guest's request reaches the host stamped with the guest's key; the host's roster reaches
+// the guest; done needs an own pawn.
+await using (var pawnHost = await ListenHost.StartAsync("127.0.0.1", 0, "Host", "Pawn Room", 4, PlayerKey.Steam(76561198000000100UL)))
+{
+    PlayerKey pawnHostKey = PlayerKey.Steam(76561198000000100UL), pawnGuestKey = PlayerKey.Steam(76561198000000101UL);
+    LobbyView pawnRoom = LobbyPayloads.ReadState((await ReceiveAsync(pawnHost.Client, MessageType.LobbyStateUpdate)).Payload);
+    using var pawnLink = new SteamLikeLink();
+    Assert(pawnHost.AttachConnection(NetworkConnection.FromDuplexStream(pawnLink.A), pawnGuestKey), "pawn guest attached");
+    using LobbyClient pawnGuest = await LobbyClient.ConnectOverStreamAsync(pawnLink.B, "Guest", TimeSpan.FromSeconds(4),
+        CancellationToken.None, pawnGuestKey);
+    LobbyClient ph = pawnHost.Client;
+    uint q = 1100;
+    await StateAsync(pawnGuest, MessageType.JoinLobby, ++q, LobbyPayloads.GuidValue(pawnRoom.Id));
+    await StateAsync(ph, MessageType.PlayerReadyChanged, ++q, LobbyPayloads.Bool(true));
+    await StateAsync(pawnGuest, MessageType.PlayerReadyChanged, ++q, LobbyPayloads.Bool(true));
+    foreach (SetupPhase next in new[] { SetupPhase.Scenario, SetupPhase.Storyteller, SetupPhase.WorldParams, SetupPhase.WorldTransfer })
+        await StateAsync(ph, MessageType.SetupAdvance, ++q, SetupPayloads.Advance(next));
+    byte[] pawnWorld = Enumerable.Repeat((byte)6, 32).ToArray();
+    await StateAsync(ph, MessageType.WorldReady, ++q, SetupPayloads.Fingerprint(pawnWorld));
+    await StateAsync(pawnGuest, MessageType.WorldLoaded, ++q, SetupPayloads.Fingerprint(pawnWorld));
+    await StateAsync(ph, MessageType.SetupAdvance, ++q, SetupPayloads.Advance(SetupPhase.SiteSelection));
+    await StateAsync(ph, MessageType.SiteDecided, ++q, SetupPayloads.Site(new SiteTile(7, 0)));
+    await StateAsync(ph, MessageType.SetupAdvance, ++q, SetupPayloads.Advance(SetupPhase.Characters));
+    // A client cannot claim to be someone else: the server replaces the requester.
+    var forged = new PawnRequest(PawnRequestKind.Claim, 101, 0, "", pawnHostKey);
+    await pawnGuest.SendAsync(MessageType.PawnRequest, ++q, forged.ToPayload());
+    PawnRequest atHost = PawnRequest.Read((await ReceiveAsync(ph, MessageType.PawnRequest)).Payload);
+    Assert(atHost.Kind == PawnRequestKind.Claim && atHost.PawnId == 101 && atHost.Requester == pawnGuestKey,
+        "request reaches the host with the server-stamped guest key");
+    Assert(await ErrorCodeAsync(pawnGuest, MessageType.PlayerReadyChanged, ++q, LobbyPayloads.Bool(true)) == 6, "no pawn, not done");
+    await StateAsync(ph, MessageType.PawnRoster, ++q, RosterFor(pawnHostKey, pawnGuestKey).ToPayload());
+    PawnRoster guestSees = PawnRoster.Read((await ReceiveAsync(pawnGuest, MessageType.PawnRoster)).Payload);
+    Assert(guestSees.Cards.Count == 2 && guestSees.OwnsSelectedPawn(pawnGuestKey), "guest sees the roster with its pawn");
+    LobbyView done = await StateAsync(pawnGuest, MessageType.PlayerReadyChanged, ++q, LobbyPayloads.Bool(true));
+    Assert(done.Players.Single(p => p.Key == pawnGuestKey).Ready, "guest done with its own pawn");
+    Assert(await ErrorCodeAsync(ph, MessageType.PawnRequest, ++q, forged.ToPayload()) == 6, "host does not send requests");
+}
+Console.WriteLine("PASS: pawn requests stamped and routed to the host, roster to guests, done needs a pawn (SETUP-004)");
 
 // Sends a request and returns the error code the server answers with.
 static async Task<byte> ErrorCodeAsync(LobbyClient client, MessageType type, uint requestId, byte[] payload)
@@ -538,6 +578,10 @@ static async Task<WireMessage> ReceiveAsync(LobbyClient client, MessageType want
     throw new TimeoutException("Missing " + wanted);
 }
 
+// One selected pawn per given owner (SETUP-004 test helper).
+static PawnRoster RosterFor(params PlayerKey[] owners) => new PawnRoster(owners.Select((owner, i) => new PawnCard(100 + i, true, owner,
+    "Pawn " + i, "P" + i, "Age 30", "", "", Array.Empty<string>(), Array.Empty<(string, byte, byte)>(),
+    Array.Empty<string>(), Array.Empty<string>())).ToArray());
 static void Assert(bool condition, string label)
 {
     if (!condition) throw new Exception("FAIL: " + label);

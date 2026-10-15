@@ -282,6 +282,22 @@ public sealed class FoundationServer : IAsyncDisposable
             case MessageType.SiteDecided:
                 await PublishAsync(lobbies.DecideSite(peer.Id, SetupPayloads.ReadSite(message.Payload)), null, token, message.RequestId).ConfigureAwait(false);
                 break;
+            case MessageType.PawnRoster:
+                var (rosterChange, rosterViewers) = lobbies.SetRoster(peer.Id, PawnRoster.Read(message.Payload));
+                foreach (Guid viewer in rosterViewers)
+                    if (peers.TryGetValue(viewer, out Peer? rosterTarget))
+                        try { await rosterTarget.Connection.SendAsync(new WireMessage(MessageType.PawnRoster, 0, message.Payload), token).ConfigureAwait(false); }
+                        catch (IOException) { rosterTarget.Connection.Dispose(); }
+                        catch (ObjectDisposedException) { }
+                await PublishAsync(rosterChange, null, token, message.RequestId).ConfigureAwait(false);
+                break;
+            case MessageType.PawnRequest:
+                PawnRequest pawnRequest = PawnRequest.Read(message.Payload);
+                var (pawnHost, requester) = lobbies.PawnRequestRoute(peer.Id);
+                if (peers.TryGetValue(pawnHost, out Peer? pawnOwner))
+                    await pawnOwner.Connection.SendAsync(new WireMessage(MessageType.PawnRequest, 0,
+                        pawnRequest.WithRequester(requester).ToPayload()), token).ConfigureAwait(false);
+                break;
             case MessageType.WorldReady:
                 await PublishAsync(lobbies.SetHostWorld(peer.Id, SetupPayloads.ReadFingerprint(message.Payload)), null, token,
                     message.RequestId).ConfigureAwait(false);
