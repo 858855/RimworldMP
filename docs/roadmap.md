@@ -1,5 +1,7 @@
 # Roadmap (Planung, keine Funktionszusage)
 
+Detailplan mit Architektur, Meilensteinen und Abnahmekriterien: [plans/rimworldmp-full-plan.md](plans/rimworldmp-full-plan.md) (Entwurf, Review offen).
+
 | Version | Ziel | Voraussetzung |
 |---|---|---|
 | 0.1 | Echte Verbindung, Lobby, Linux-Server, RimWorld-Client | Protokoll, Builds, Zwei-Client- und Game-Test |

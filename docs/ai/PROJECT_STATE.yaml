@@ -129,6 +129,7 @@ active_tasks:
 - UI-002
 - CHAT-001
 - NET-002
+- PLAN-001
 next_action: Gemergten Stand als ZIP installieren; mit zwei Spielern Steam-Lobby und IP-Lobby mit UPnP aus fremdem Netz prüfen, dabei Chat, Ready, Disconnect und Adresse kopieren testen.
 documentation_refs:
   tasks: docs/ai/TASKS.yaml
@@ -169,4 +170,7 @@ documentation_refs:
   internet_reachability: docs/verification/2026-10-15-internet-reachability.md
   internet_reachability_review: docs/reviews/2026-10-15-internet-reachability.md
   internet_reachability_decision: docs/decisions/0012-internet-reachability.md
+  full_plan: docs/plans/rimworldmp-full-plan.md
+  full_plan_verification: docs/verification/2026-10-15-full-plan.md
+  full_plan_review: docs/reviews/2026-10-15-full-plan.md
 last_updated: '2026-10-15'

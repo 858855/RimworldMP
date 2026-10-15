@@ -14,6 +14,7 @@
 | RimWorld-Client | `docs/client.md`, `docs/build.md`, `references/verified-apis.md`, `src/Multiplayer.Foundation.RimWorld/`, `src/Multiplayer.Foundation.Network/LobbyClient.cs`, `tests/Client.Tests/`, Mod-XML, `docs/verification/2026-10-15-client.md` |
 | Steam-Hosting | `docs/decisions/0010-steam-home-host.md`, `docs/client.md`, `src/Multiplayer.Foundation.RimWorld/SteamLobbyBridge.cs`, `SteamPeerStream.cs`, `docs/verification/2026-10-15-steam-transport.md`, `docs/verification/2026-10-15-steam-user-connection.md` |
 | Hauptmenü/Chat | `docs/decisions/0011-main-menu-and-lobby-chat.md`, `docs/client.md`, `docs/protocol.md`, `MainMenuOptionPatch.cs`, `FoundationWindow.cs`, `FoundationMod.cs`, `FoundationServer.cs`, zugehörige Tests |
+| Planung / nächste Meilensteine | `docs/plans/rimworldmp-full-plan.md` (Gesamtplan bis 1.0, Englisch), Einträge `VER-001` … `REL-001` in `TASKS.yaml` |
 | Fehler | Fehlermeldung/Logs, betroffene Quelldateien und Tests, passende ADRs |
 | Verifikation/Deployment | `docs/testing.md`, `docs/build.md`, `docs/verification/`, `deployment/` |
 

@@ -532,3 +532,712 @@ tasks:
   - docs/verification/2026-10-15-internet-reachability.md
   - docs/verification/2026-10-15-merge-menu-chat-internet.md
   - docs/decisions/0012-internet-reachability.md
+- id: PLAN-001
+  title: 'Gesamtplan bis 1.0 mit Gameplay-Synchronisation'
+  goal: 'Ein eigenständiger Plan, aus dem Menschen und KI-Agenten Arbeit übernehmen können: Lobby-Prüfung, gemeinsamer Spielstart, Lockstep-Gameplay-Sync, Saves/Join, Desync, Mod-API, Meilensteine bis 1.0.'
+  description: 'Reiner Planungs- und Dokumentationsauftrag, kein Code. Offene Fragen in Plan §12 brauchen eine Entscheidung des Projektinhabers.'
+  priority: high
+  components:
+  - governance
+  depends_on:
+  - DOC-001
+  acceptance:
+  - 'Plan unter docs/plans/rimworldmp-full-plan.md'
+  - 'Jeder Meilenstein aus Plan §10 hat einen TASKS.yaml-Eintrag mit gleicher ID'
+  - 'scripts/validate_project_state.py besteht'
+  implementation: implemented
+  verification: tests_passed
+  integration: ready_for_human_review
+  branch: docs/full-multiplayer-plan
+  evidence:
+  - docs/plans/rimworldmp-full-plan.md
+  - docs/verification/2026-10-15-full-plan.md
+  - docs/reviews/2026-10-15-full-plan.md
+  plan_ref: docs/plans/rimworldmp-full-plan.md
+- id: VER-001
+  title: 'RimWorld-APIs und Machbarkeit für Plan Teil A-B prüfen'
+  goal: 'Alle im Plan mit [U] markierten APIs gegen die lokale 1.6-Assembly per Reflection belegen und Kernannahmen messen.'
+  description: 'Plan §10 Version 0.2; lokale Roadmap F1, F3.'
+  priority: critical
+  components:
+  - rimworld_adapter
+  depends_on:
+  - ENV-001
+  acceptance:
+  - 'Jede [U]-API aus Plan Teil A-B mit Status in references/verified-apis.md'
+  - 'Welt ohne Karte speichern, laden und auf der Startortseite anzeigen ist nachgewiesen oder widerlegt'
+  - 'Größe von Welt- und Spielstand gemessen'
+  - 'Threads und Jobs im 1.6-Tickpfad aufgelistet'
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: null
+  evidence: []
+  plan_ref: docs/plans/rimworldmp-full-plan.md
+- id: ID-001
+  title: 'Persistente Spieleridentität (PlayerKey)'
+  goal: 'Spieler über Neustarts und Reconnects hinweg eindeutig erkennen.'
+  description: 'Plan §4; lokale Roadmap F5.'
+  priority: high
+  components:
+  - protocol
+  - network_core
+  - rimworld_adapter
+  depends_on:
+  - CLIENT-001
+  - STEAM-001
+  acceptance:
+  - 'Hello überträgt den PlayerKey'
+  - 'Steam nutzt die SteamID, sonst eine einmalig erzeugte und gespeicherte GUID'
+  - 'Schlüssel übersteht einen Spielneustart'
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: null
+  evidence: []
+  plan_ref: docs/plans/rimworldmp-full-plan.md
+- id: MOD-001
+  title: 'Mod-Manifest und Lobby-Prüfung von Mods und Ladereihenfolge'
+  goal: 'Bereit ist gesperrt, wenn Spielbuild, Mods, Reihenfolge oder Inhalt eines Mitglieds vom Host abweichen.'
+  description: 'Plan §5.1; lokale Roadmap L3, L4.'
+  priority: critical
+  components:
+  - protocol
+  - lobby_core
+  - dedicated_server
+  - rimworld_adapter
+  depends_on:
+  - VER-001
+  - LOBBY-001
+  - CLIENT-001
+  acceptance:
+  - 'Zwei echte Clients mit gleichem Setup zeigen Match'
+  - 'Abweichende Reihenfolge, fehlender Mod, zusätzlicher Mod und andere Version füllen jeweils den richtigen Berichtsabschnitt und sperren Bereit'
+  - 'Server lehnt Bereit bei Mismatch ab (Test)'
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: null
+  evidence: []
+  plan_ref: docs/plans/rimworldmp-full-plan.md
+- id: START-001
+  title: 'Start-Knopf und Setup-Zustandsmaschine'
+  goal: 'Der Host startet die gemeinsame Spieleinrichtung, sobald alle bereit sind und die Mods übereinstimmen.'
+  description: 'Plan §5.2, §6.2; lokale Roadmap L2.'
+  priority: critical
+  components:
+  - protocol
+  - lobby_core
+  - dedicated_server
+  - rimworld_adapter
+  depends_on:
+  - MOD-001
+  acceptance:
+  - 'Alle Aktivierungsbedingungen und Begründungstexte korrekt'
+  - 'Server prüft beim Start erneut'
+  - 'Lobby-Sperre, Abbruch und keine Host-Migration während der Einrichtung getestet'
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: null
+  evidence: []
+  plan_ref: docs/plans/rimworldmp-full-plan.md
+- id: XFER-001
+  title: 'Chunk-Kanal für große Übertragungen'
+  goal: 'Große Dateien (Manifest, Welt, Spielstand) geordnet, hashgeprüft und mit Gegendruck übertragen.'
+  description: 'Plan §6.4; lokale Roadmap S4 (Teil).'
+  priority: critical
+  components:
+  - protocol
+  - network_core
+  - dedicated_server
+  - steam_p2p
+  depends_on:
+  - NET-001
+  - STEAM-001
+  acceptance:
+  - '50-MB-Nutzlast über TCP und Steam P2P mit gleichem SHA-256'
+  - 'Gegendruck hält die Steam-Empfangsqueue unter 1 MiB'
+  - 'Wiederaufnahme nach verlorenem Ack getestet'
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: null
+  evidence: []
+  plan_ref: docs/plans/rimworldmp-full-plan.md
+- id: SETUP-001
+  title: 'Host-Seiten-Hooks und Setup-Ansicht der Clients'
+  goal: 'Clients sehen die Auswahl des Hosts bei Szenario, Erzähler, Welt und Ideoligion live.'
+  description: 'Plan §6.1, §6.3; lokale Roadmap S1.'
+  priority: high
+  components:
+  - rimworld_adapter
+  - protocol
+  depends_on:
+  - START-001
+  acceptance:
+  - 'Auswahl der Schritte 1, 2, 3 und 5 erscheint live beim Client, einschließlich Zurück'
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: null
+  evidence: []
+  plan_ref: docs/plans/rimworldmp-full-plan.md
+- id: SETUP-002
+  title: 'Weltübertragung und Welt-Fingerprint'
+  goal: 'Die vom Host erzeugte Welt kommt bei allen Clients identisch an.'
+  description: 'Plan §6.3; lokale Roadmap S1.'
+  priority: high
+  components:
+  - rimworld_adapter
+  - protocol
+  depends_on:
+  - SETUP-001
+  - XFER-001
+  acceptance:
+  - 'Zwei Clients laden die Host-Welt mit gleichem Fingerprint'
+  - 'Eine erzwungene Mod-Abweichung bricht mit Bericht ab'
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: null
+  evidence: []
+  plan_ref: docs/plans/rimworldmp-full-plan.md
+- id: SETUP-003
+  title: 'Abstimmung über den Startort'
+  goal: 'Alle Spieler stimmen über den Startort ab; der Host kann überstimmen.'
+  description: 'Plan §6.3; lokale Roadmap S1.'
+  priority: medium
+  components:
+  - rimworld_adapter
+  - lobby_core
+  - protocol
+  depends_on:
+  - SETUP-002
+  acceptance:
+  - 'Stimmen, Markierungen, Timer, Gleichstandsregel und Überstimmen mit zwei Clients geprüft'
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: null
+  evidence: []
+  plan_ref: docs/plans/rimworldmp-full-plan.md
+- id: SETUP-004
+  title: 'Gemeinsames Charakterfenster'
+  goal: 'Jeder Spieler wählt und bearbeitet die Spielfigur, die er steuert.'
+  description: 'Plan §6.3; lokale Roadmap S1, P1.'
+  priority: high
+  components:
+  - rimworld_adapter
+  - lobby_core
+  - protocol
+  depends_on:
+  - SETUP-003
+  - ID-001
+  acceptance:
+  - 'Beanspruchen, neu würfeln, tauschen, umbenennen und Bereit funktionieren'
+  - 'Anfragen von Nicht-Besitzern werden abgelehnt'
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: null
+  evidence: []
+  plan_ref: docs/plans/rimworldmp-full-plan.md
+- id: SETUP-005
+  title: 'Spielstandübertragung und pausierte Landung'
+  goal: 'Alle Spieler laden denselben Startspielstand und warten pausiert aufeinander.'
+  description: 'Plan §6.3; lokale Roadmap S1.'
+  priority: critical
+  components:
+  - rimworld_adapter
+  - protocol
+  depends_on:
+  - SETUP-004
+  acceptance:
+  - 'Beide Clients laden einen Spielstand mit gleichem SHA-256, Ort, Figuren und Besitzern'
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: null
+  evidence: []
+  plan_ref: docs/plans/rimworldmp-full-plan.md
+- id: OWN-001
+  title: 'Besitz-Komponente und Besitzeranzeige'
+  goal: 'Speichern, welcher Spieler welche Figur steuert, und es sichtbar machen.'
+  description: 'Plan §7.7; lokale Roadmap P1.'
+  priority: medium
+  components:
+  - rimworld_adapter
+  depends_on:
+  - SETUP-005
+  acceptance:
+  - 'Besitzerlabels und -farben sichtbar'
+  - 'Besitz übersteht Speichern und Laden'
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: null
+  evidence: []
+  plan_ref: docs/plans/rimworldmp-full-plan.md
+- id: TOOL-001
+  title: 'Zwei-Instanzen-Testaufbau und Determinismus-Harness'
+  goal: 'Zwei RimWorld-1.6-Prozesse auf einem PC mit gleichem Spielstand und Befehlsskript vergleichen.'
+  description: 'Plan §9; lokale Roadmap F4.'
+  priority: high
+  components:
+  - rimworld_adapter
+  depends_on:
+  - VER-001
+  acceptance:
+  - 'Zwei Instanzen mit getrennten Speicherdaten laufen parallel'
+  - 'Ein Skript speist gleichen Spielstand und gleiche Befehle ein und vergleicht Zustands-Hashes pro Tick'
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: null
+  evidence: []
+  plan_ref: docs/plans/rimworldmp-full-plan.md
+- id: DET-001
+  title: 'Determinismus-Spike (Go/No-Go für Lockstep)'
+  goal: 'Belegen, dass RimWorld 1.6 bei gleichem Spielstand ohne Eingaben auf zwei Instanzen gleich läuft.'
+  description: 'Plan §7.4, §10; lokale Roadmap F4. Früh und parallel zu Version 0.3 durchführen.'
+  priority: critical
+  components:
+  - rimworld_adapter
+  depends_on:
+  - VER-001
+  - TOOL-001
+  acceptance:
+  - 'Zwei Instanzen, gleicher Spielstand, keine Eingaben, Rand-Neuseed pro Tick: Hashes über 60000 Ticks gleich'
+  - 'Jede Abweichung ist ursächlich geklärt und behebbar, sonst wird der Plan überarbeitet'
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: null
+  evidence: []
+  plan_ref: docs/plans/rimworldmp-full-plan.md
+- id: SYNC-001
+  title: 'Sequencer, Tick-Horizont und Tick-Treiber'
+  goal: 'Der Server ordnet Befehle und gibt Ticks frei; Clients simulieren nur bis zum Horizont.'
+  description: 'Plan §7.1; lokale Roadmap S2.'
+  priority: critical
+  components:
+  - session_core
+  - dedicated_server
+  - rimworld_adapter
+  - protocol
+  depends_on:
+  - DET-001
+  - SETUP-005
+  acceptance:
+  - 'Server-Unit-Tests für Reihenfolge und Flusskontrolle'
+  - 'Zwei Clients laufen im Lockstep; der langsamste bestimmt das Tempo'
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: null
+  evidence: []
+  plan_ref: docs/plans/rimworldmp-full-plan.md
+- id: SYNC-002
+  title: 'Befehls-Pipeline und Serializer-Registry'
+  goal: 'Spieleraktionen als Befehle mit stabilen Referenzen erfassen und ausführen.'
+  description: 'Plan §7.2, §7.3; lokale Roadmap S2.'
+  priority: critical
+  components:
+  - session_core
+  - rimworld_adapter
+  - protocol
+  depends_on:
+  - SYNC-001
+  acceptance:
+  - 'Roundtrip für jeden Typ aus Plan §7.3'
+  - 'Fehlende Referenzen werden überall deterministisch zum No-op'
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: null
+  evidence: []
+  plan_ref: docs/plans/rimworldmp-full-plan.md
+- id: SYNC-003
+  title: 'Geschwindigkeit und Pause'
+  goal: 'Pause und Spielgeschwindigkeit als Befehle mit Host-Richtlinie.'
+  description: 'Plan §7.1; lokale Roadmap S4.'
+  priority: high
+  components:
+  - session_core
+  - rimworld_adapter
+  depends_on:
+  - SYNC-001
+  acceptance:
+  - 'Pause, Geschwindigkeit und Richtlinien mit zwei Clients geprüft'
+  - 'Vanilla-Geschwindigkeitstasten werden abgefangen'
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: null
+  evidence: []
+  plan_ref: docs/plans/rimworldmp-full-plan.md
+- id: SYNC-004
+  title: 'Tier-1-Abdeckung (Grundkolonie spielbar)'
+  goal: 'Alle Tier-1-Aktionen aus Plan §7.5 synchronisieren.'
+  description: 'Plan §7.5; lokale Roadmap S3.'
+  priority: critical
+  components:
+  - rimworld_adapter
+  depends_on:
+  - SYNC-002
+  - SYNC-003
+  acceptance:
+  - 'Jede Tier-1-Zeile hat einen Zwei-Client-Test mit gleichen Hashes danach'
+  - '30-Minuten-Lauf mit wachsender Kolonie ohne Desync'
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: null
+  evidence: []
+  plan_ref: docs/plans/rimworldmp-full-plan.md
+- id: SYNC-005
+  title: 'Rechteprüfung bei Befehlen'
+  goal: 'Die Besitz- und Rechtematrix deterministisch in der Befehlsausführung durchsetzen.'
+  description: 'Plan §7.7; lokale Roadmap P4.'
+  priority: high
+  components:
+  - rimworld_adapter
+  - session_core
+  depends_on:
+  - SYNC-004
+  - OWN-001
+  acceptance:
+  - 'Matrix aus Plan §7.7 wird deterministisch durchgesetzt'
+  - 'Rückmeldung an den Auslöser'
+  - 'Kontrolle leihen funktioniert'
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: null
+  evidence: []
+  plan_ref: docs/plans/rimworldmp-full-plan.md
+- id: DESYNC-001
+  title: 'Zustands-Hash und Vergleich'
+  goal: 'Abweichungen zwischen Clients schnell erkennen.'
+  description: 'Plan §7.9; lokale Roadmap S5.'
+  priority: critical
+  components:
+  - session_core
+  - rimworld_adapter
+  depends_on:
+  - SYNC-001
+  acceptance:
+  - 'Ein absichtlich erzeugter Desync wird innerhalb von 60 Ticks erkannt'
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: null
+  evidence: []
+  plan_ref: docs/plans/rimworldmp-full-plan.md
+- id: DESYNC-002
+  title: 'Desync-Diagnosepaket und Diff-Werkzeug'
+  goal: 'Den ersten abweichenden Zustand oder Rand-Aufruf benennen.'
+  description: 'Plan §7.9; lokale Roadmap S5.'
+  priority: high
+  components:
+  - rimworld_adapter
+  depends_on:
+  - DESYNC-001
+  acceptance:
+  - 'Für einen erzeugten Desync nennt der Diff das erste abweichende Feld oder die Rand-Aufrufstelle'
+  - 'Namen und IPs werden vor dem Teilen entfernt'
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: null
+  evidence: []
+  plan_ref: docs/plans/rimworldmp-full-plan.md
+- id: DESYNC-003
+  title: 'Wiederherstellung per Resync'
+  goal: 'Desynchronisierte Clients ohne Neustart reparieren.'
+  description: 'Plan §7.9; lokale Roadmap S5.'
+  priority: high
+  components:
+  - session_core
+  - rimworld_adapter
+  depends_on:
+  - DESYNC-001
+  - XFER-001
+  acceptance:
+  - 'Der betroffene Client wird ohne Neustart repariert; Hashes danach gleich'
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: null
+  evidence: []
+  plan_ref: docs/plans/rimworldmp-full-plan.md
+- id: SAVE-001
+  title: 'Koordiniertes Speichern'
+  goal: 'Alle Clients speichern am selben Tick; der Spielstand des Snapshot-Providers ist maßgeblich.'
+  description: 'Plan §7.8; lokale Roadmap S4.'
+  priority: high
+  components:
+  - session_core
+  - rimworld_adapter
+  depends_on:
+  - SYNC-001
+  acceptance:
+  - 'Alle Clients speichern am selben Tick'
+  - 'Neues Laden des Provider-Spielstands ergibt gleiche Hashes'
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: null
+  evidence: []
+  plan_ref: docs/plans/rimworldmp-full-plan.md
+- id: JOIN-001
+  title: 'Beitritt und Reconnect im laufenden Spiel'
+  goal: 'Spieler treten einem laufenden Spiel bei oder verbinden sich neu und holen auf.'
+  description: 'Plan §7.8; lokale Roadmap S4.'
+  priority: critical
+  components:
+  - session_core
+  - dedicated_server
+  - rimworld_adapter
+  depends_on:
+  - SAVE-001
+  - XFER-001
+  acceptance:
+  - 'Ein dritter Client tritt bei, holt auf und bleibt 30 Minuten synchron'
+  - 'Reconnect stellt den Besitz wieder her'
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: null
+  evidence: []
+  plan_ref: docs/plans/rimworldmp-full-plan.md
+- id: SAVE-002
+  title: 'Multiplayer-Spielstand aus der Lobby fortsetzen'
+  goal: 'Der Host lädt einen MP-Spielstand und alle setzen gemeinsam fort.'
+  description: 'Plan §5.2, §7.8; lokale Roadmap S4.'
+  priority: medium
+  components:
+  - rimworld_adapter
+  - lobby_core
+  depends_on:
+  - SAVE-001
+  acceptance:
+  - 'Alle landen am gespeicherten Tick; Besitz intakt'
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: null
+  evidence: []
+  plan_ref: docs/plans/rimworldmp-full-plan.md
+- id: SYNC-006
+  title: 'Tier-2-Abdeckung Vanilla'
+  goal: 'Die restlichen Vanilla-Aktionen aus Plan §7.5 synchronisieren.'
+  description: 'Plan §7.5; lokale Roadmap S3.'
+  priority: high
+  components:
+  - rimworld_adapter
+  depends_on:
+  - SYNC-004
+  acceptance:
+  - 'Jede Vanilla-Tier-2-Zeile mit zwei Clients geprüft'
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: null
+  evidence: []
+  plan_ref: docs/plans/rimworldmp-full-plan.md
+- id: SYNC-007
+  title: 'Dialoge mit gemeinsamer Pause (Handel, Karawane, Kapseln, Ideo)'
+  goal: 'Pausierende Dialoge pausieren für alle und übertragen ihr Ergebnis als einen Befehl.'
+  description: 'Plan §7.6; lokale Roadmap S3.'
+  priority: high
+  components:
+  - rimworld_adapter
+  - session_core
+  depends_on:
+  - SYNC-004
+  acceptance:
+  - 'Handel und Karawanenbildung Ende-zu-Ende mit gleichen Hashes'
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: null
+  evidence: []
+  plan_ref: docs/plans/rimworldmp-full-plan.md
+- id: SYNC-008
+  title: 'DLC-Abdeckung (Royalty, Ideology, Biotech, Anomaly, Odyssey)'
+  goal: 'DLC-spezifische Aktionen synchronisieren.'
+  description: 'Plan §7.5; lokale Roadmap S3.'
+  priority: medium
+  components:
+  - rimworld_adapter
+  depends_on:
+  - SYNC-006
+  acceptance:
+  - 'Testliste je DLC bestanden'
+  - 'Gravship-Start geprüft'
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: null
+  evidence: []
+  plan_ref: docs/plans/rimworldmp-full-plan.md
+- id: TOOL-002
+  title: 'Detektor für unsynchronisierte Zustandsänderungen'
+  goal: 'UI-Aktionen finden, die den Spielzustand ohne Befehl ändern.'
+  description: 'Plan §7.5; lokale Roadmap S5.'
+  priority: medium
+  components:
+  - rimworld_adapter
+  depends_on:
+  - SYNC-002
+  acceptance:
+  - 'Findet eine absichtlich nicht registrierte UI-Aktion'
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: null
+  evidence: []
+  plan_ref: docs/plans/rimworldmp-full-plan.md
+- id: API-001
+  title: 'Öffentliche Sync-API v1 und SDK-Beispiele'
+  goal: 'Andere Mods registrieren eigene synchronisierte Methoden, Felder und Serializer.'
+  description: 'Plan §7.10; lokale Roadmap C1, C2, C3.'
+  priority: high
+  components:
+  - public_api
+  - rimworld_adapter
+  depends_on:
+  - SYNC-002
+  acceptance:
+  - 'Ein Beispielmod mit synchronisiertem Knopf, Feld und eigenem Worker besteht den Zwei-Client-Test'
+  - 'Versionierung und Deprecation sind in docs/extension-api.md beschrieben'
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: null
+  evidence: []
+  plan_ref: docs/plans/rimworldmp-full-plan.md
+- id: API-002
+  title: 'Spike: Kompatibilität mit rwmt Multiplayer.API'
+  goal: 'Entscheiden, ob zusätzlich der Vertrag von rwmt Multiplayer.API 0.6.0 umgesetzt wird.'
+  description: 'Plan §7.10; lokale Roadmap C2.'
+  priority: medium
+  components:
+  - public_api
+  depends_on:
+  - API-001
+  acceptance:
+  - 'ADR mit Lizenzanalyse und funktionierendem oder gescheitertem Prototyp'
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: null
+  evidence: []
+  plan_ref: docs/plans/rimworldmp-full-plan.md
+- id: COMPAT-001
+  title: 'Adapterordner, Mod-Matrix und Lobby-Warnung'
+  goal: 'Kompatibilität mit fremden Mods getrennt pflegen und testen.'
+  description: 'Plan §7.10; lokale Roadmap C4, C5.'
+  priority: medium
+  components:
+  - rimworld_adapter
+  - lobby_core
+  depends_on:
+  - API-001
+  acceptance:
+  - '10 verbreitete Mods mit Testlogs eingestuft'
+  - 'Inkompatible Mods sperren Bereit; ungetestete zeigen eine Warnung'
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: null
+  evidence: []
+  plan_ref: docs/plans/rimworldmp-full-plan.md
+- id: PERF-001
+  title: 'Benchmarks gegen die Budgets aus Plan §7.11'
+  goal: 'Leistung und Bandbreite messen und veröffentlichen.'
+  description: 'Plan §7.11; lokale Roadmap R2.'
+  priority: medium
+  components:
+  - session_core
+  - rimworld_adapter
+  depends_on:
+  - SYNC-006
+  acceptance:
+  - 'Veröffentlichte Werte für Referenzkolonie und Referenzhardware'
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: null
+  evidence: []
+  plan_ref: docs/plans/rimworldmp-full-plan.md
+- id: TEST-003
+  title: 'Plattformübergreifender Langlauf (Windows und Linux)'
+  goal: 'Determinismus zwischen Windows und Linux belegen oder die Grenze dokumentieren.'
+  description: 'Plan §7.4, §9; lokale Roadmap R5.'
+  priority: medium
+  components:
+  - rimworld_adapter
+  depends_on:
+  - SYNC-006
+  acceptance:
+  - '2 Stunden ohne Desync oder dokumentierte Grenze: nur gleiches Betriebssystem'
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: null
+  evidence: []
+  plan_ref: docs/plans/rimworldmp-full-plan.md
+- id: SEC-001
+  title: 'Authentifizierung für IP-Lobbys'
+  goal: 'Gefälschte PlayerKeys in IP-Lobbys abweisen.'
+  description: 'Plan §7.12.'
+  priority: medium
+  components:
+  - network_core
+  - dedicated_server
+  - rimworld_adapter
+  depends_on:
+  - ID-001
+  acceptance:
+  - 'Mindestens Lobby-Passwort und Schlüsselbindung'
+  - 'Ein gefälschter PlayerKey wird abgelehnt'
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: null
+  evidence: []
+  plan_ref: docs/plans/rimworldmp-full-plan.md
+- id: REL-001
+  title: 'Version 1.0 veröffentlichen'
+  goal: 'Spielbarer Gameplay-Multiplayer mit Doku, Mod-Matrix und belegten Grenzen.'
+  description: 'Plan §10 Version 1.0; lokale Roadmap R1, R4, R5.'
+  priority: high
+  components:
+  - governance
+  - mod_package
+  depends_on:
+  - SYNC-005
+  - SYNC-007
+  - SYNC-008
+  - TOOL-002
+  - DESYNC-002
+  - DESYNC-003
+  - JOIN-001
+  - SAVE-002
+  - API-002
+  - COMPAT-001
+  - PERF-001
+  - TEST-003
+  - SEC-001
+  acceptance:
+  - 'Release-Checkliste erledigt'
+  - 'Unterstützte Versionen und Spielerlimits veröffentlicht'
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: null
+  evidence: []
+  plan_ref: docs/plans/rimworldmp-full-plan.md
