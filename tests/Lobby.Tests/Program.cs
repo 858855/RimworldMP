@@ -28,6 +28,37 @@ Assert(registry.List().Count == 1, "new lobby after cleanup");
 Expect(1, () => registry.AddMember(Guid.NewGuid(), "bad\nname"));
 Console.WriteLine("PASS: lobby create/list/join/capacity/ready/host/leave/disconnect/payload");
 
+// MOD-001: Ready is gated by the member's manifest compared with the host's.
+var mods = new LobbyRegistry(8);
+Guid host = Guid.NewGuid(), same = Guid.NewGuid(), other = Guid.NewGuid(), late = Guid.NewGuid();
+foreach (var (id, name) in new[] { (host, "Host"), (same, "Same"), (other, "Other"), (late, "Late") }) mods.AddMember(id, name);
+var hostMods = new ModManifestSummary(Enumerable.Repeat((byte)1, 32).ToArray(), "1.6.4871 rev590", 12);
+var otherMods = new ModManifestSummary(Enumerable.Repeat((byte)2, 32).ToArray(), "1.6.4871 rev590", 13);
+Guid room = mods.Create(host, "Mods", 4).State!.Id;
+Assert(mods.SetManifest(host, hostMods)!.State!.Players.Single().ModStatus == ModStatus.Match, "host matches itself");
+Assert(mods.List().Single().HostMods!.SameAs(hostMods), "lobby list shows host mods");
+mods.SetManifest(same, hostMods); mods.SetManifest(other, otherMods);
+mods.Join(same, room); mods.Join(other, room);
+var status = mods.Join(late, room).State!.Players.ToDictionary(p => p.Id, p => p.ModStatus);
+Assert(status[same] == ModStatus.Match && status[other] == ModStatus.Mismatch && status[late] == ModStatus.Checking, "member statuses");
+Assert(mods.Ready(same, true).State!.Players.Single(p => p.Id == same).Ready, "matching member may be ready");
+Expect(8, () => mods.Ready(other, true));
+Expect(8, () => mods.Ready(late, true));
+Assert(!mods.Ready(other, false).State!.Players.Single(p => p.Id == other).Ready, "un-ready always allowed");
+var fixedUp = mods.SetManifest(late, hostMods)!.State!;
+Assert(fixedUp.Players.Single(p => p.Id == late).ModStatus == ModStatus.Match, "late manifest matches");
+var afterHostLeft = mods.Leave(host).State!;
+Assert(afterHostLeft.HostId == same && afterHostLeft.Players.Single(p => p.Id == same).Ready,
+    "new host keeps its own ready state");
+Assert(afterHostLeft.Players.Single(p => p.Id == other).ModStatus == ModStatus.Mismatch, "status follows new host");
+var plain = new LobbyRegistry(8);
+Guid p1 = Guid.NewGuid(), p2 = Guid.NewGuid();
+plain.AddMember(p1, "P1"); plain.AddMember(p2, "P2");
+Guid plainRoom = plain.Create(p1, "Plain", 2).State!.Id;
+plain.Join(p2, plainRoom);
+Assert(plain.Ready(p2, true).State!.Players.All(p => p.ModStatus == ModStatus.Unchecked), "no manifests stay unchecked");
+Console.WriteLine("PASS: mod manifest status, ready gate and host change");
+
 static void Assert(bool condition, string name)
 { if (!condition) throw new Exception("FAIL: " + name); }
 static void Expect(byte code, Action action)

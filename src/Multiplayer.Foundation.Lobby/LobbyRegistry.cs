@@ -46,8 +46,29 @@ namespace Multiplayer.Foundation.Lobby
         {
             lock (gate)
                 return rooms.Values.OrderBy(r => r.Name, StringComparer.Ordinal).ThenBy(r => r.Id)
-                    .Select(r => new LobbySummary(r.Id, r.Name, members[r.Host].Name, (byte)r.Members.Count, r.Capacity)).ToArray();
+                    .Select(r => new LobbySummary(r.Id, r.Name, members[r.Host].Name, (byte)r.Members.Count, r.Capacity,
+                        members[r.Host].Mods)).ToArray();
         }
+
+        /// <summary>Stores a member's mod manifest summary; returns the lobby change when the member is in a lobby.</summary>
+        public LobbyChange? SetManifest(Guid actor, ModManifestSummary summary)
+        {
+            if (summary == null) throw new ArgumentNullException(nameof(summary));
+            lock (gate)
+            {
+                Member member = GetMember(actor);
+                member.Mods = summary;
+                if (member.Room == null) return null;
+                Room room = GetRoom(member.Room.Value);
+                ClearReadyWithoutMatch(room);
+                room.Revision++;
+                return Change(room, actor);
+            }
+        }
+
+        /// <summary>The host's session ID for a member's lobby request (e.g. the full mod list for the diff report).</summary>
+        public Guid HostOfCurrentLobby(Guid actor)
+        { lock (gate) return GetCurrentRoom(GetMember(actor)).Host; }
 
         public (Guid LobbyId, IReadOnlyList<Guid> Recipients) ChatRecipients(Guid actor)
         {
@@ -107,6 +128,12 @@ namespace Multiplayer.Foundation.Lobby
             lock (gate)
             {
                 Member member = GetMember(actor); Room room = GetCurrentRoom(member);
+                if (ready)
+                {
+                    ModStatus status = StatusOf(room, member);
+                    if (status == ModStatus.Checking) throw new LobbyRuleException(8, "Mod-Prüfung läuft noch.");
+                    if (status == ModStatus.Mismatch) throw new LobbyRuleException(8, "Mods stimmen nicht mit dem Host überein.");
+                }
                 member.Ready = ready; room.Revision++;
                 return Change(room, actor);
             }
@@ -119,7 +146,7 @@ namespace Multiplayer.Foundation.Lobby
                 Member member = GetMember(actor); Room room = GetCurrentRoom(member);
                 member.Room = null; member.Ready = false; room.Members.Remove(actor); room.Revision++;
                 if (room.Members.Count == 0) { rooms.Remove(room.Id); return new LobbyChange(null, Array.Empty<Guid>(), actor); }
-                if (room.Host == actor) room.Host = room.Members[0];
+                if (room.Host == actor) { room.Host = room.Members[0]; ClearReadyWithoutMatch(room); }
                 return Change(room, actor);
             }
         }
@@ -161,9 +188,28 @@ namespace Multiplayer.Foundation.Lobby
             if (string.IsNullOrWhiteSpace(name) || name.Length > 40 || name.Any(char.IsControl))
                 throw new LobbyRuleException(1, "Name must have 1-40 printable characters.");
         }
+        // MOD-001: compare each member's manifest hash with the current host's.
+        private ModStatus StatusOf(Room room, Member member)
+        {
+            ModManifestSummary? host = members[room.Host].Mods;
+            if (host == null) return member.Mods == null || member.Id == room.Host ? ModStatus.Unchecked : ModStatus.Checking;
+            if (member.Mods == null) return ModStatus.Checking;
+            return member.Mods.SameAs(host) ? ModStatus.Match : ModStatus.Mismatch;
+        }
+
+        private void ClearReadyWithoutMatch(Room room)
+        {
+            foreach (Guid id in room.Members)
+            {
+                ModStatus status = StatusOf(room, members[id]);
+                if (status == ModStatus.Checking || status == ModStatus.Mismatch) members[id].Ready = false;
+            }
+        }
+
         private LobbyChange Change(Room room, Guid actor)
         {
-            var players = room.Members.Select(id => new PlayerView(id, members[id].Name, members[id].Ready)).ToArray();
+            var players = room.Members.Select(id => new PlayerView(id, members[id].Name, members[id].Ready,
+                StatusOf(room, members[id]))).ToArray();
             return new LobbyChange(new LobbyView(room.Id, room.Name, room.Host, room.Revision, room.Capacity, players), room.Members.ToArray(), actor);
         }
         private sealed class Member
@@ -172,6 +218,7 @@ namespace Multiplayer.Foundation.Lobby
             public Guid Id { get; }
             public string Name { get; }
             public string? PlayerKey { get; }
+            public ModManifestSummary? Mods { get; set; }
             public Guid? Room { get; set; }
             public bool Ready { get; set; }
         }

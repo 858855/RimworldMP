@@ -259,6 +259,18 @@ public sealed class FoundationServer : IAsyncDisposable
                         catch (IOException) { chatTarget.Connection.Dispose(); }
                         catch (ObjectDisposedException) { }
                 break;
+            case MessageType.ModManifestSummary:
+                LobbyChange? modsChanged = lobbies.SetManifest(peer.Id, ModManifestSummary.Read(message.Payload));
+                if (modsChanged != null) await PublishAsync(modsChanged, null, token).ConfigureAwait(false);
+                break;
+            case MessageType.ModManifestRequest:
+                // A member asks the host for the full mod list; the host answers with a ModManifest transfer.
+                Guid listHost = lobbies.HostOfCurrentLobby(peer.Id);
+                if (LobbyPayloads.ReadGuid(message.Payload) != listHost) throw new LobbyRuleException(4, "Only the host's mod list can be requested.");
+                if (listHost != peer.Id)
+                    await TrySendAsync(listHost, new WireMessage(MessageType.ModManifestRequest, 0, LobbyPayloads.GuidValue(peer.Id)), token)
+                        .ConfigureAwait(false);
+                break;
             case MessageType.TransferBegin:
                 await BeginTransferAsync(peer, TransferPayloads.ReadBegin(message.Payload), token).ConfigureAwait(false);
                 break;

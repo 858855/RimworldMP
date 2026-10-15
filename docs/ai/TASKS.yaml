@@ -618,11 +618,12 @@ tasks:
   - 'Zwei echte Clients mit gleichem Setup zeigen Match'
   - 'Abweichende Reihenfolge, fehlender Mod, zusätzlicher Mod und andere Version füllen jeweils den richtigen Berichtsabschnitt und sperren Bereit'
   - 'Server lehnt Bereit bei Mismatch ab (Test)'
-  implementation: planned
-  verification: not_tested
+  implementation: implemented
+  verification: tests_passed
   integration: not_submitted
-  branch: null
+  branch: feat/lobby-hardening
   evidence: []
+  blocker: 'Manifest, Vergleich, Ready-Sperre und Mod-Listen-Anfrage automatisiert geprüft (.NET-8-Harness); Mod gebaut. Offen: Prüfung mit zwei echten RimWorld-Clients (gleiche/abweichende Mods, Unterschiede-Fenster).'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: START-001
   title: 'Start-Knopf und Setup-Zustandsmaschine'

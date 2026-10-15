@@ -6,10 +6,12 @@ namespace Multiplayer.Foundation.Protocol
 {
     public sealed class PlayerView
     {
-        public PlayerView(Guid id, string name, bool ready) { Id = id; Name = name; Ready = ready; }
+        public PlayerView(Guid id, string name, bool ready, ModStatus modStatus = ModStatus.Unchecked)
+        { Id = id; Name = name; Ready = ready; ModStatus = modStatus; }
         public Guid Id { get; }
         public string Name { get; }
         public bool Ready { get; }
+        public ModStatus ModStatus { get; }
     }
 
     public sealed class LobbyView
@@ -26,13 +28,16 @@ namespace Multiplayer.Foundation.Protocol
 
     public sealed class LobbySummary
     {
-        public LobbySummary(Guid id, string name, string hostName, byte playerCount, byte capacity)
-        { Id = id; Name = name; HostName = hostName; PlayerCount = playerCount; Capacity = capacity; }
+        public LobbySummary(Guid id, string name, string hostName, byte playerCount, byte capacity,
+            ModManifestSummary? hostMods = null)
+        { Id = id; Name = name; HostName = hostName; PlayerCount = playerCount; Capacity = capacity; HostMods = hostMods; }
         public Guid Id { get; }
         public string Name { get; }
         public string HostName { get; }
         public byte PlayerCount { get; }
         public byte Capacity { get; }
+        /// <summary>Host's game version, mod count and manifest hash, so joiners see a mismatch before joining.</summary>
+        public ModManifestSummary? HostMods { get; }
     }
 
     public sealed class LobbyChatView
@@ -121,7 +126,7 @@ namespace Multiplayer.Foundation.Protocol
             if (state.Players.Count > 64) throw new ProtocolException("Too many players.");
             writer.WriteByte((byte)state.Players.Count);
             foreach (PlayerView player in state.Players)
-            { writer.WriteGuid(player.Id); writer.WriteString(player.Name, 160); writer.WriteBool(player.Ready); }
+            { writer.WriteGuid(player.Id); writer.WriteString(player.Name, 160); writer.WriteBool(player.Ready); writer.WriteByte((byte)player.ModStatus); }
             return writer.ToArray();
         }
         public static LobbyView ReadState(byte[] bytes)
@@ -131,7 +136,13 @@ namespace Multiplayer.Foundation.Protocol
             ulong revision = reader.ReadUInt64(); byte capacity = reader.ReadByte(); byte count = reader.ReadByte();
             if (count > 64 || count > capacity) throw new ProtocolException("Invalid player count.");
             var players = new List<PlayerView>();
-            for (int i = 0; i < count; i++) players.Add(new PlayerView(reader.ReadGuid(), reader.ReadString(160), reader.ReadBool()));
+            for (int i = 0; i < count; i++)
+            {
+                Guid playerId = reader.ReadGuid(); string playerName = reader.ReadString(160); bool ready = reader.ReadBool();
+                var status = (ModStatus)reader.ReadByte();
+                if (!Enum.IsDefined(typeof(ModStatus), status)) throw new ProtocolException("Invalid mod status.");
+                players.Add(new PlayerView(playerId, playerName, ready, status));
+            }
             reader.EnsureComplete(); return new LobbyView(id, name, host, revision, capacity, players);
         }
         public static byte[] List(IReadOnlyList<LobbySummary> lobbies)
@@ -139,7 +150,11 @@ namespace Multiplayer.Foundation.Protocol
             if (lobbies.Count > 128) throw new ProtocolException("Too many lobbies.");
             var writer = new PayloadWriter(); writer.WriteByte((byte)lobbies.Count);
             foreach (LobbySummary lobby in lobbies)
-            { writer.WriteGuid(lobby.Id); writer.WriteString(lobby.Name, 160); writer.WriteString(lobby.HostName, 160); writer.WriteByte(lobby.PlayerCount); writer.WriteByte(lobby.Capacity); }
+            {
+                writer.WriteGuid(lobby.Id); writer.WriteString(lobby.Name, 160); writer.WriteString(lobby.HostName, 160);
+                writer.WriteByte(lobby.PlayerCount); writer.WriteByte(lobby.Capacity);
+                writer.WriteBool(lobby.HostMods != null); lobby.HostMods?.Write(writer);
+            }
             return writer.ToArray();
         }
         public static IReadOnlyList<LobbySummary> ReadList(byte[] bytes)
@@ -148,7 +163,12 @@ namespace Multiplayer.Foundation.Protocol
             if (count > 128) throw new ProtocolException("Too many lobbies.");
             var lobbies = new List<LobbySummary>();
             for (int i = 0; i < count; i++)
-            { lobbies.Add(new LobbySummary(reader.ReadGuid(), reader.ReadString(160), reader.ReadString(160), reader.ReadByte(), reader.ReadByte())); }
+            {
+                Guid id = reader.ReadGuid(); string name = reader.ReadString(160), host = reader.ReadString(160);
+                byte players = reader.ReadByte(), capacity = reader.ReadByte();
+                ModManifestSummary? mods = reader.ReadBool() ? ModManifestSummary.Read(reader) : null;
+                lobbies.Add(new LobbySummary(id, name, host, players, capacity, mods));
+            }
             reader.EnsureComplete(); return lobbies;
         }
     }

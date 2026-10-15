@@ -289,6 +289,35 @@ catch (IOException) { }
 Console.WriteLine("PASS: receiver disconnect aborts the transfer for sender and other receivers");
 abortDeadline.Cancel();
 await abortAcks;
+
+// MOD-001 over TCP: statuses in the snapshot, Ready gate, host's list in the browser, mod-list request forwarded to the host.
+using var mHost = (await HandshakeClient.ConnectAsync("127.0.0.1", xferServer.BoundPort, "ModHost", TimeSpan.FromSeconds(3))).Connection;
+using var mGuest = (await HandshakeClient.ConnectAsync("127.0.0.1", xferServer.BoundPort, "ModGuest", TimeSpan.FromSeconds(3))).Connection;
+var manifestA = new ModManifestSummary(Enumerable.Repeat((byte)7, 32).ToArray(), "1.6.4871 rev590", 3);
+var manifestB = new ModManifestSummary(Enumerable.Repeat((byte)8, 32).ToArray(), "1.6.4871 rev590", 4);
+await mHost.SendAsync(new WireMessage(MessageType.ModManifestSummary, 0, manifestA.ToPayload()));
+await mHost.SendAsync(new WireMessage(MessageType.CreateLobby, 2, LobbyPayloads.Create("Modded", 2)));
+LobbyView modRoom = LobbyPayloads.ReadState((await ReceiveType(mHost, MessageType.LobbyStateUpdate)).Payload);
+await mGuest.SendAsync(new WireMessage(MessageType.ModManifestSummary, 0, manifestB.ToPayload()));
+await mGuest.SendAsync(new WireMessage(MessageType.LobbyListRequest, 2, Array.Empty<byte>()));
+var modList = LobbyPayloads.ReadList((await ReceiveType(mGuest, MessageType.LobbyListResponse)).Payload);
+Assert(modList.Single(l => l.Id == modRoom.Id).HostMods!.SameAs(manifestA), "browser shows host manifest");
+await mGuest.SendAsync(new WireMessage(MessageType.JoinLobby, 3, LobbyPayloads.GuidValue(modRoom.Id)));
+LobbyView mismatched = LobbyPayloads.ReadState((await ReceiveType(mGuest, MessageType.LobbyStateUpdate)).Payload);
+Assert(mismatched.Players.Single(p => p.Name == "ModGuest").ModStatus == ModStatus.Mismatch, "mismatch in snapshot");
+await mGuest.SendAsync(new WireMessage(MessageType.PlayerReadyChanged, 4, LobbyPayloads.Bool(true)));
+Assert((await ReceiveType(mGuest, MessageType.Error)).RequestId == 4, "ready rejected on mismatch");
+await mGuest.SendAsync(new WireMessage(MessageType.ModManifestRequest, 5, LobbyPayloads.GuidValue(modRoom.HostId)));
+WireMessage forwarded = await ReceiveType(mHost, MessageType.ModManifestRequest);
+Assert(LobbyPayloads.ReadGuid(forwarded.Payload) == mismatched.Players.Single(p => p.Name == "ModGuest").Id,
+    "mod-list request forwarded to host with requester");
+await mGuest.SendAsync(new WireMessage(MessageType.ModManifestSummary, 0, manifestA.ToPayload()));
+LobbyView matched = LobbyPayloads.ReadState((await ReceiveType(mGuest, MessageType.LobbyStateUpdate)).Payload);
+Assert(matched.Players.All(p => p.ModStatus == ModStatus.Match), "fixed manifest matches");
+await mGuest.SendAsync(new WireMessage(MessageType.PlayerReadyChanged, 6, LobbyPayloads.Bool(true)));
+Assert(LobbyPayloads.ReadState((await ReceiveType(mGuest, MessageType.LobbyStateUpdate)).Payload)
+    .Players.Single(p => p.Name == "ModGuest").Ready, "ready accepted after match");
+Console.WriteLine("PASS: mod manifest status, ready gate, browser summary and mod-list request over TCP");
 await xferServer.StopAsync();
 
 // Routes acks and aborts for one upload; answers pings. Stops when the upload's token is cancelled.

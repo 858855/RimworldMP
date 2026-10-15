@@ -43,6 +43,18 @@ namespace Multiplayer.Foundation.RimWorld
         private Vector2 chatScroll;
         private Vector2 connectionScroll;
         private readonly GameObject updateObject;
+        // MOD-001: own manifest, built once in the background, sent once per connection.
+        private Task<ModManifest>? manifestTask;
+        private ModManifest? manifest;
+        private ModManifestSummary? manifestSummary;
+        private LobbyClient? manifestSentTo;
+        // XFER-001: at most one upload (host answering mod-list requests) and one download at a time.
+        private TransferUpload? upload;
+        private Task? uploadTask;
+        private readonly Queue<Guid> manifestRequests = new Queue<Guid>();
+        private TransferAssembler? download;
+        private bool diffRequested;
+        private readonly List<Task> backgroundSends = new List<Task>();
         internal static FoundationMod? Instance { get; private set; }
         private static bool menuPatched;
 
@@ -50,6 +62,8 @@ namespace Multiplayer.Foundation.RimWorld
         {
             settings = GetSettings<FoundationSettings>();
             Instance = this;
+            try { manifestTask = ModManifestBuilder.StartAsync(); }
+            catch (Exception error) { Log.Error("Multiplayer mod manifest failed: " + error); }
             TryInitializeSteam();
             updateObject = new GameObject("Multiplayer Foundation updates");
             UnityEngine.Object.DontDestroyOnLoad(updateObject);
@@ -329,6 +343,7 @@ namespace Multiplayer.Foundation.RimWorld
             if (client == null) return;
             LobbyClient old = client;
             client = null; lobby = null; available = Array.Empty<LobbySummary>(); chatMessages.Clear();
+            ResetTransfers();
             steam?.Leave();
             autoJoinSteamLobby = false;
             if (hosted != null)
@@ -370,8 +385,14 @@ namespace Multiplayer.Foundation.RimWorld
             int start = listPage * 5;
             foreach (LobbySummary room in available.Skip(start).Take(5))
             {
-                Widgets.Label(new Rect(x, y, width - 110f, 28f),
-                    room.Name + " – " + room.HostName + " (" + room.PlayerCount + "/" + room.Capacity + ")");
+                Rect roomRect = new Rect(x, y, width - 110f, 28f);
+                Widgets.Label(roomRect, room.Name + " – " + room.HostName + " (" + room.PlayerCount + "/" + room.Capacity + ")" +
+                    ModsHint(room.HostMods));
+                if (room.HostMods != null)
+                    TooltipHandler.TipRegion(roomRect, "Host: " + room.HostMods.GameVersion + ", " + room.HostMods.ModCount +
+                        " Mods, Prüfsumme " + room.HostMods.ShortHash + "\nDu: " +
+                        (manifestSummary == null ? "Mod-Prüfung läuft …" : manifestSummary.GameVersion + ", " +
+                        manifestSummary.ModCount + " Mods, Prüfsumme " + manifestSummary.ShortHash));
                 if (Widgets.ButtonText(new Rect(x + width - 105f, y, 100f, 28f), "Beitreten"))
                     Send(MessageType.JoinLobby, LobbyPayloads.GuidValue(room.Id));
                 y += 33f;
@@ -389,12 +410,17 @@ namespace Multiplayer.Foundation.RimWorld
             {
                 string label = player.Name + (player.Id == lobby.HostId ? " [Host]" : "") +
                     (player.Ready ? " – bereit" : " – nicht bereit");
-                Widgets.Label(new Rect(x, y, width, 27f), label);
+                string modText = StatusText(player.ModStatus, out Color color);
+                GUI.color = color;
+                Widgets.Label(new Rect(x, y, width, 27f), label + modText);
+                GUI.color = Color.white;
                 y += 29f;
             }
             y += 8f;
-            bool myReady = lobby.Players.FirstOrDefault(p => p.Id == client.SessionId)?.Ready ?? false;
-            if (Widgets.ButtonText(new Rect(x, y, 125f, 30f), myReady ? "Nicht bereit" : "Bereit"))
+            PlayerView? me = lobby.Players.FirstOrDefault(p => p.Id == client.SessionId);
+            bool myReady = me?.Ready ?? false;
+            bool modsOk = me == null || me.ModStatus == ModStatus.Match || me.ModStatus == ModStatus.Unchecked;
+            if (Widgets.ButtonText(new Rect(x, y, 125f, 30f), myReady ? "Nicht bereit" : "Bereit", true, true, modsOk || myReady))
                 Send(MessageType.PlayerReadyChanged, LobbyPayloads.Bool(!myReady));
             if (Widgets.ButtonText(new Rect(x + 135f, y, 125f, 30f), "Verlassen"))
                 Send(MessageType.LeaveLobby, Array.Empty<byte>());
@@ -405,7 +431,145 @@ namespace Multiplayer.Foundation.RimWorld
                     Send(MessageType.CloseLobby, Array.Empty<byte>());
             }
             y += 36f;
+            if (me?.ModStatus == ModStatus.Mismatch)
+            {
+                GUI.color = new Color(1f, 0.45f, 0.45f);
+                Widgets.Label(new Rect(x, y, width, 25f), "Deine Mods stimmen nicht mit dem Host überein.");
+                GUI.color = Color.white;
+                y += 27f;
+                bool busy = diffRequested || download != null;
+                if (Widgets.ButtonText(new Rect(x, y, 220f, 30f), busy ? "Mod-Liste wird geladen …" : "Unterschiede anzeigen",
+                    true, true, !busy && manifest != null))
+                {
+                    diffRequested = SendBackground(MessageType.ModManifestRequest, LobbyPayloads.GuidValue(lobby.HostId));
+                    if (diffRequested) status = "Mod-Liste des Hosts wird geladen";
+                }
+                y += 36f;
+            }
+            else if (me?.ModStatus == ModStatus.Checking)
+            {
+                Widgets.Label(new Rect(x, y, width, 25f), "Mod-Prüfung läuft …");
+                y += 27f;
+            }
             Widgets.Label(new Rect(x, y, width, 25f), "Spielstart nicht verfügbar (Version 0.1)");
+        }
+
+        private static string StatusText(ModStatus modStatus, out Color color)
+        {
+            color = Color.white;
+            switch (modStatus)
+            {
+                case ModStatus.Match: return " – Mods passen";
+                case ModStatus.Mismatch: color = new Color(1f, 0.45f, 0.45f); return " – Mods abweichend";
+                case ModStatus.Checking: color = new Color(1f, 0.85f, 0.45f); return " – Mod-Prüfung läuft …";
+                default: return "";
+            }
+        }
+
+        private string ModsHint(ModManifestSummary? host)
+        {
+            if (host == null) return "";
+            string hint = " · " + host.ModCount + " Mods";
+            if (manifestSummary == null) return hint;
+            return hint + (host.SameAs(manifestSummary) ? " · passt" : " · abweichend");
+        }
+
+        // Fire-and-forget sends (acks, mod-list requests) that must not wait for the single UI action slot.
+        private bool SendBackground(MessageType type, byte[] payload)
+        {
+            if (client == null) return false;
+            try { backgroundSends.Add(client.SendAsync(type, 0, payload)); return true; }
+            catch (Exception error) { status = "Senden fehlgeschlagen: " + error.Message; return false; }
+        }
+
+        private void UpdateManifestAndTransfers()
+        {
+            if (manifestTask != null && manifestTask.IsCompleted)
+            {
+                try
+                {
+                    manifest = manifestTask.GetAwaiter().GetResult();
+                    manifestSummary = manifest.Summary();
+                    Log.Message("Multiplayer Foundation: " + manifest.Mods.Count + " Mods geprüft, Prüfsumme " + manifestSummary.ShortHash);
+                }
+                catch (Exception error) { Log.Error("Multiplayer mod manifest failed: " + error); status = "Mod-Prüfung fehlgeschlagen: " + error.Message; }
+                manifestTask = null;
+            }
+            if (client != null && manifestSummary != null && manifestSentTo != client &&
+                SendBackground(MessageType.ModManifestSummary, manifestSummary.ToPayload()))
+                manifestSentTo = client;
+            for (int i = backgroundSends.Count - 1; i >= 0; i--)
+            {
+                if (!backgroundSends[i].IsCompleted) continue;
+                if (backgroundSends[i].IsFaulted) status = "Senden fehlgeschlagen: " + backgroundSends[i].Exception?.GetBaseException().Message;
+                backgroundSends.RemoveAt(i);
+            }
+            if (uploadTask != null && uploadTask.IsCompleted)
+            {
+                if (uploadTask.IsFaulted) Log.Warning("Multiplayer transfer failed: " + uploadTask.Exception?.GetBaseException().Message);
+                upload = null; uploadTask = null;
+            }
+            if (upload == null && client != null && manifest != null && manifestRequests.Count > 0)
+            {
+                LobbyClient sender = client;
+                upload = new TransferUpload(new TransferSource(TransferKind.ModManifest, manifestRequests.Dequeue(), manifest.Serialize()),
+                    message => sender.SendAsync(message.Type, message.RequestId, message.Payload));
+                uploadTask = upload.RunAsync(TimeSpan.FromSeconds(30));
+            }
+        }
+
+        private void HandleTransfer(WireMessage message)
+        {
+            switch (message.Type)
+            {
+                case MessageType.ModManifestRequest:
+                    Guid requester = LobbyPayloads.ReadGuid(message.Payload);
+                    if (!manifestRequests.Contains(requester)) manifestRequests.Enqueue(requester);
+                    break;
+                case MessageType.TransferAck:
+                    var ack = TransferPayloads.ReadAck(message.Payload);
+                    if (upload != null && upload.Header.TransferId == ack.TransferId) upload.OnAck(ack.Receiver, ack.Received);
+                    break;
+                case MessageType.TransferAbort:
+                    var abort = TransferPayloads.ReadAbort(message.Payload);
+                    if (upload != null && upload.Header.TransferId == abort.TransferId) upload.OnAbort(abort.Reason);
+                    if (download != null && download.Header.TransferId == abort.TransferId)
+                    { download = null; diffRequested = false; status = "Übertragung abgebrochen: " + abort.Reason; }
+                    break;
+                case MessageType.TransferBegin:
+                    TransferHeader header = TransferPayloads.ReadBegin(message.Payload);
+                    if (header.Kind == TransferKind.ModManifest && diffRequested && download == null)
+                        download = new TransferAssembler(header);
+                    else
+                        SendBackground(MessageType.TransferAbort, TransferPayloads.Abort(header.TransferId, "Übertragung wird hier nicht erwartet."));
+                    break;
+                case MessageType.TransferChunk:
+                    var chunk = TransferPayloads.ReadChunk(message.Payload);
+                    if (download == null || download.Header.TransferId != chunk.TransferId) break;
+                    try
+                    {
+                        download.Add(chunk.Index, chunk.Data);
+                        if (download.IsComplete || download.Received % 8 == 0)
+                            SendBackground(MessageType.TransferAck, TransferPayloads.Ack(chunk.TransferId, Guid.Empty, download.Received));
+                        if (download.IsComplete) ShowModDiff(ModManifest.Deserialize(download.Result));
+                    }
+                    catch (ProtocolException error)
+                    {
+                        // A broken mod list must not drop the lobby connection.
+                        SendBackground(MessageType.TransferAbort, TransferPayloads.Abort(chunk.TransferId, "Daten beschädigt."));
+                        download = null; diffRequested = false; status = "Mod-Liste des Hosts unlesbar: " + error.Message;
+                    }
+                    break;
+            }
+        }
+
+        private void ShowModDiff(ModManifest host)
+        {
+            download = null; diffRequested = false;
+            if (manifest == null) return;
+            string hostName = lobby?.Players.FirstOrDefault(p => p.Id == lobby.HostId)?.Name ?? "Host";
+            Find.WindowStack.Add(new ModDiffWindow(ModManifestDiff.Compare(manifest, host), hostName));
+            status = "Mod-Unterschiede angezeigt";
         }
 
         private bool Send(MessageType type, byte[] payload)
@@ -466,6 +630,7 @@ namespace Multiplayer.Foundation.RimWorld
                 if (action.IsFaulted) status = "Aktion fehlgeschlagen: " + action.Exception?.GetBaseException().Message;
                 action = null;
             }
+            UpdateManifestAndTransfers();
             if (client == null) return;
             try
             {
@@ -502,6 +667,12 @@ namespace Multiplayer.Foundation.RimWorld
                                 chatScroll.y = float.MaxValue;
                             }
                             break;
+                        case MessageType.ModManifestRequest:
+                        case MessageType.TransferBegin:
+                        case MessageType.TransferChunk:
+                        case MessageType.TransferAck:
+                        case MessageType.TransferAbort:
+                            HandleTransfer(message); break;
                         case MessageType.Error:
                             var reader = new PayloadReader(message.Payload);
                             byte code = reader.ReadByte(); string reason = reader.ReadString(); reader.EnsureComplete();
@@ -518,6 +689,7 @@ namespace Multiplayer.Foundation.RimWorld
             {
                 status = "Verbindung unterbrochen: " + (client.LastError ?? "Unbekannt");
                 client.Dispose(); client = null; lobby = null; chatMessages.Clear();
+                ResetTransfers();
                 if (hosted != null)
                 {
                     ListenHost running = hosted;
@@ -527,6 +699,12 @@ namespace Multiplayer.Foundation.RimWorld
                 }
                 steam?.Leave();
             }
+        }
+
+        private void ResetTransfers()
+        {
+            upload?.OnAbort("Verbindung getrennt.");
+            download = null; diffRequested = false; manifestRequests.Clear(); manifestSentTo = null;
         }
 
         private void StartReachability(ListenHost host)
