@@ -21,6 +21,9 @@ namespace Multiplayer.Foundation.RimWorld
 
         internal PlayerKey? OwnerOf(Pawn pawn) => owners.TryGetValue(pawn.thingIDNumber, out PlayerKey key) ? key : (PlayerKey?)null;
 
+        /// <summary>SETUP-005: who owns which pawn at the moment the game starts.</summary>
+        internal Dictionary<int, PlayerKey> SnapshotOwners() => new Dictionary<int, PlayerKey>(owners);
+
         /// <summary>Raises the starting group to one pawn per player (plan §6.3).</summary>
         internal void EnsurePawnCount(GameInitData init, int players)
         {

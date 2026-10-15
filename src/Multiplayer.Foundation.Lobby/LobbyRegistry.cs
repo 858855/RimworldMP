@@ -271,7 +271,10 @@ namespace Multiplayer.Foundation.Lobby
             }
         }
 
-        /// <summary>SETUP-005: the host announces the fingerprint of the starting game it is about to send.</summary>
+        /// <summary>
+        /// SETUP-005: the host announces the fingerprint of the starting game after loading its own save. Guests load the
+        /// copy at the same time and may report first; their reports count once this arrives.
+        /// </summary>
         public LobbyChange SetHostGame(Guid actor, byte[] fingerprint)
         {
             lock (gate)
@@ -279,7 +282,6 @@ namespace Multiplayer.Foundation.Lobby
                 Room room = GetHostedRoom(actor);
                 if (room.Phase != SetupPhase.Generating) throw new LobbyRuleException(6, "The game is sent while it is generated.");
                 room.HostGame = fingerprint;
-                foreach (Guid id in room.Members) members[id].Game = null;
                 room.Revision++;
                 return Change(room, actor);
             }

@@ -1,4 +1,5 @@
 using System;
+using HarmonyLib;
 using System.Diagnostics;
 using System.Linq;
 using RimWorld;
@@ -13,6 +14,8 @@ namespace Multiplayer.Foundation.RimWorld
     /// (optionally <c>-mpWorldSelfTestCoverage=0.3</c> and <c>-mpQuitAfterSelfTest</c>). In the main menu it
     /// generates a world like the host does, saves it with <see cref="WorldCodec"/>, drops it, loads it again
     /// like a guest and compares fingerprints. The result goes to Player.log.
+    /// SETUP-004 and SETUP-005 continue on that world: pawn logic, then a real vanilla game start, saved like the host
+    /// does, loaded like a guest does, fingerprints compared and the pause checked.
     /// </summary>
     internal static class WorldSelfTest
     {
@@ -25,6 +28,28 @@ namespace Multiplayer.Foundation.RimWorld
 
         /// <summary>True while the self-test owns the flags on the site page.</summary>
         internal static bool ShowingSitePage => siteStage != 0;
+
+        // SETUP-005: 1 start, 2 save as host, 3 copy for the guest and reload as host, 4 host fingerprint and pause probe,
+        // 5 load as guest, 6 compare and pause probe, 7 done.
+        private static int gameStage;
+        private static PlanetTile startTile = PlanetTile.Invalid;
+        private static float gameStageAt;
+        private static int pausedTick;
+        private static Game? hostGame;
+        private static byte[]? guestFile, hostFile, hostFingerprint;
+        private static int hostTick;
+        private static long reloadMs;
+        private static int probeCalls, probeResets, probeRunning, probeBlocked;
+        private static string[] hostLines = Array.Empty<string>();
+        private static DateTime savedAtUtc;
+        private static readonly Stopwatch gameWatch = new Stopwatch();
+        private static long generateMs, saveMs;
+        private static bool saveSynchronous, pawnsPassed;
+        private static readonly System.Collections.Generic.List<string> gameResults = new System.Collections.Generic.List<string>();
+        private const string HostSave = "Multiplayer - Selbsttest Host", GuestSave = "Multiplayer - Selbsttest Gast";
+
+        /// <summary>The self-test's shared game is paused like a multiplayer session (SETUP-005).</summary>
+        internal static bool HoldsPause => gameStage >= 2 && gameStage <= 7 && Current.ProgramState == ProgramState.Playing;
 
         internal static bool Requested => Environment.GetCommandLineArgs().Any(a => a == "-mpWorldSelfTest");
 
@@ -52,13 +77,28 @@ namespace Multiplayer.Foundation.RimWorld
                 bool open = sitePage != null && sitePage.IsOpen;
                 Log.Message("Multiplayer Foundation world self-test: site page " + (open && SiteFlags.FramesDrawn > 0 ? "PASS" : "FAIL") +
                     " open=" + open + " flagFrames=" + SiteFlags.FramesDrawn + " flags=" + SiteFlags.Shown.Count);
-                if (sitePage != null) Find.WindowStack.TryRemove(sitePage, false);
-                sitePage = null; siteStage = 0;
                 SiteFlags.Shown = Array.Empty<(string, PlanetTile, UnityEngine.Color)>();
-                RunPawnTest();
-                cleanupWhenIdle = true;
+                pawnsPassed = RunPawnTest();
+                // Like a guest after the site page: no setup page, only the multiplayer window. Does the world stay?
+                if (sitePage != null) Find.WindowStack.TryRemove(sitePage, false);
+                sitePage = null;
+                if (FoundationMod.Instance != null) Find.WindowStack.Add(new FoundationWindow(FoundationMod.Instance));
+                siteStage = 3; siteOpenedAt = UnityEngine.Time.realtimeSinceStartup;
                 return;
             }
+            if (siteStage == 3)
+            {
+                if (UnityEngine.Time.realtimeSinceStartup - siteOpenedAt < 1f) return;
+                bool kept = Current.Game?.World != null && Current.Game.InitData != null;
+                Log.Message("Multiplayer Foundation world self-test: world without a setup page " + (kept ? "kept" : "dropped") +
+                    " (game=" + (Current.Game != null) + " world=" + (Current.Game?.World != null) + " initData=" + (Current.Game?.InitData != null) + ")");
+                // The window stays open: without any window the main menu drops the game (found by this check).
+                siteStage = 0;
+                if (kept && pawnsPassed && startTile.Valid) gameStage = 1;
+                else cleanupWhenIdle = true;
+                return;
+            }
+            if (gameStage != 0) { RunGameTest(); return; }
             // Clean up a frame later: FinalizeInit queues work that runs after the long event and needs the world.
             if (cleanupWhenIdle && !LongEventHandler.AnyEventNowOrWaiting)
             {
@@ -66,15 +106,198 @@ namespace Multiplayer.Foundation.RimWorld
                 if (Current.Game != null) MemoryUtility.ClearAllMapsAndWorld();
                 Current.Game = null;
             }
-            if (quitWhenIdle && !cleanupWhenIdle && siteStage == 0 && !LongEventHandler.AnyEventNowOrWaiting)
+            if (quitWhenIdle && !cleanupWhenIdle && siteStage == 0 && gameStage == 0 && !LongEventHandler.AnyEventNowOrWaiting)
             { quitWhenIdle = false; Root.Shutdown(); return; }
             if (started || !Requested || Current.ProgramState != ProgramState.Entry || LongEventHandler.AnyEventNowOrWaiting) return;
             started = true;
             LongEventHandler.QueueLongEvent(Run, "LoadingLongEvent", false, error => Log.Error("Multiplayer Foundation world self-test: FAIL " + error));
         }
 
-        // SETUP-004: the host's pawn logic on real starting pawns generated by vanilla.
-        private static void RunPawnTest()
+        // SETUP-005: one stage per frame (or per long event); every check goes into one log line.
+        private static void RunGameTest()
+        {
+            void Check(string name, bool ok) => gameResults.Add(name + "=" + (ok ? "ok" : "FAIL"));
+            bool Loaded() => Current.ProgramState == ProgramState.Playing && !LongEventHandler.AnyEventNowOrWaiting &&
+                Find.Maps.Count > 0 && !ReferenceEquals(Current.Game, hostGame);
+            try
+            {
+                switch (gameStage)
+                {
+                    case 1:
+                        // The host starts from its own generated world, never from a guest's copy (the copy has no ID
+                        // counters, so a game started from it reuses load IDs; self-test 2026-10-15).
+                        gameStage = 8;
+                        LongEventHandler.QueueLongEvent(PrepareHostGame, "LoadingLongEvent", false, error =>
+                        {
+                            Log.Error("Multiplayer Foundation game self-test: FAIL preparing " + error);
+                            gameStage = 0; cleanupWhenIdle = true;
+                        });
+                        return;
+                    case 8:
+                        // Like the host after everyone is done: vanilla's own start on the prepared GameInitData.
+                        if (LongEventHandler.AnyEventNowOrWaiting) return;
+                        if (Current.Game?.InitData == null || !startTile.Valid) { Check("hostGame", false); Finish(); return; }
+                        Find.GameInitData.startingTile = startTile;
+                        gameStage = 2; gameWatch.Restart(); hostGame = null;
+                        PageUtility.InitGameStart();
+                        return;
+                    case 2:
+                        // Host: the generated game. Fill the session and save it.
+                        if (!Loaded()) return;
+                        generateMs = gameWatch.ElapsedMilliseconds;
+                        var colonists = GameFingerprint.Colonists();
+                        Check("colonists", colonists.Count >= 2);
+                        Protocol.PlayerKey a = Protocol.PlayerKey.Local(Guid.NewGuid()), b = Protocol.PlayerKey.Local(Guid.NewGuid());
+                        var owners = new System.Collections.Generic.Dictionary<int, Protocol.PlayerKey>();
+                        if (colonists.Count >= 2) { owners[colonists[0].thingIDNumber] = a; owners[colonists[1].thingIDNumber] = b; }
+                        owners[-1] = b; // a pawn that did not land must not be saved
+                        MultiplayerSession? session = MultiplayerSession.ForCurrentGame;
+                        Check("component", session != null);
+                        session?.Begin(Guid.NewGuid(), new[] { (a, "Test-Host"), (b, "Test-Gast") }, owners,
+                            colonists.Select(p => p.thingIDNumber).ToList());
+                        Check("ownersLanded", session != null && session.Owners.Count() == Math.Min(2, colonists.Count));
+                        Map map = Find.Maps[0];
+                        gameResults.Add("generated(tick=" + Find.TickManager.TicksGame + " tile=" + map.Tile.tileId + " parent=" +
+                            (map.Parent?.Tile.tileId.ToString() ?? "-") + " start=" + startTile.tileId + ")");
+                        savedAtUtc = DateTime.UtcNow; gameWatch.Restart();
+                        GameDataSaveLoader.SaveGame(HostSave);
+                        saveMs = gameWatch.ElapsedMilliseconds;
+                        saveSynchronous = GameCodec.ReadFinishedSave(HostSave, savedAtUtc) != null;
+                        gameStage = 3; gameStageAt = UnityEngine.Time.realtimeSinceStartup;
+                        return;
+                    case 3:
+                        // Host: the written save becomes the guest's copy (gzip both ways); then the host reloads its own file.
+                        if (LongEventHandler.AnyEventNowOrWaiting) return;
+                        byte[]? raw = GameCodec.ReadFinishedSave(HostSave, savedAtUtc);
+                        if (raw == null)
+                        {
+                            if (UnityEngine.Time.realtimeSinceStartup - gameStageAt < 30f) return;
+                            Check("saved", false); Finish(); return;
+                        }
+                        hostFile = raw;
+                        byte[] gzipped = GameCodec.Gzip(raw);
+                        guestFile = GameCodec.Gunzip(gzipped);
+                        Check("gzip", guestFile.SequenceEqual(raw));
+                        gameResults.Add("raw=" + raw.Length + " gzip=" + gzipped.Length);
+                        System.IO.File.WriteAllBytes(GameCodec.PathFor(GuestSave), guestFile);
+                        hostGame = Current.Game; gameWatch.Restart(); gameStageAt = UnityEngine.Time.realtimeSinceStartup;
+                        gameStage = 4;
+                        GameDataSaveLoader.LoadGame(HostSave);
+                        return;
+                    case 4:
+                        // Host: reloaded. Its fingerprint; then let time run through a path the setter patch never sees.
+                        if (!Loaded()) { TimeOut("hostReloaded"); return; }
+                        reloadMs = gameWatch.ElapsedMilliseconds;
+                        (hostFingerprint, hostLines) = GameFingerprint.Compute(hostFile!, MultiplayerSession.ForCurrentGame!);
+                        hostTick = Find.TickManager.TicksGame;
+                        StartPauseProbe();
+                        gameStage = 5;
+                        return;
+                    case 5:
+                        if (UnityEngine.Time.realtimeSinceStartup - gameStageAt < 2f) return;
+                        Check("ticksHeld", Find.TickManager.TicksGame == pausedTick && Find.TickManager.Paused);
+                        gameResults.Add(ProbeText());
+                        hostGame = Current.Game; gameWatch.Restart(); gameStageAt = UnityEngine.Time.realtimeSinceStartup;
+                        gameStage = 6;
+                        GameDataSaveLoader.LoadGame(GuestSave);
+                        return;
+                    case 6:
+                        // Guest: loaded the received copy. Same fingerprint, same tick, session and owners present.
+                        if (!Loaded()) { TimeOut("guestLoaded"); return; }
+                        long loadMs = gameWatch.ElapsedMilliseconds;
+                        MultiplayerSession? loaded = MultiplayerSession.ForCurrentGame;
+                        Check("sessionLoaded", loaded?.Active == true && loaded.Owners.Count() == 2);
+                        var (guestFingerprint, guestLines) = GameFingerprint.Compute(guestFile!, loaded!);
+                        bool same = guestFingerprint.SequenceEqual(hostFingerprint!);
+                        Check("fingerprint", same);
+                        if (!same)
+                        {
+                            foreach (string line in hostLines.Except(guestLines).Take(5)) Log.Message("Multiplayer Foundation game self-test: host only: " + line);
+                            foreach (string line in guestLines.Except(hostLines).Take(5)) Log.Message("Multiplayer Foundation game self-test: guest only: " + line);
+                        }
+                        Check("tick", Find.TickManager.TicksGame == hostTick);
+                        gameResults.Add("generate=" + generateMs + "ms save=" + saveMs + "ms(sync=" + saveSynchronous + ") hostReload=" + reloadMs +
+                            "ms guestLoad=" + loadMs + "ms");
+                        gameResults.Add("fingerprint " + GameFingerprint.Short(hostFingerprint!) + " -> " + GameFingerprint.Short(guestFingerprint));
+                        gameResults.Add(GameFingerprint.LogSummary(guestLines));
+                        StartPauseProbe();
+                        gameStage = 7;
+                        return;
+                    case 7:
+                        if (UnityEngine.Time.realtimeSinceStartup - gameStageAt < 2f) return;
+                        Check("ticksHeldAfterLoad", Find.TickManager.TicksGame == pausedTick && Find.TickManager.Paused);
+                        gameResults.Add(ProbeText());
+                        Finish();
+                        return;
+                }
+            }
+            catch (Exception error)
+            {
+                Log.Error("Multiplayer Foundation game self-test: FAIL " + error);
+                Finish();
+            }
+        }
+
+        private static void TimeOut(string what)
+        {
+            if (UnityEngine.Time.realtimeSinceStartup - gameStageAt < 120f) return;
+            gameResults.Add(what + "=FAIL");
+            Finish();
+        }
+
+        // Closes windows that pause on their own (intro letters) and sets the speed field directly, as any path the
+        // setter patch cannot see would; the per-frame check must pause the game again before a tick runs.
+        private static void StartPauseProbe()
+        {
+            foreach (Window window in Find.WindowStack.Windows.Where(w => w.forcePause).ToList()) Find.WindowStack.TryRemove(window, false);
+            pausedTick = Find.TickManager.TicksGame;
+            AccessTools.Field(typeof(TickManager), "curTimeSpeed").SetValue(Find.TickManager, TimeSpeed.Normal);
+            probeCalls = SessionPauseUpdatePatch.Calls; probeResets = SessionPauseUpdatePatch.Resets;
+            probeRunning = SessionPauseUpdatePatch.RunningAfter; probeBlocked = SessionPauseTickPatch.Blocked;
+            gameStageAt = UnityEngine.Time.realtimeSinceStartup;
+        }
+
+        private static string ProbeText() =>
+            "(ticks " + pausedTick + "->" + Find.TickManager.TicksGame + " speed=" + Find.TickManager.CurTimeSpeed +
+            " checks=" + (SessionPauseUpdatePatch.Calls - probeCalls) + " resets=" + (SessionPauseUpdatePatch.Resets - probeResets) +
+            " runningAfter=" + (SessionPauseUpdatePatch.RunningAfter - probeRunning) + " ticksBlocked=" + (SessionPauseTickPatch.Blocked - probeBlocked) + ")";
+
+        // Host side of the game test: a fresh game with a generated world and the scenario's starting pawns.
+        private static void PrepareHostGame()
+        {
+            MemoryUtility.ClearAllMapsAndWorld();
+            Current.Game = new Game { InitData = new GameInitData() };
+            Current.Game.Scenario = ScenarioDefOf.Crashlanded.scenario.CopyForEditing();
+            Current.Game.Scenario.PreConfigure();
+            Current.Game.storyteller = new Storyteller(StorytellerDefOf.Cassandra, DifficultyDefOf.Rough);
+            var factions = FactionGenerator.ConfigurableFactions
+                .SelectMany(def => Enumerable.Repeat(def, Math.Max(0, def.startingCountAtWorldCreation))).ToList();
+            Current.Game.World = WorldGenerator.GenerateWorld(0.05f, "mpselftestgame", OverallRainfall.Normal, OverallTemperature.Normal,
+                OverallPopulation.Normal, LandmarkDensity.Normal, factions, 0.05f);
+            GameInitData init = Find.GameInitData;
+            if (init.playerFaction == null) init.playerFaction = Faction.OfPlayer;
+            Find.Scenario.PostIdeoChosen();
+            PlanetLayer surface = Find.World.grid.Surface;
+            startTile = Enumerable.Range(0, surface.TilesCount).Select(i => surface.PlanetTileForID(i))
+                .FirstOrDefault(t => TileFinder.IsValidTileForNewSettlement(t, new System.Text.StringBuilder(), false));
+        }
+
+        private static void Finish()
+        {
+            bool pass = gameResults.Count > 0 && !gameResults.Any(r => r.EndsWith("FAIL"));
+            Log.Message("Multiplayer Foundation game self-test: " + (pass ? "PASS" : "FAIL") + " " + string.Join(" ", gameResults));
+            foreach (string name in new[] { HostSave, GuestSave })
+            {
+                // only the two files this test wrote
+                try { if (System.IO.File.Exists(GameCodec.PathFor(name))) System.IO.File.Delete(GameCodec.PathFor(name)); }
+                catch (Exception error) { Log.Warning("Multiplayer Foundation game self-test: could not remove " + name + ": " + error.Message); }
+            }
+            gameStage = 0; hostGame = null; guestFile = null; hostFile = null;
+            if (!quitWhenIdle && Current.ProgramState == ProgramState.Playing) GenScene.GoToMainMenu();
+        }
+
+        // SETUP-004: the host's pawn logic on real starting pawns generated by vanilla. True when every check passed.
+        private static bool RunPawnTest()
         {
             try
             {
@@ -122,8 +345,9 @@ namespace Multiplayer.Foundation.RimWorld
                 Log.Message("Multiplayer Foundation world self-test: pawns " + (pass ? "PASS" : "FAIL") + " start=" + startCount + "/" + total +
                     " now=" + init.startingPawnCount + "/" + init.startingAndOptionalPawns.Count + " " + string.Join(" ", results) +
                     " example=\"" + card.Name + " | " + card.Summary + " | " + card.Childhood + "/" + card.Adulthood + " | " + string.Join(",", card.Traits) + "\"");
+                return pass;
             }
-            catch (Exception error) { Log.Error("Multiplayer Foundation world self-test: pawns FAIL " + error); }
+            catch (Exception error) { Log.Error("Multiplayer Foundation world self-test: pawns FAIL " + error); return false; }
         }
 
         private static void Run()
@@ -181,7 +405,7 @@ namespace Multiplayer.Foundation.RimWorld
                     .Where(t => TileFinder.IsValidTileForNewSettlement(t, new System.Text.StringBuilder(), false)).Take(2).ToList();
                 Log.Message("Multiplayer Foundation world self-test: flag tiles " + flagTiles.Count + " found in " + scan.ElapsedMilliseconds + "ms");
                 SiteFlags.Shown = flagTiles.Select((t, i) => (i == 0 ? "Test-Host" : "Test-Gast", t, SiteFlags.ColorFor(i))).ToList();
-                if (flagTiles.Count > 0) Find.WorldCameraDriver.JumpTo(flagTiles[0]);
+                if (flagTiles.Count > 0) { Find.WorldCameraDriver.JumpTo(flagTiles[0]); startTile = flagTiles[0]; }
                 siteStage = match ? 1 : 0;
                 Log.Message("Multiplayer Foundation world self-test: " + (match ? "PASS" : "FAIL") +
                     " coverage=" + coverage + " tiles=" + tiles + " settlements=" + settlements + " loadedSettlements=" + loaded.worldObjects.Settlements.Count +

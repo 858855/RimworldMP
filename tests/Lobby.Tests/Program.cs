@@ -120,13 +120,15 @@ Expect(6, () => setup.AdvanceSetup(host, SetupPhase.Playing));                  
 Expect(3, () => setup.SetHostGame(g1, game));                                         // only the host sends the game
 Expect(6, () => setup.ReportGame(host, game));                                        // the host does not report
 Expect(6, () => setup.ReportWorld(g1, game));                                         // world reports are over
-Assert(setup.SetHostGame(host, game).State!.Players.Count(p => p.WorldStatus == WorldStatus.Waiting) == 2, "guests wait for the game");
-setup.ReportGame(g1, game);
+// Guests load while the host reloads its own save, so a guest may report first.
+Assert(setup.ReportGame(g1, game).State!.Players.All(p => p.WorldStatus == WorldStatus.Waiting), "early report waits for the host");
+Expect(6, () => setup.AdvanceSetup(host, SetupPhase.Playing));
+LobbyView announced = setup.SetHostGame(host, game).State!;
+Assert(announced.Players.Single(p => p.Id == g1).WorldStatus == WorldStatus.Match &&
+    announced.Players.Single(p => p.Id == g2).WorldStatus == WorldStatus.Waiting, "early report counts once the host announces");
 Assert(setup.ReportGame(g2, otherGame).State!.Players.Single(p => p.Id == g2).WorldStatus == WorldStatus.Mismatch, "a differing game shows");
 Expect(8, () => setup.AdvanceSetup(host, SetupPhase.Playing));
-Assert(setup.SetHostGame(host, game).State!.Players.Single(p => p.Id == g1).WorldStatus == WorldStatus.Waiting,
-    "a new host game resets earlier reports");
-setup.ReportGame(g1, game); setup.ReportGame(g2, game);
+setup.ReportGame(g2, game);
 LobbyView landed = setup.AdvanceSetup(host, SetupPhase.Playing).State!;
 Assert(landed.Phase == SetupPhase.Playing && landed.Players.All(p => p.WorldStatus == WorldStatus.Match), "all loaded: everyone landed");
 Expect(6, () => setup.ReportGame(g1, game));                                          // only while the game starts

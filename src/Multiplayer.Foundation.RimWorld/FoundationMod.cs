@@ -83,8 +83,43 @@ namespace Multiplayer.Foundation.RimWorld
         private string renameText = "";
         private static readonly AccessTools.FieldRef<Page_ConfigureStartingPawns, int> CurPawnIndex =
             AccessTools.FieldRefAccess<Page_ConfigureStartingPawns, int>("curPawnIndex");
+        // SETUP-005: the host starts the vanilla game once the server is in Generating, saves it and sends the save;
+        // guests load it. Time stays paused for everyone until lockstep (SYNC-001).
+        private bool startRequested, allowGameStart, resendGame;
+        private Dictionary<int, PlayerKey>? startOwners;
+        private List<(PlayerKey Key, string Name)>? startPlayers;
+        private string? gameFileName;
+        private DateTime saveStartedUtc;
+        private byte[]? sentGame, gameFingerprint, hostSaveFile;
+        private Game? reloadFrom;
+        private TransferSender? gameUpload;
+        private TransferReceiver? gameDownload;
+        private byte[]? guestGameFile;
+        private bool guestGameLoading;
+        private float guestLoadStartedAt;
+        private string gameText = "";
+        private float nextPauseNoteAt;
         internal bool HostSetupActive => hostSetupActive;
         internal bool GuestSiteMapActive => guestSiteMapActive;
+
+        /// <summary>
+        /// SETUP-005: the shared game is open and lockstep does not exist yet, so time must not run. While the lobby is
+        /// in Generating or Playing, the game in Play is the shared one: setup starts from the main menu only.
+        /// </summary>
+        internal bool SessionPaused => WorldSelfTest.HoldsPause ||
+            (client != null && lobby != null && lobby.Phase >= SetupPhase.Generating && Current.ProgramState == ProgramState.Playing);
+
+        /// <summary>A guest's received world lives only while a window is open in the main menu (see FoundationWindow).</summary>
+        internal bool KeepWindowOpen => lobby != null && client != null && lobby.HostId != client.SessionId && guestWorldLoaded &&
+            Current.ProgramState == ProgramState.Entry && (lobby.Phase == SetupPhase.WorldTransfer || lobby.Phase == SetupPhase.SiteSelection);
+
+        internal void NotifySessionPaused()
+        {
+            if (Time.realtimeSinceStartup < nextPauseNoteAt) return;
+            nextPauseNoteAt = Time.realtimeSinceStartup + 3f;
+            Messages.Message("Die Zeit läuft erst mit dem Gleichlauf (SYNC-001). Bis dahin bleibt das Spiel für alle pausiert.",
+                MessageTypeDefOf.RejectInput, false);
+        }
         internal static FoundationMod? Instance { get; private set; }
         private static bool menuPatched;
 
@@ -422,7 +457,7 @@ namespace Multiplayer.Foundation.RimWorld
                 Rect roomRect = new Rect(x, y, width - 110f, 28f);
                 bool locked = room.Phase != SetupPhase.Lobby;
                 Widgets.Label(roomRect, room.Name + " – " + room.HostName + " (" + room.PlayerCount + "/" + room.Capacity + ")" +
-                    (locked ? " [Einrichtung]" : "") + ModsHint(room.HostMods));
+                    (!locked ? "" : room.Phase == SetupPhase.Playing ? " [Spiel läuft]" : " [Einrichtung]") + ModsHint(room.HostMods));
                 if (room.HostMods != null)
                     TooltipHandler.TipRegion(roomRect, "Host: " + room.HostMods.GameVersion + ", " + room.HostMods.ModCount +
                         " Mods, Prüfsumme " + room.HostMods.ShortHash + "\nDu: " +
@@ -526,7 +561,8 @@ namespace Multiplayer.Foundation.RimWorld
         private void DrawSetup(float x, ref float y, float width)
         {
             if (lobby == null || client == null) return;
-            Widgets.Label(new Rect(x, y, width, 27f), "Spieleinrichtung läuft – Lobby gesperrt (" + PhaseName(lobby.Phase) + ")");
+            Widgets.Label(new Rect(x, y, width, 27f), (lobby.Phase >= SetupPhase.Generating ? "Gemeinsames Spiel" : "Spieleinrichtung läuft") +
+                " – Lobby gesperrt (" + PhaseName(lobby.Phase) + ")");
             y += 31f;
             foreach (PlayerView player in lobby.Players)
             {
@@ -549,13 +585,20 @@ namespace Multiplayer.Foundation.RimWorld
                     Find.WindowStack.Add(new CharacterSelectionWindow(this));
                 y += 36f;
             }
+            bool inGame = lobby.Phase >= SetupPhase.Generating;
             if (lobby.HostId == client.SessionId)
             {
-                if (Widgets.ButtonText(new Rect(x, y, 200f, 30f), "Einrichtung abbrechen"))
-                    Send(MessageType.SetupAbort, Array.Empty<byte>());
+                if (Widgets.ButtonText(new Rect(x, y, 200f, 30f), inGame ? "Sitzung beenden" : "Einrichtung abbrechen"))
+                {
+                    if (inGame) ConfirmAbort();
+                    else Send(MessageType.SetupAbort, Array.Empty<byte>());
+                }
             }
-            else if (Widgets.ButtonText(new Rect(x, y, 125f, 30f), "Verlassen"))
-                Send(MessageType.LeaveLobby, Array.Empty<byte>());
+            else if (Widgets.ButtonText(new Rect(x, y, inGame ? 170f : 125f, 30f), inGame ? "Sitzung verlassen" : "Verlassen"))
+            {
+                if (inGame) ConfirmLeave();
+                else Send(MessageType.LeaveLobby, Array.Empty<byte>());
+            }
             y += 36f;
         }
 
@@ -581,14 +624,14 @@ namespace Multiplayer.Foundation.RimWorld
                 }
                 y += 6f;
             }
-            if (lobby.Phase == SetupPhase.WorldTransfer) DrawWorldTransfer(x, ref y, width);
+            if (lobby.Phase == SetupPhase.WorldTransfer || lobby.Phase >= SetupPhase.Generating) DrawWorldTransfer(x, ref y, width);
             if (lobby.Site != null)
             {
                 Widgets.Label(new Rect(x, y, width, 25f), "Startort (vom Host gewählt): " + SiteFlags.Describe(SiteFlags.ToPlanetTile(lobby.Site.Value)));
                 y += 29f;
             }
-            const string info = "Startort-Fähnchen, eigene Figurenwahl und der gemeinsame Spielstart folgen in den nächsten " +
-                "Ausbauschritten (SETUP-003 bis SETUP-005). Bis dahin kann der Host die Einrichtung ansehen und abbrechen.";
+            const string info = "Nach dem Start lädt jeder den Spielstand des Hosts. Die Zeit läuft erst mit dem Gleichlauf (SYNC-001); " +
+                "bis dahin bleibt das gemeinsame Spiel für alle pausiert.";
             float infoHeight = Text.CalcHeight(info, width);
             Widgets.Label(new Rect(x, y, width, infoHeight), info);
             y += infoHeight + 10f;
@@ -597,13 +640,15 @@ namespace Multiplayer.Foundation.RimWorld
         private void DrawWorldTransfer(float x, ref float y, float width)
         {
             if (lobby == null || client == null) return;
-            string own = worldText;
-            if (worldDownload != null && worldDownload.Begin.ChunkCount > 0)
-                own = "Welt wird empfangen: " + (100 * worldDownload.ReceivedChunks / worldDownload.Begin.ChunkCount) + " %";
+            bool game = lobby.Phase >= SetupPhase.Generating;
+            string own = game ? gameText : worldText;
+            TransferReceiver? receiving = game ? gameDownload : worldDownload;
+            if (receiving != null && receiving.Begin.ChunkCount > 0)
+                own = (game ? "Spielstand" : "Welt") + " wird empfangen: " + (100 * receiving.ReceivedChunks / receiving.Begin.ChunkCount) + " %";
             if (own.Length > 0) { Widgets.Label(new Rect(x, y, width, 25f), own); y += 27f; }
             foreach (PlayerView player in lobby.Players)
             {
-                string label = "  " + player.Name + ": " + WorldStatusText(player.WorldStatus, out Color color);
+                string label = "  " + player.Name + ": " + WorldStatusText(player.WorldStatus, lobby.Phase, out Color color);
                 GUI.color = color;
                 Widgets.Label(new Rect(x, y, width, 25f), label);
                 GUI.color = Color.white;
@@ -611,7 +656,8 @@ namespace Multiplayer.Foundation.RimWorld
             }
             if (lobby.Players.Any(p => p.WorldStatus == WorldStatus.Mismatch))
             {
-                const string hint = "Die geladene Welt weicht ab. Meist liegt das an Mods, die Biome, Fraktionen oder Weltobjekte ändern.";
+                string hint = game ? "Das geladene Spiel weicht ab. Meist liegt das an Mods, die beim Laden Figuren, Karten oder IDs ändern."
+                    : "Die geladene Welt weicht ab. Meist liegt das an Mods, die Biome, Fraktionen oder Weltobjekte ändern.";
                 float hintHeight = Text.CalcHeight(hint, width);
                 Widgets.Label(new Rect(x, y, width, hintHeight), hint);
                 y += hintHeight;
@@ -619,14 +665,15 @@ namespace Multiplayer.Foundation.RimWorld
             y += 8f;
         }
 
-        private static string WorldStatusText(WorldStatus worldStatus, out Color color)
+        private static string WorldStatusText(WorldStatus worldStatus, SetupPhase phase, out Color color)
         {
             color = Color.white;
+            bool game = phase >= SetupPhase.Generating;
             switch (worldStatus)
             {
-                case WorldStatus.Match: return "Welt geladen, passt";
-                case WorldStatus.Mismatch: color = new Color(1f, 0.45f, 0.45f); return "Welt weicht ab";
-                case WorldStatus.Waiting: color = new Color(1f, 0.85f, 0.45f); return "wartet auf die Welt";
+                case WorldStatus.Match: return game ? "Spiel geladen, passt" : "Welt geladen, passt";
+                case WorldStatus.Mismatch: color = new Color(1f, 0.45f, 0.45f); return game ? "Spiel weicht ab" : "Welt weicht ab";
+                case WorldStatus.Waiting: color = new Color(1f, 0.85f, 0.45f); return game ? "lädt das Spiel …" : "wartet auf die Welt";
                 default: return "";
             }
         }
@@ -634,6 +681,7 @@ namespace Multiplayer.Foundation.RimWorld
         // Panel above the host's setup pages.
         internal void DrawSetupOverlay(Rect inRect)
         {
+            if (lobby != null && lobby.Phase >= SetupPhase.Generating) { DrawGameOverlay(inRect); return; }
             Widgets.Label(new Rect(inRect.x, inRect.y, inRect.width, 26f),
                 "Multiplayer-Einrichtung · " + (lobby == null ? "getrennt" : PhaseName(lobby.Phase)));
             string second = (lobby?.Players.Count ?? 0) + " Spieler sehen deine Auswahl live.";
@@ -679,6 +727,43 @@ namespace Multiplayer.Foundation.RimWorld
             }
             if (Widgets.ButtonText(new Rect(inRect.x, buttonY, 140f, 30f), "Chat / Lobby")) OpenWindow();
             if (isHost && Widgets.ButtonText(new Rect(inRect.x + 150f, buttonY, 140f, 30f), "Abbrechen")) ConfirmAbort();
+        }
+
+        // SETUP-005: panel in the shared game, for host and guests, until lockstep exists.
+        private void DrawGameOverlay(Rect inRect)
+        {
+            if (lobby == null || client == null) return;
+            bool isHost = lobby.HostId == client.SessionId;
+            Widgets.Label(new Rect(inRect.x, inRect.y, inRect.width, 26f), "Multiplayer · " + PhaseName(lobby.Phase));
+            string second = gameUpload != null
+                ? "Spielstand wird gesendet: " + (100 * gameUpload.AcknowledgedChunks / Math.Max(1u, gameUpload.ChunkCount)) + " %"
+                : lobby.Phase == SetupPhase.Playing ? "Alle sind gelandet."
+                : "Spiel geladen: " + lobby.Players.Count(p => p.WorldStatus == WorldStatus.Match) + "/" + lobby.Players.Count;
+            Widgets.Label(new Rect(inRect.x, inRect.y + 24f, inRect.width, 24f), second);
+            GUI.color = new Color(1f, 0.85f, 0.45f);
+            Widgets.Label(new Rect(inRect.x, inRect.y + 46f, inRect.width, 24f), "Pausiert bis zum Gleichlauf (SYNC-001)");
+            GUI.color = Color.white;
+            float y = inRect.y + 72f;
+            MultiplayerSession? session = MultiplayerSession.ForCurrentGame;
+            List<Pawn> colonists = session?.Active == true ? GameFingerprint.Colonists() : new List<Pawn>();
+            foreach (PlayerView player in lobby.Players.Take(4))
+            {
+                string key = player.Key.ToString(), pawn = "";
+                if (session != null)
+                    foreach (var (pawnId, owner) in session.Owners)
+                        if (owner == key) pawn = " – " + (colonists.FirstOrDefault(p => p.thingIDNumber == pawnId)?.Name?.ToStringShort ?? "?");
+                string line = player.Name + pawn + ": " + WorldStatusText(player.WorldStatus, lobby.Phase, out Color color);
+                GUI.color = color;
+                Widgets.Label(new Rect(inRect.x, y, inRect.width, 24f), line);
+                GUI.color = Color.white;
+                y += 24f;
+            }
+            if (Widgets.ButtonText(new Rect(inRect.x, inRect.yMax - 30f, 140f, 28f), "Chat / Lobby")) OpenWindow();
+            if (Widgets.ButtonText(new Rect(inRect.x + 150f, inRect.yMax - 30f, 160f, 28f), isHost ? "Sitzung beenden" : "Sitzung verlassen"))
+            {
+                if (isHost) ConfirmAbort();
+                else ConfirmLeave();
+            }
         }
 
         // SETUP-004, host: claim the pawn shown on the vanilla page, mark yourself done, see who owns what.
@@ -730,11 +815,62 @@ namespace Multiplayer.Foundation.RimWorld
                 (waiting.Length > 0 ? " · Warte auf: " + string.Join(", ", waiting) : " · alle fertig");
         }
 
-        /// <summary>Text for the blocked final start on the host's character page.</summary>
-        internal string StartGuardText() =>
-            lobby != null && lobby.Players.All(p => p.Ready)
-                ? "Alle sind fertig. Der gemeinsame Spielstart folgt mit SETUP-005."
-                : "Noch nicht alle fertig – " + DoneLine() + ". Der gemeinsame Spielstart folgt mit SETUP-005.";
+        /// <summary>Why the host's final start on the character page is blocked, or null when it may go on (SETUP-005).</summary>
+        internal string? StartGuardText()
+        {
+            if (lobby == null) return "Keine Lobby.";
+            if (startRequested || lobby.Phase != SetupPhase.Characters) return "Der gemeinsame Spielstart läuft schon.";
+            return lobby.Players.All(p => p.Ready) ? null : "Noch nicht alle fertig – " + DoneLine() + ".";
+        }
+
+        /// <summary>SETUP-005, host: vanilla wants to start the game. Ask the server first; start once it is in Generating.</summary>
+        internal bool TryBeginSharedStart()
+        {
+            if (allowGameStart) { allowGameStart = false; return true; }
+            if (lobby == null || lobby.Phase != SetupPhase.Characters || !lobby.Players.All(p => p.Ready))
+            {
+                Messages.Message(StartGuardText() ?? "Der Spielstart ist gerade nicht möglich.", MessageTypeDefOf.RejectInput, false);
+                return false;
+            }
+            if (!startRequested &&
+                SendBackground(new WireMessage(MessageType.SetupAdvance, requestId++, SetupPayloads.Advance(SetupPhase.Generating))))
+            {
+                startRequested = true; advancePending = true;
+                status = "Gemeinsamer Spielstart angefragt …";
+            }
+            return false;
+        }
+
+        // SETUP-005, host: the server is in Generating. Remember who owns which pawn, then let vanilla start the game.
+        private void StartSharedGame()
+        {
+            if (lobby == null) return;
+            startOwners = characterHost.SnapshotOwners();
+            startPlayers = lobby.Players.Select(p => (p.Key, p.Name)).ToList();
+            bool requested = startRequested;
+            startRequested = false;
+            if (!requested) return;
+            gameText = "Spiel wird erzeugt …";
+            allowGameStart = true;
+            try { PageUtility.InitGameStart(); }
+            catch (Exception error)
+            {
+                allowGameStart = false;
+                Log.Error("Multiplayer game start failed: " + error);
+                gameText = "Spielstart fehlgeschlagen: " + error.Message;
+            }
+        }
+
+        // The server refused the start (someone took back "done" in the meantime): back to the character page.
+        private void ReopenCharacterPage()
+        {
+            if (Current.ProgramState != ProgramState.Entry || Find.WindowStack.IsOpen<Page_ConfigureStartingPawns>()) return;
+            Find.WindowStack.Add(new Page_ConfigureStartingPawns { nextAct = PageUtility.InitGameStart });
+        }
+
+        private void ConfirmLeave() =>
+            Find.WindowStack.Add(Dialog_MessageBox.CreateConfirmation("Multiplayer-Sitzung verlassen? Dein Spiel läuft dann nur bei dir weiter.",
+                () => Send(MessageType.LeaveLobby, Array.Empty<byte>()), true, "Sitzung verlassen", WindowLayer.Super));
 
         // SETUP-004, guest window.
         internal void DrawCharacterSelection(Rect inRect)
@@ -828,9 +964,13 @@ namespace Multiplayer.Foundation.RimWorld
                 Button("Mit meiner Figur tauschen", new PawnRequest(PawnRequestKind.Swap, myPawn.PawnId, card.PawnId));
         }
 
-        private void ConfirmAbort() =>
-            Find.WindowStack.Add(Dialog_MessageBox.CreateConfirmation("Gemeinsame Einrichtung für alle abbrechen?",
-                () => Send(MessageType.SetupAbort, Array.Empty<byte>()), true, "Einrichtung abbrechen", WindowLayer.Super));
+        private void ConfirmAbort()
+        {
+            bool inGame = lobby?.Phase >= SetupPhase.Generating;
+            Find.WindowStack.Add(Dialog_MessageBox.CreateConfirmation(
+                inGame ? "Multiplayer-Sitzung für alle beenden? Jeder behält seinen Spielstand." : "Gemeinsame Einrichtung für alle abbrechen?",
+                () => Send(MessageType.SetupAbort, Array.Empty<byte>()), true, inGame ? "Sitzung beenden" : "Einrichtung abbrechen", WindowLayer.Super));
+        }
 
         // SETUP-003, guest: the received world on the vanilla starting-site page, in suggestion-only mode.
         private void OpenGuestSiteMap()
@@ -879,7 +1019,15 @@ namespace Multiplayer.Foundation.RimWorld
             if (lobby == null || client == null) return;
             if (before == SetupPhase.Lobby && now != SetupPhase.Lobby && lobby.HostId == client.SessionId) BeginHostSetup();
             bool guest = lobby.HostId != client.SessionId;
+            if (!guest && before == SetupPhase.Characters && now == SetupPhase.Generating) StartSharedGame();
             if (now != SetupPhase.Characters && before == SetupPhase.Characters) ResetCharacters();
+            if (guest && now == SetupPhase.Generating && before != SetupPhase.Generating)
+            {
+                gameText = "Der Host erzeugt das Spiel …";
+                if (Current.ProgramState == ProgramState.Entry) OpenWindow();
+            }
+            if (now == SetupPhase.Playing && before != SetupPhase.Playing)
+                status = "Alle sind gelandet. Das Spiel bleibt pausiert, bis der Gleichlauf fertig ist (SYNC-001).";
             if (guest && now == SetupPhase.Characters && before != SetupPhase.Characters)
             {
                 Find.WindowStack.TryRemove(typeof(FoundationWindow), false);
@@ -895,7 +1043,13 @@ namespace Multiplayer.Foundation.RimWorld
             {
                 hostSettings = null; lastMirror = null;
                 ResetWorld();
+                ResetGame();
                 if (hostSetupActive) { EndHostSetup(true); status = "Einrichtung abgebrochen"; }
+                if (before >= SetupPhase.Generating && Current.ProgramState == ProgramState.Playing)
+                {
+                    status = "Multiplayer-Sitzung beendet – dieses Spiel läuft jetzt nur bei dir weiter.";
+                    Messages.Message(status, MessageTypeDefOf.NeutralEvent, false);
+                }
             }
         }
 
@@ -926,10 +1080,12 @@ namespace Multiplayer.Foundation.RimWorld
             if (client == null || lobby == null || lobby.HostId != client.SessionId) { EndHostSetup(true); return; }
             if (Time.realtimeSinceStartup < nextMirrorAt) return;
             nextMirrorAt = Time.realtimeSinceStartup + 0.5f;
+            if (lobby.Phase >= SetupPhase.Generating) { UpdateHostGame(); return; }
             Page? page = SetupMirror.CurrentPage();
             if (page == null)
             {
-                if (LongEventHandler.AnyEventNowOrWaiting) return; // world generation runs without a page
+                // world generation runs without a page; vanilla may close the character page while the start is asked for
+                if (LongEventHandler.AnyEventNowOrWaiting || startRequested) return;
                 pageMissingSince ??= Time.realtimeSinceStartup;
                 if (Time.realtimeSinceStartup - pageMissingSince.Value < 1.5f) return;
                 // The host left the setup pages (Back on the first page): end the shared setup for everyone.
@@ -959,6 +1115,129 @@ namespace Multiplayer.Foundation.RimWorld
             else
                 advancePending = SendBackground(new WireMessage(MessageType.SetupAdvance, requestId++,
                     SetupPayloads.Advance((SetupPhase)((byte)lobby.Phase + 1))));
+        }
+
+        // SETUP-005, host: after vanilla's map generation, save once, announce the fingerprint and send the save;
+        // land everyone as soon as every guest loaded the same game.
+        private void UpdateHostGame()
+        {
+            if (lobby == null || Current.ProgramState != ProgramState.Playing || LongEventHandler.AnyEventNowOrWaiting || Find.Maps.Count == 0) return;
+            EnsureSessionOverlay();
+            MultiplayerSession? session = MultiplayerSession.ForCurrentGame;
+            if (session == null || lobby.Phase != SetupPhase.Generating) return;
+            if (gameFileName == null)
+            {
+                Find.TickManager.CurTimeSpeed = TimeSpeed.Paused;
+                session.Begin(lobby.Id, startPlayers ?? lobby.Players.Select(p => (p.Key, p.Name)).ToList(),
+                    startOwners ?? new Dictionary<int, PlayerKey>(), GameFingerprint.Colonists().Select(p => p.thingIDNumber).ToList());
+                gameFileName = GameCodec.FileNameFor(lobby.Name);
+                saveStartedUtc = DateTime.UtcNow;
+                gameText = "Spielstand wird gespeichert …";
+                try { GameDataSaveLoader.SaveGame(gameFileName); }
+                catch (Exception error)
+                {
+                    Log.Error("Multiplayer game save failed: " + error);
+                    gameText = "Spielstand konnte nicht gespeichert werden: " + error.Message;
+                }
+                return;
+            }
+            if (hostSaveFile == null)
+            {
+                byte[]? raw = GameCodec.ReadFinishedSave(gameFileName, saveStartedUtc);
+                if (raw == null) return;
+                hostSaveFile = raw;
+                sentGame = GameCodec.Gzip(raw);
+                resendGame = lobby.Players.Count > 1;
+                StartGameUpload(); // runs while the host reloads
+                // Everyone plays the loaded save, the host too: a freshly generated game and its loaded copy differ
+                // (tick, map tile; self-test 2026-10-15), and lockstep needs the same state everywhere.
+                reloadFrom = Current.Game;
+                gameText = "Spielstand gesendet (" + (sentGame.Length / 1024) + " KiB); wird neu geladen …";
+                GameDataSaveLoader.LoadGame(gameFileName);
+                return;
+            }
+            StartGameUpload();
+            if (gameFingerprint == null)
+            {
+                if (ReferenceEquals(Current.Game, reloadFrom)) return; // the reload has not happened yet
+                if (!session.Active) { gameText = "Das neu geladene Spiel enthält keine Multiplayer-Sitzung."; return; }
+                Find.TickManager.CurTimeSpeed = TimeSpeed.Paused;
+                var (fingerprint, lines) = GameFingerprint.Compute(hostSaveFile, session);
+                gameFingerprint = fingerprint;
+                SendBackground(new WireMessage(MessageType.GameReady, requestId++, SetupPayloads.Fingerprint(fingerprint)));
+                gameText = "Spielstand gesendet (" + (sentGame!.Length / 1024) + " KiB, Prüfsumme " + GameFingerprint.Short(fingerprint) + ")";
+                Log.Message("Multiplayer Foundation: " + gameText + "; " + GameFingerprint.LogSummary(lines));
+                return;
+            }
+            if (!advancePending && gameUpload == null && lobby.Players.All(p => p.WorldStatus == WorldStatus.Match))
+                advancePending = SendBackground(new WireMessage(MessageType.SetupAdvance, requestId++, SetupPayloads.Advance(SetupPhase.Playing)));
+        }
+
+        private void StartGameUpload()
+        {
+            if (!resendGame || gameUpload != null || sentGame == null) return;
+            resendGame = false;
+            gameUpload = new TransferSender(TransferKind.Game, Guid.Empty, sentGame);
+            SendAllBackground(gameUpload.Start(NowMs()));
+        }
+
+        // SETUP-005, guest: writes the received save into the save folder and loads it like "Load game" does.
+        private void LoadGuestGame(byte[] gzipped)
+        {
+            if (lobby == null) return;
+            byte[] raw;
+            try { raw = GameCodec.Gunzip(gzipped); }
+            catch (Exception error) { gameText = "Spielstand unlesbar: " + error.Message; return; }
+            // Sent again for another guest after a failed transfer: nothing to do if this one already runs here.
+            if (guestGameFile != null && !guestGameLoading && Current.ProgramState == ProgramState.Playing && raw.SequenceEqual(guestGameFile)) return;
+            gameFileName ??= GameCodec.FileNameFor(lobby.Name);
+            try { System.IO.File.WriteAllBytes(GameCodec.PathFor(gameFileName), raw); }
+            catch (Exception error) { gameText = "Spielstand konnte nicht geschrieben werden: " + error.Message; return; }
+            guestGameFile = raw; guestGameLoading = true; guestLoadStartedAt = Time.realtimeSinceStartup;
+            gameText = "Spielstand wird geladen …";
+            Find.WindowStack.TryRemove(typeof(FoundationWindow), false);
+            Find.WindowStack.TryRemove(typeof(CharacterSelectionWindow), false);
+            CloseGuestSiteMap(false);
+            if (guestWorldLoaded) { guestWorldLoaded = false; WorldCodec.Discard(); }
+            GameDataSaveLoader.LoadGame(gameFileName);
+        }
+
+        // SETUP-005, guest: once the received game is loaded, report its fingerprint; it then stays paused.
+        private void UpdateGuestGame()
+        {
+            if (lobby == null || client == null || lobby.HostId == client.SessionId || lobby.Phase < SetupPhase.Generating) return;
+            if (Current.ProgramState == ProgramState.Playing && !LongEventHandler.AnyEventNowOrWaiting) EnsureSessionOverlay();
+            if (!guestGameLoading || LongEventHandler.AnyEventNowOrWaiting) return;
+            if (Current.ProgramState != ProgramState.Playing)
+            {
+                // vanilla goes back to the main menu when loading fails
+                if (Current.ProgramState == ProgramState.Entry && Time.realtimeSinceStartup - guestLoadStartedAt > 3f)
+                { guestGameLoading = false; gameText = "Spielstand konnte nicht geladen werden (siehe Log)."; OpenWindow(); }
+                return;
+            }
+            guestGameLoading = false;
+            MultiplayerSession? session = MultiplayerSession.ForCurrentGame;
+            if (session == null || !session.Active || guestGameFile == null)
+            { gameText = "Der geladene Spielstand enthält keine Multiplayer-Sitzung."; return; }
+            Find.TickManager.CurTimeSpeed = TimeSpeed.Paused;
+            var (fingerprint, lines) = GameFingerprint.Compute(guestGameFile, session);
+            SendBackground(new WireMessage(MessageType.GameLoaded, requestId++, SetupPayloads.Fingerprint(fingerprint)));
+            gameText = "Spiel geladen (Prüfsumme " + GameFingerprint.Short(fingerprint) + ")";
+            Log.Message("Multiplayer Foundation: " + gameText + "; " + GameFingerprint.LogSummary(lines));
+        }
+
+        private void EnsureSessionOverlay()
+        {
+            if (Current.ProgramState == ProgramState.Playing && !Find.WindowStack.IsOpen<SetupOverlayWindow>())
+                Find.WindowStack.Add(new SetupOverlayWindow(this));
+        }
+
+        private void ResetGame()
+        {
+            startRequested = false; allowGameStart = false; resendGame = false; startOwners = null; startPlayers = null;
+            gameFileName = null; sentGame = null; gameFingerprint = null; hostSaveFile = null; reloadFrom = null; gameUpload = null; gameDownload = null;
+            guestGameFile = null; guestGameLoading = false; gameText = "";
+            if (Current.ProgramState == ProgramState.Playing) Find.WindowStack.TryRemove(typeof(SetupOverlayWindow), false);
         }
 
         // SETUP-004, host: one pawn per player at least, then the roster whenever it changed.
@@ -1054,6 +1333,7 @@ namespace Multiplayer.Foundation.RimWorld
                 case SetupPhase.Ideology: return "Ideoligion";
                 case SetupPhase.Characters: return "Figuren";
                 case SetupPhase.Generating: return "Spiel wird erzeugt";
+                case SetupPhase.Playing: return "Gelandet (pausiert)";
                 default: return "Lobby";
             }
         }
@@ -1133,6 +1413,17 @@ namespace Multiplayer.Foundation.RimWorld
                 }
                 if (worldUpload.State != TransferState.Active) worldUpload = null;
             }
+            if (gameUpload != null)
+            {
+                SendAllBackground(gameUpload.Poll(NowMs()));
+                if (gameUpload.State == TransferState.Failed)
+                {
+                    // e.g. a guest left mid-transfer: send the same save again to whoever still waits
+                    Log.Warning("Multiplayer game transfer failed: " + gameUpload.Failure?.Reason);
+                    resendGame = lobby?.Players.Any(p => p.WorldStatus == WorldStatus.Waiting) == true;
+                }
+                if (gameUpload.State != TransferState.Active) gameUpload = null;
+            }
             if (pendingWorldReport != null && client != null)
             {
                 byte[] report = pendingWorldReport;
@@ -1165,6 +1456,19 @@ namespace Multiplayer.Foundation.RimWorld
                 SendAllBackground(worldUpload.Handle(message, NowMs()));
                 return;
             }
+            if (gameUpload != null && gameUpload.Owns(message))
+            {
+                SendAllBackground(gameUpload.Handle(message, NowMs()));
+                return;
+            }
+            if (gameDownload != null && gameDownload.Owns(message))
+            {
+                SendAllBackground(gameDownload.Handle(message));
+                if (gameDownload.State == TransferState.Completed) { byte[] data = gameDownload.Data!; gameDownload = null; LoadGuestGame(data); }
+                else if (gameDownload.State == TransferState.Failed)
+                { gameText = "Spielstandübertragung abgebrochen: " + gameDownload.Failure?.Reason; gameDownload = null; }
+                return;
+            }
             if (worldDownload != null && worldDownload.Owns(message))
             {
                 SendAllBackground(worldDownload.Handle(message));
@@ -1186,6 +1490,11 @@ namespace Multiplayer.Foundation.RimWorld
                     // A newer world (host generated again) replaces an unfinished one.
                     try { worldDownload = new TransferReceiver(begin); worldText = "Welt wird empfangen …"; }
                     catch (ProtocolException error) { worldText = "Welt unlesbar: " + error.Message; }
+                }
+                else if (begin.Kind == TransferKind.Game && lobby?.Phase == SetupPhase.Generating && lobby.HostId != client?.SessionId)
+                {
+                    try { gameDownload = new TransferReceiver(begin); gameText = "Spielstand wird empfangen …"; }
+                    catch (ProtocolException error) { gameText = "Spielstand unlesbar: " + error.Message; }
                 }
                 else
                     SendBackground(new WireMessage(MessageType.TransferAbort, 0, TransferPayloads.Abort(
@@ -1220,6 +1529,7 @@ namespace Multiplayer.Foundation.RimWorld
             upload = null; download = null; diffRequested = false; manifestRequests.Clear(); manifestSentTo = null;
             hostSettings = null; lastMirror = null;
             ResetWorld();
+            ResetGame();
             if (hostSetupActive) EndHostSetup(true);
         }
 
@@ -1284,6 +1594,7 @@ namespace Multiplayer.Foundation.RimWorld
             WorldSelfTest.TryStart();
             UpdateManifestAndTransfers();
             UpdateHostSetup();
+            UpdateGuestGame();
             UpdateSiteFlags();
             if (client == null) return;
             try
@@ -1332,6 +1643,7 @@ namespace Multiplayer.Foundation.RimWorld
                         case MessageType.LeaveLobby:
                             lobby = null; chatMessages.Clear(); status = "Lobby verlassen";
                             hostSettings = null; lastMirror = null;
+                            ResetGame();
                             if (hostSetupActive) EndHostSetup(true);
                             Send(MessageType.LobbyListRequest, Array.Empty<byte>()); break;
                         case MessageType.LobbyChatMessage:
@@ -1353,6 +1665,12 @@ namespace Multiplayer.Foundation.RimWorld
                             var reader = new PayloadReader(message.Payload);
                             byte code = reader.ReadByte(); string reason = reader.ReadString(); reader.EnsureComplete();
                             advancePending = false;
+                            if (startRequested)
+                            {
+                                startRequested = false;
+                                Messages.Message("Spielstart abgelehnt: " + reason, MessageTypeDefOf.RejectInput, false);
+                                ReopenCharacterPage();
+                            }
                             status = "Serverfehler " + code + ": " + reason; break;
                     }
                 }
