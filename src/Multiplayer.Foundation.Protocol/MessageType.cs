@@ -24,6 +24,10 @@ namespace Multiplayer.Foundation.Protocol
         TransferBegin = 20,
         TransferChunk = 21,
         TransferAck = 22,
-        TransferAbort = 23
+        TransferAbort = 23,
+        SetupAdvance = 24,
+        SetupAbort = 25,
+        SiteFlag = 26,
+        SiteDecided = 27
     }
 }

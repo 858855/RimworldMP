@@ -269,6 +269,19 @@ public sealed class FoundationServer : IAsyncDisposable
                         catch (IOException) { chatTarget.Connection.Dispose(); }
                         catch (ObjectDisposedException) { }
                 break;
+            case MessageType.SetupAdvance:
+                await PublishAsync(lobbies.AdvanceSetup(peer.Id, SetupPayloads.ReadAdvance(message.Payload)), null, token, message.RequestId).ConfigureAwait(false);
+                break;
+            case MessageType.SetupAbort:
+                RequireEmpty(message.Payload);
+                await PublishAsync(lobbies.AbortSetup(peer.Id), null, token, message.RequestId).ConfigureAwait(false);
+                break;
+            case MessageType.SiteFlag:
+                await PublishAsync(lobbies.SetSiteFlag(peer.Id, SetupPayloads.ReadFlag(message.Payload)), null, token, message.RequestId).ConfigureAwait(false);
+                break;
+            case MessageType.SiteDecided:
+                await PublishAsync(lobbies.DecideSite(peer.Id, SetupPayloads.ReadSite(message.Payload)), null, token, message.RequestId).ConfigureAwait(false);
+                break;
             case MessageType.TransferBegin:
                 TransferBegin begin = TransferPayloads.ReadBegin(message.Payload);
                 IReadOnlyList<Guid> members;

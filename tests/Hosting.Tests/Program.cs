@@ -248,6 +248,104 @@ await using (var keyed = await ListenHost.StartAsync("127.0.0.1", 0, "Host", "Ke
 }
 Console.WriteLine("PASS: player key reaches the lobby; Steam-verified identity cannot be spoofed; one connection per player");
 
+// ADR 0015/0017 end to end: a Steam guest tries every host-only step and is refused by the host's server.
+await using (var setupHost = await ListenHost.StartAsync("127.0.0.1", 0, "Host", "Setup Room", 4, PlayerKey.Steam(76561198000000030UL)))
+{
+    LobbyView setupRoom = LobbyPayloads.ReadState((await ReceiveAsync(setupHost.Client, MessageType.LobbyStateUpdate)).Payload);
+    using var setupLink = new SteamLikeLink();
+    PlayerKey setupGuestKey = PlayerKey.Steam(76561198000000040UL);
+    Assert(setupHost.AttachConnection(NetworkConnection.FromDuplexStream(setupLink.A), setupGuestKey), "setup guest attached");
+    using LobbyClient setupGuest = await LobbyClient.ConnectOverStreamAsync(setupLink.B, "Guest", TimeSpan.FromSeconds(4),
+        CancellationToken.None, setupGuestKey);
+    await setupGuest.SendAsync(MessageType.JoinLobby, 2, LobbyPayloads.GuidValue(setupRoom.Id));
+    await ReceiveAsync(setupGuest, MessageType.LobbyStateUpdate);
+    LobbyClient hostClient = setupHost.Client;
+    uint request = 100;
+
+    Assert(await ErrorCodeAsync(setupGuest, MessageType.SetupAdvance, ++request, SetupPayloads.Advance(SetupPhase.Scenario)) == 3, "guest cannot start");
+    Assert(await ErrorCodeAsync(hostClient, MessageType.SetupAdvance, ++request, SetupPayloads.Advance(SetupPhase.Scenario)) == 6, "start refused before everyone is ready");
+    await StateAsync(hostClient, MessageType.PlayerReadyChanged, ++request, LobbyPayloads.Bool(true));
+    await StateAsync(setupGuest, MessageType.PlayerReadyChanged, ++request, LobbyPayloads.Bool(true));
+    LobbyView started = await StateAsync(hostClient, MessageType.SetupAdvance, ++request, SetupPayloads.Advance(SetupPhase.Scenario));
+    LobbyView guestSeesStart = await LatestStateAsync(setupGuest, started.Revision);
+    Assert(started.Phase == SetupPhase.Scenario && guestSeesStart.Phase == SetupPhase.Scenario, "both see the setup start");
+
+    using (LobbyClient latecomer = await LobbyClient.ConnectAsync("127.0.0.1", setupHost.Port, "Late", TimeSpan.FromSeconds(4)))
+        Assert(await ErrorCodeAsync(latecomer, MessageType.JoinLobby, 1, LobbyPayloads.GuidValue(setupRoom.Id)) == 6, "joining during setup refused");
+
+    foreach (SetupPhase next in new[] { SetupPhase.Storyteller, SetupPhase.WorldParams, SetupPhase.WorldTransfer, SetupPhase.SiteSelection })
+        await StateAsync(hostClient, MessageType.SetupAdvance, ++request, SetupPayloads.Advance(next));
+    var suggestion = new SiteTile(4242, 0);
+    LobbyView guestFlag = await StateAsync(setupGuest, MessageType.SiteFlag, ++request, SetupPayloads.Flag(suggestion));
+    LobbyView hostSeesFlag = await LatestStateAsync(hostClient, guestFlag.Revision);
+    Assert(hostSeesFlag.Players.Single(p => p.Key == setupGuestKey).Flag == suggestion, "host sees the guest's flag");
+    Assert(await ErrorCodeAsync(setupGuest, MessageType.SiteDecided, ++request, SetupPayloads.Site(suggestion)) == 3, "guest cannot choose the site");
+    LobbyView decided = await StateAsync(hostClient, MessageType.SiteDecided, ++request, SetupPayloads.Site(suggestion));
+    Assert(decided.Phase == SetupPhase.Ideology && decided.Site == suggestion, "host chose the flagged site");
+    await StateAsync(hostClient, MessageType.SetupAdvance, ++request, SetupPayloads.Advance(SetupPhase.Characters));
+    await StateAsync(hostClient, MessageType.PlayerReadyChanged, ++request, LobbyPayloads.Bool(true));
+    Assert(await ErrorCodeAsync(hostClient, MessageType.SetupAdvance, ++request, SetupPayloads.Advance(SetupPhase.Generating)) == 6,
+        "host cannot continue while the guest is still choosing");
+    await StateAsync(setupGuest, MessageType.PlayerReadyChanged, ++request, LobbyPayloads.Bool(true));
+    LobbyView generating = await StateAsync(hostClient, MessageType.SetupAdvance, ++request, SetupPayloads.Advance(SetupPhase.Generating));
+    Assert(generating.Phase == SetupPhase.Generating, "everyone done: setup continues");
+    Assert(await ErrorCodeAsync(setupGuest, MessageType.SetupAbort, ++request, Array.Empty<byte>()) == 3, "guest cannot abort");
+    LobbyView reset = await StateAsync(hostClient, MessageType.SetupAbort, ++request, Array.Empty<byte>());
+    Assert(reset.Phase == SetupPhase.Lobby && reset.Site == null, "host abort returns to the lobby");
+}
+Console.WriteLine("PASS: setup rules hold over the network: guest refused for host steps, start and characters wait for everyone");
+
+// Sends a request and returns the error code the server answers with.
+static async Task<byte> ErrorCodeAsync(LobbyClient client, MessageType type, uint requestId, byte[] payload)
+{
+    await client.SendAsync(type, requestId, payload);
+    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+    while (true)
+    {
+        while (client.TryDequeue(out WireMessage? message) && message != null)
+        {
+            if (message.RequestId != requestId) continue;
+            if (message.Type == MessageType.Error) return message.Payload[0];
+            throw new Exception($"FAIL: expected an error for {type}, got {message.Type}");
+        }
+        await Task.Delay(10, timeout.Token);
+    }
+}
+
+// Sends a request and returns the lobby state the server answers this request with.
+static async Task<LobbyView> StateAsync(LobbyClient client, MessageType type, uint requestId, byte[] payload)
+{
+    await client.SendAsync(type, requestId, payload);
+    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+    while (true)
+    {
+        while (client.TryDequeue(out WireMessage? message) && message != null)
+        {
+            if (message.RequestId != requestId) continue;
+            if (message.Type == MessageType.LobbyStateUpdate) return LobbyPayloads.ReadState(message.Payload);
+            if (message.Type == MessageType.Error)
+                throw new Exception($"FAIL: {type} refused with code {message.Payload[0]}");
+        }
+        await Task.Delay(10, timeout.Token);
+    }
+}
+
+// Waits until this client has seen a lobby state at least as new as the given revision.
+static async Task<LobbyView> LatestStateAsync(LobbyClient client, ulong revision)
+{
+    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+    while (true)
+    {
+        while (client.TryDequeue(out WireMessage? message) && message != null)
+            if (message.Type == MessageType.LobbyStateUpdate)
+            {
+                LobbyView state = LobbyPayloads.ReadState(message.Payload);
+                if (state.Revision >= revision) return state;
+            }
+        await Task.Delay(10, timeout.Token);
+    }
+}
+
 static async Task<T> ExpectAsync<T>(Func<Task> action) where T : Exception
 {
     try { await action(); } catch (T error) { return error; }

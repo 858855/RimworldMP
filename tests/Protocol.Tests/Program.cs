@@ -143,6 +143,33 @@ await Run("player key and hello", () =>
     Throws<ProtocolException>(() => LobbyPayloads.ReadHello(zeroSteam.ToArray()));
     return Task.CompletedTask;
 });
+await Run("setup payloads and lobby state", () =>
+{
+    var tile = new SiteTile(123456, 1);
+    Equal(tile, SetupPayloads.ReadSite(SetupPayloads.Site(tile)));
+    Equal(tile, SetupPayloads.ReadFlag(SetupPayloads.Flag(tile))!.Value);
+    Equal(false, SetupPayloads.ReadFlag(SetupPayloads.Flag(null)).HasValue);
+    Equal(SetupPhase.Characters, SetupPayloads.ReadAdvance(SetupPayloads.Advance(SetupPhase.Characters)));
+    Throws<ProtocolException>(() => SetupPayloads.Advance((SetupPhase)200));
+    Throws<ProtocolException>(() => SetupPayloads.ReadAdvance(new byte[] { 200 }));
+    Throws<ArgumentOutOfRangeException>(() => new SiteTile(-1, 0));
+    Throws<ArgumentOutOfRangeException>(() => new SiteTile(0, -1));
+    var negative = new PayloadWriter(); negative.WriteUInt32(uint.MaxValue); negative.WriteUInt32(0);
+    Throws<ProtocolException>(() => SetupPayloads.ReadSite(negative.ToArray()));
+    Throws<ProtocolException>(() => SetupPayloads.ReadSite(SetupPayloads.Site(tile).Concat(new byte[] { 0 }).ToArray()));
+    Equal(false, new SiteTile(5, 0) == new SiteTile(5, 1));
+
+    var key = PlayerKey.Steam(76561198000000001UL);
+    var view = new LobbyView(Guid.NewGuid(), "Room", Guid.NewGuid(), 7, 4,
+        new[] { new PlayerView(Guid.NewGuid(), "A", true, key, tile), new PlayerView(Guid.NewGuid(), "B", false, key) },
+        SetupPhase.Ideology, new SiteTile(9, 0));
+    LobbyView back = LobbyPayloads.ReadState(LobbyPayloads.State(view));
+    Equal(SetupPhase.Ideology, back.Phase); Equal(new SiteTile(9, 0), back.Site!.Value);
+    Equal(tile, back.Players[0].Flag!.Value); Equal(false, back.Players[1].Flag.HasValue);
+    var summary = LobbyPayloads.ReadList(LobbyPayloads.List(new[] { new LobbySummary(Guid.NewGuid(), "R", "H", 2, 4, SetupPhase.Characters) }));
+    Equal(SetupPhase.Characters, summary[0].Phase);
+    return Task.CompletedTask;
+});
 Console.WriteLine($"PASS: {passed} protocol test groups");
 
 async Task Run(string name, Func<Task> body)

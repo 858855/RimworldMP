@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Regeln der Spieleinrichtung (Arbeitsbranch `feat/setup-rules`)
+
+- Der Host-Server führt die Phasen der gemeinsamen Spieleinrichtung und setzt die Regeln selbst durch:
+  - Start erst, wenn alle bereit sind.
+  - Nur der Host schaltet weiter.
+  - Während der Einrichtung kann niemand beitreten.
+  - Jeder setzt ein Fähnchen, nur der Host wählt den Startort.
+  - Die Charakterwahl geht erst weiter, wenn alle fertig sind; der Host kann nichts erzwingen.
+- Ein manipulierter Gast kann keine dieser Regeln umgehen; das ist auch über das Netz getestet.
+- Startorte werden mit Planetenebene übertragen, weil RimWorld 1.6 Felder so adressiert.
+- Im Spiel ist das noch nicht sichtbar; Knöpfe, Weltkarte und Charakterfenster folgen.
+
 ### Spielerkennung (Arbeitsbranch `feat/player-key`, ID-001)
 
 - Jeder Spieler hat jetzt eine feste Kennung: mit Steam die SteamID, ohne Steam eine einmal erzeugte und gespeicherte Kennung. Sie ist die Grundlage für Charakterwahl und Pawn-Besitz.

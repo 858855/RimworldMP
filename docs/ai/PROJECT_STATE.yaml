@@ -14,15 +14,16 @@ target_rimworld_version:
   runtime: Unity/Mono
   game_runtime_tested: true
   other_versions_verified: []
-current_phase: player_key_review_pending
+current_phase: setup_rules_server_side_review_pending
 git:
-  branch: feat/player-key
-  base_branch: feat/chunk-transfer
-  base_commit: c7ed45a
+  branch: feat/setup-rules
+  base_branch: feat/player-key
+  base_commit: 2221608
   current_commit_ref: HEAD
   pushed: false
   merged: false
   dependent_branches:
+  - feat/player-key
   - feat/chunk-transfer
   - docs/full-multiplayer-plan
   - docs/project-governance
@@ -108,6 +109,7 @@ verified_capabilities:
 - 'Merge von feat/main-menu-chat und fix/internet-connectivity in main: RimWorld-1.6-Mod (Linux, 1.6.4871 rev598) ohne Warnungen gebaut, Dedicated Server gebaut, alle sieben Testprojekte unter .NET 10.0.13 auf Linux bestanden. Siehe docs/verification/2026-10-15-merge-menu-chat-internet.md.'
 - 'Chunk-Kanal (XFER-001): 50 MB Host→Gast über ListenHost per TCP und per Steam-Nachbildung mit gleichem SHA-256; Spitze Steam-Sendepuffer 360/512 KiB, Empfangsqueue 360/1024 KiB; Gegenprobe mit Plan-Fenster 32 bricht die Steam-Nachbildung ab. Echtes Steam nicht getestet. Siehe docs/verification/2026-10-15-chunk-transfer.md.'
 - 'PlayerKey (ID-001): Hello trägt SteamID oder lokale GUID; über Steam-Nachbildung wird eine fremde SteamID abgelehnt, Doppelverbindung abgelehnt, Kennung binnen 1,5 s nach Trennen frei. Spielneustart nicht getestet. Siehe docs/verification/2026-10-15-player-key.md.'
+- 'Setup-Regeln serverseitig (ADR 0017): Phasen, Sperre, Fähnchen, Startort nur Host, alle fertig vor Weiter; im Lobby-Kern und Ende zu Ende über ListenHost mit Steam-ähnlichem Gast getestet. Spielseite fehlt. Siehe docs/verification/2026-10-15-setup-rules.md.'
 user_reported_capabilities:
 - 'Steam-Verbindung laut Benutzer am 2026-10-15 erfolgreich; Ablauf, Heimanschlüsse und weitere Lobbyfunktionen noch nicht dokumentiert. Siehe docs/verification/2026-10-15-steam-user-connection.md.'
 - 'Multiplayer-Knopf direkt unter Tutorial und Fensteröffnung vom Benutzer am 2026-10-15 im Spiel bestätigt; siehe docs/verification/2026-10-15-menu-chat.md.'
@@ -137,7 +139,7 @@ active_tasks:
 - CHAT-001
 - NET-002
 - PLAN-001
-next_action: 'Review von feat/chunk-transfer und feat/player-key. Danach nächster Meilenstein ohne Spieltest-Bedarf, z. B. die serverseitigen Regeln von START-001/SETUP-003/SETUP-004 (ADR 0015) als Zustandsmaschine im Lobby-Kern.'
+next_action: 'Review von feat/chunk-transfer, feat/player-key und feat/setup-rules. Weiter ohne Spieltest möglich: MOD-001 Serverseite (Manifest-Vergleich, Bereit sperren) oder SETUP-002 Fingerabdruck-Bedingung. Spielseitige Teile brauchen spätere Spieltests.'
 documentation_refs:
   tasks: docs/ai/TASKS.yaml
   handoff: docs/ai/SESSION_HANDOFF.md

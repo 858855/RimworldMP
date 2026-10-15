@@ -32,8 +32,12 @@ Strings sind `length:u16` plus strikt gültige UTF-8-Bytes. Allgemeine Strings: 
 | 21 | TransferChunk | beide | Transfer-ID, Index `u32`, Daten (`u32`-Länge, höchstens 61 440 Byte) |
 | 22 | TransferAck | beide | Transfer-ID, Anzahl lückenlos verarbeiteter Chunks `u32` |
 | 23 | TransferAbort | beide | Transfer-ID, Grund `u8`, Text |
+| 24 | SetupAdvance | C→S | Zielphase `u8`; nur Host, nur die nächste Phase |
+| 25 | SetupAbort | C→S | leer; nur Host |
+| 26 | SiteFlag | C→S | `bool` + optional Feld (`tileId:u32`, `layerId:u32`); nur in der Startortwahl |
+| 27 | SiteDecided | C→S | Feld; nur Host |
 
-Listen- und Zustandsupdates sind in `LobbyPayloads.cs` kodiert: Liste mit `count:u8`, je Lobby GUID, Name, Hostname, Spielerzahl und Kapazität; Snapshot mit GUID, Name, Host-GUID, Revision `u64`, Kapazität und Spielerarray (Session-GUID, Name, Ready, PlayerKey). Der TCP-Server verwendet diese Payloads; zwei unabhängige TCP-Testclients bestanden die Integrationstests. RimWorld-Client-Kompatibilität ist noch offen. Fehlercodes: `1=InvalidMessage`, `2=VersionMismatch`, `3=Unauthorized`, `4=NotFound`, `5=Capacity`, `6=InvalidState`, `7=ServerBusy`.
+Listen- und Zustandsupdates sind in `LobbyPayloads.cs` kodiert: Liste mit `count:u8`, je Lobby GUID, Name, Hostname, Spielerzahl und Kapazität; Snapshot mit GUID, Name, Host-GUID, Revision `u64`, Kapazität, Setup-Phase `u8`, optional gewähltes Feld und Spielerarray (Session-GUID, Name, Ready, PlayerKey, optional Fähnchen). Die Liste trägt je Lobby zusätzlich die Phase. Der TCP-Server verwendet diese Payloads; zwei unabhängige TCP-Testclients bestanden die Integrationstests. RimWorld-Client-Kompatibilität ist noch offen. Fehlercodes: `1=InvalidMessage`, `2=VersionMismatch`, `3=Unauthorized`, `4=NotFound`, `5=Capacity`, `6=InvalidState`, `7=ServerBusy`.
 
 ## Übergänge und Grenzen
 
@@ -50,3 +54,14 @@ Große Daten (Mod-Manifest bis 4 MiB, Welt bis 64 MiB, Spielstand und Snapshot b
 ## Spielerkennung
 
 Die Session-ID wechselt mit jeder Verbindung; der `PlayerKey` bleibt. Gespeichertes wie Pawn-Besitz nutzt nur den `PlayerKey`. Über Steam prüft der Server das Hello gegen die von Steam authentifizierte SteamID (Ablehnung Code 3). Über TCP ist die Kennung nicht prüfbar (SEC-001). Eine Kennung darf nur einmal gleichzeitig verbunden sein (Ablehnung Code 6). Siehe ADR 0016.
+
+## Spieleinrichtung
+
+Phasen: `0 Lobby`, `1 Scenario`, `2 Storyteller`, `3 WorldParams`, `4 WorldTransfer`, `5 SiteSelection`, `6 Ideology`, `7 Characters`, `8 Generating`. Der Server setzt die Regeln durch:
+- Start ab 2 Spielern, wenn alle bereit sind.
+- Nur der Host schaltet weiter, und nur zur nächsten Phase.
+- Außerhalb der Lobby sind Beitritte gesperrt.
+- Fähnchen setzen alle, den Startort wählt nur der Host.
+- Die Charakterwahl endet erst, wenn alle fertig sind.
+
+Bereit gilt in Lobby und Charakterwahl und wird bei jedem Phasenwechsel gelöscht. Felder sind `PlanetTile` aus RimWorld 1.6 mit Feld- und Ebenennummer. Antwort ist der vollständige Lobbyzustand; Verstöße kommen als `Error` mit Code 3 (nicht Host) oder 6 (Phase/Bedingung). Siehe ADR 0015 und 0017.

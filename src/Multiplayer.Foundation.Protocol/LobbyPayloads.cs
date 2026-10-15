@@ -6,36 +6,46 @@ namespace Multiplayer.Foundation.Protocol
 {
     public sealed class PlayerView
     {
-        public PlayerView(Guid id, string name, bool ready, PlayerKey key) { Id = id; Name = name; Ready = ready; Key = key; }
+        public PlayerView(Guid id, string name, bool ready, PlayerKey key, SiteTile? flag = null)
+        { Id = id; Name = name; Ready = ready; Key = key; Flag = flag; }
         /// <summary>Session ID of this connection; changes on every reconnect.</summary>
         public Guid Id { get; }
         /// <summary>Persistent identity; use this for anything saved.</summary>
         public PlayerKey Key { get; }
         public string Name { get; }
+        /// <summary>Lobby: ready to start. Characters: done choosing. Cleared on every setup phase change.</summary>
         public bool Ready { get; }
+        /// <summary>Site suggestion during SiteSelection; carries no voting weight (ADR 0015).</summary>
+        public SiteTile? Flag { get; }
     }
 
     public sealed class LobbyView
     {
-        public LobbyView(Guid id, string name, Guid hostId, ulong revision, byte capacity, IReadOnlyList<PlayerView> players)
-        { Id = id; Name = name; HostId = hostId; Revision = revision; Capacity = capacity; Players = players; }
+        public LobbyView(Guid id, string name, Guid hostId, ulong revision, byte capacity, IReadOnlyList<PlayerView> players,
+            SetupPhase phase = SetupPhase.Lobby, SiteTile? site = null)
+        { Id = id; Name = name; HostId = hostId; Revision = revision; Capacity = capacity; Players = players; Phase = phase; Site = site; }
         public Guid Id { get; }
         public string Name { get; }
         public Guid HostId { get; }
         public ulong Revision { get; }
         public byte Capacity { get; }
         public IReadOnlyList<PlayerView> Players { get; }
+        public SetupPhase Phase { get; }
+        /// <summary>Starting site chosen by the host; set once SiteSelection ends.</summary>
+        public SiteTile? Site { get; }
     }
 
     public sealed class LobbySummary
     {
-        public LobbySummary(Guid id, string name, string hostName, byte playerCount, byte capacity)
-        { Id = id; Name = name; HostName = hostName; PlayerCount = playerCount; Capacity = capacity; }
+        public LobbySummary(Guid id, string name, string hostName, byte playerCount, byte capacity, SetupPhase phase = SetupPhase.Lobby)
+        { Id = id; Name = name; HostName = hostName; PlayerCount = playerCount; Capacity = capacity; Phase = phase; }
         public Guid Id { get; }
         public string Name { get; }
         public string HostName { get; }
         public byte PlayerCount { get; }
         public byte Capacity { get; }
+        /// <summary>Anything but Lobby means setup is running and joining is refused.</summary>
+        public SetupPhase Phase { get; }
     }
 
     public sealed class LobbyChatView
@@ -111,29 +121,39 @@ namespace Multiplayer.Foundation.Protocol
             var writer = new PayloadWriter();
             writer.WriteGuid(state.Id); writer.WriteString(state.Name, 160); writer.WriteGuid(state.HostId);
             writer.WriteUInt64(state.Revision); writer.WriteByte(state.Capacity);
+            writer.WriteByte((byte)state.Phase); SiteTile.WriteOptional(writer, state.Site);
             if (state.Players.Count > 64) throw new ProtocolException("Too many players.");
             writer.WriteByte((byte)state.Players.Count);
             foreach (PlayerView player in state.Players)
-            { writer.WriteGuid(player.Id); writer.WriteString(player.Name, 160); writer.WriteBool(player.Ready); player.Key.Write(writer); }
+            {
+                writer.WriteGuid(player.Id); writer.WriteString(player.Name, 160); writer.WriteBool(player.Ready);
+                player.Key.Write(writer); SiteTile.WriteOptional(writer, player.Flag);
+            }
             return writer.ToArray();
         }
         public static LobbyView ReadState(byte[] bytes)
         {
             var reader = new PayloadReader(bytes);
             Guid id = reader.ReadGuid(); string name = reader.ReadString(160); Guid host = reader.ReadGuid();
-            ulong revision = reader.ReadUInt64(); byte capacity = reader.ReadByte(); byte count = reader.ReadByte();
+            ulong revision = reader.ReadUInt64(); byte capacity = reader.ReadByte();
+            SetupPhase phase = SetupPayloads.ReadPhase(reader); SiteTile? site = SiteTile.ReadOptional(reader);
+            byte count = reader.ReadByte();
             if (count > 64 || count > capacity) throw new ProtocolException("Invalid player count.");
             var players = new List<PlayerView>();
             for (int i = 0; i < count; i++)
-                players.Add(new PlayerView(reader.ReadGuid(), reader.ReadString(160), reader.ReadBool(), PlayerKey.Read(reader)));
-            reader.EnsureComplete(); return new LobbyView(id, name, host, revision, capacity, players);
+                players.Add(new PlayerView(reader.ReadGuid(), reader.ReadString(160), reader.ReadBool(), PlayerKey.Read(reader),
+                    SiteTile.ReadOptional(reader)));
+            reader.EnsureComplete(); return new LobbyView(id, name, host, revision, capacity, players, phase, site);
         }
         public static byte[] List(IReadOnlyList<LobbySummary> lobbies)
         {
             if (lobbies.Count > 128) throw new ProtocolException("Too many lobbies.");
             var writer = new PayloadWriter(); writer.WriteByte((byte)lobbies.Count);
             foreach (LobbySummary lobby in lobbies)
-            { writer.WriteGuid(lobby.Id); writer.WriteString(lobby.Name, 160); writer.WriteString(lobby.HostName, 160); writer.WriteByte(lobby.PlayerCount); writer.WriteByte(lobby.Capacity); }
+            {
+                writer.WriteGuid(lobby.Id); writer.WriteString(lobby.Name, 160); writer.WriteString(lobby.HostName, 160);
+                writer.WriteByte(lobby.PlayerCount); writer.WriteByte(lobby.Capacity); writer.WriteByte((byte)lobby.Phase);
+            }
             return writer.ToArray();
         }
         public static IReadOnlyList<LobbySummary> ReadList(byte[] bytes)
@@ -142,7 +162,10 @@ namespace Multiplayer.Foundation.Protocol
             if (count > 128) throw new ProtocolException("Too many lobbies.");
             var lobbies = new List<LobbySummary>();
             for (int i = 0; i < count; i++)
-            { lobbies.Add(new LobbySummary(reader.ReadGuid(), reader.ReadString(160), reader.ReadString(160), reader.ReadByte(), reader.ReadByte())); }
+            {
+                lobbies.Add(new LobbySummary(reader.ReadGuid(), reader.ReadString(160), reader.ReadString(160), reader.ReadByte(),
+                    reader.ReadByte(), SetupPayloads.ReadPhase(reader)));
+            }
             reader.EnsureComplete(); return lobbies;
         }
     }

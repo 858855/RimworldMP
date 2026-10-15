@@ -648,12 +648,12 @@ tasks:
 - id: START-001
   title: 'Start-Knopf und Setup-Zustandsmaschine'
   goal: 'Der Host startet die gemeinsame Spieleinrichtung, sobald alle bereit sind und die Mods übereinstimmen.'
-  description: 'Plan §5.2, §6.2; lokale Roadmap L2.'
+  description: 'Plan §5.2, §6.2; lokale Roadmap L2. Serverseite ADR 0017.'
   priority: critical
   components:
   - protocol
   - lobby_core
-  - dedicated_server
+  - listen_host
   - rimworld_adapter
   depends_on:
   - MOD-001
@@ -661,11 +661,16 @@ tasks:
   - 'Alle Aktivierungsbedingungen und Begründungstexte korrekt'
   - 'Server prüft beim Start erneut'
   - 'Lobby-Sperre, Abbruch und keine Host-Migration während der Einrichtung getestet'
-  implementation: planned
-  verification: not_tested
+  implementation: in_progress
+  verification: tests_passed
   integration: not_submitted
-  branch: null
-  evidence: []
+  branch: feat/setup-rules
+  base_branch: feat/player-key
+  base_commit: 2221608
+  evidence:
+  - docs/verification/2026-10-15-setup-rules.md
+  - docs/decisions/0017-setup-phase-rules.md
+  blocker: 'Serverseite fertig und getestet (Phasen, Sperre, Abbruch, keine Host-Migration). Fehlen: Start-Knopf im Spiel und Mod-Abgleich als Bedingung (MOD-001).'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: XFER-001
   title: 'Chunk-Kanal für große Übertragungen'
@@ -767,11 +772,16 @@ tasks:
   - 'Fähnchen aller Spieler sind bei allen live sichtbar; Ersetzen und Entfernen funktionieren'
   - 'Nur der Host kann den Startort wählen; der Server lehnt die Wahl eines Gastes ab'
   - 'Keine Phase endet ohne Wahl des Hosts; kein Timer'
-  implementation: planned
-  verification: not_tested
+  implementation: in_progress
+  verification: tests_passed
   integration: not_submitted
-  branch: null
-  evidence: []
+  branch: feat/setup-rules
+  base_branch: feat/player-key
+  base_commit: 2221608
+  evidence:
+  - docs/verification/2026-10-15-setup-rules.md
+  - docs/decisions/0017-setup-phase-rules.md
+  blocker: 'Serverseite fertig und getestet (Fähnchen, nur Host wählt). Fehlen: Weltkarte mit Fähnchen im Spiel (nach SETUP-002).'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: SETUP-004
   title: 'Gemeinsames Charakterfenster'
@@ -790,11 +800,16 @@ tasks:
   - 'Anfragen von Nicht-Besitzern werden abgelehnt'
   - 'Start erst, wenn alle verbundenen Spieler fertig sind; der Server lehnt einen früheren Start ab; kein Erzwingen'
   - 'Pawn-Änderung setzt Fertig des Spielers zurück'
-  implementation: planned
-  verification: not_tested
+  implementation: in_progress
+  verification: tests_passed
   integration: not_submitted
-  branch: null
-  evidence: []
+  branch: feat/setup-rules
+  base_branch: feat/player-key
+  base_commit: 2221608
+  evidence:
+  - docs/verification/2026-10-15-setup-rules.md
+  - docs/decisions/0017-setup-phase-rules.md
+  blocker: 'Serverseite fertig und getestet (alle fertig, kein Erzwingen). Fehlen: Charakterfenster, Pawn-Besitz und Rücksetzen von Fertig bei Pawn-Änderung im Spiel.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: SETUP-005
   title: 'Spielstandübertragung und pausierte Landung'
