@@ -13,9 +13,9 @@ target_rimworld_version:
   other_versions_verified: []
 current_phase: client_integration_verification
 git:
-  branch: feat/rimworld-client
-  base_branch: feat/dedicated-server
-  base_commit: 61ee7fb
+  branch: test/lobby-integration
+  base_branch: feat/rimworld-client
+  base_commit: d20a2e6
   current_commit_ref: HEAD
   pushed: false
   merged: false
@@ -23,6 +23,7 @@ git:
   - docs/project-governance
   - feat/network-protocol
   - feat/dedicated-server
+  - feat/rimworld-client
 components:
   governance:
     implementation: implemented
@@ -65,6 +66,8 @@ verified_capabilities:
   und drei eigene DLLs.
 - 'LobbyClient: Snapshot, automatische Pong-Antwort über >4 Sekunden und Disconnect gegen echten TCP-Server
   getestet.'
+- 'Erweiterter TCP-Test: Reconnect ohne Doppelmitgliedschaft, ungültige Wire-Version abgelehnt und Host-Rechte
+  nach Disconnect übertragen; insgesamt 13 Integrationstestgruppen bestanden.'
 known_issues:
 - 'RimWorld-UI im Spiel nicht verifiziert: -nographics verursacht Spiel-Atlasfehler; grafischer Start
   kam binnen 60 s nicht über Unity-Initialisierung.'
@@ -73,7 +76,6 @@ blockers:
 - Vollständiger RimWorld-UI-Laufzeittest in dieser Umgebung offen.
 - 1.7-Unterstützung ungeklärt.
 active_tasks:
-- CLIENT-001
 - TEST-001
 next_action: Mod in RimWorld 1.6 mit isolierter Modliste grafisch laden, Mod-Einstellungen öffnen und
   Lobby-Aktionen gegen den Server prüfen.
@@ -90,4 +92,5 @@ documentation_refs:
   lobby_verification: docs/verification/2026-10-15-lobby-core.md
   server_verification: docs/verification/2026-10-15-dedicated-server.md
   client_verification: docs/verification/2026-10-15-client.md
+  extended_integration: docs/verification/2026-10-15-integration-extended.md
 last_updated: '2026-10-15'

@@ -175,11 +175,12 @@ tasks:
   implementation: in_progress
   verification: tests_passed
   integration: not_submitted
-  branch: feat/rimworld-client
-  base_branch: feat/dedicated-server
+  branch: test/lobby-integration
+  base_branch: feat/rimworld-client
   evidence:
   - docs/verification/2026-10-15-dedicated-server.md
   - docs/verification/2026-10-15-client.md
+  - docs/verification/2026-10-15-integration-extended.md
 - id: LIC-001
   title: Lizenz für neue Projektdateien festlegen
   goal: Rechte für spätere Veröffentlichung eindeutig dokumentieren.

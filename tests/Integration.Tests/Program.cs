@@ -58,6 +58,20 @@ LobbyView afterDisconnect = LobbyPayloads.ReadState((await ReceiveType(alice, Me
 Assert(afterDisconnect.Players.Count == 1, "disconnect cleanup");
 Console.WriteLine("PASS: leave, rejoin and abrupt disconnect cleanup");
 
+using (var bobAgain = (await HandshakeClient.ConnectAsync("127.0.0.1", port,
+    "Bob", TimeSpan.FromSeconds(3))).Connection)
+{
+    await bobAgain.SendAsync(new WireMessage(MessageType.JoinLobby, 2, LobbyPayloads.GuidValue(created.Id)));
+    LobbyView rejoined = LobbyPayloads.ReadState((await ReceiveType(bobAgain, MessageType.LobbyStateUpdate)).Payload);
+    Assert(rejoined.Players.Count == 2 && rejoined.Players.Count(p => p.Name == "Bob") == 1,
+        "reconnect creates one session membership");
+    await ReceiveType(alice, MessageType.LobbyStateUpdate);
+}
+LobbyView afterReconnectDisconnect = LobbyPayloads.ReadState(
+    (await ReceiveType(alice, MessageType.LobbyStateUpdate)).Payload);
+Assert(afterReconnectDisconnect.Players.Count == 1, "reconnect disconnect cleanup");
+Console.WriteLine("PASS: reconnect has no duplicate lobby membership");
+
 using (var malformed = new TcpClient())
 {
     await malformed.ConnectAsync("127.0.0.1", port);
@@ -68,6 +82,17 @@ await charlie.SendAsync(new WireMessage(MessageType.LobbyListRequest, 2, Array.E
 Assert(LobbyPayloads.ReadList((await ReceiveType(charlie, MessageType.LobbyListResponse)).Payload).Count == 1,
     "server survives malformed client");
 Console.WriteLine("PASS: malformed frame isolated from later clients");
+
+using (var wrongVersion = new TcpClient())
+{
+    await wrongVersion.ConnectAsync("127.0.0.1", port);
+    await wrongVersion.GetStream().WriteAsync(new byte[] { 0, 0, 0, 6, 2, 1, 0, 0, 0, 1 });
+    using var rejectedTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+    byte[] response = new byte[1];
+    int count = await wrongVersion.GetStream().ReadAsync(response, rejectedTimeout.Token);
+    Assert(count == 0, "wrong protocol version closed");
+}
+Console.WriteLine("PASS: wrong protocol version rejected without affecting server");
 
 // A responsive client answers server heartbeats. A silent client is removed.
 await Task.Delay(1100);
@@ -86,7 +111,22 @@ Assert(LobbyPayloads.ReadList((await ReceiveType(charlie, MessageType.LobbyListR
     "host closes lobby");
 Console.WriteLine("PASS: host closes lobby");
 
-alice.Dispose(); charlie.Dispose();
+using var dave = (await HandshakeClient.ConnectAsync("127.0.0.1", port,
+    "Dave", TimeSpan.FromSeconds(3))).Connection;
+await alice.SendAsync(new WireMessage(MessageType.CreateLobby, 9, LobbyPayloads.Create("Transfer", 2)));
+LobbyView transferStart = LobbyPayloads.ReadState((await ReceiveType(alice, MessageType.LobbyStateUpdate)).Payload);
+await dave.SendAsync(new WireMessage(MessageType.JoinLobby, 2, LobbyPayloads.GuidValue(transferStart.Id)));
+await ReceiveType(dave, MessageType.LobbyStateUpdate);
+await ReceiveType(alice, MessageType.LobbyStateUpdate);
+alice.Dispose();
+LobbyView transferred = LobbyPayloads.ReadState((await ReceiveType(dave, MessageType.LobbyStateUpdate)).Payload);
+Assert(transferred.Players.Count == 1 && transferred.HostId == transferred.Players[0].Id,
+    "host transfer after disconnect");
+await dave.SendAsync(new WireMessage(MessageType.CloseLobby, 3, Array.Empty<byte>()));
+await ReceiveType(dave, MessageType.LeaveLobby);
+Console.WriteLine("PASS: host rights transfer after abrupt disconnect");
+
+charlie.Dispose(); dave.Dispose();
 await server.StopAsync();
 Assert(server.ConnectedClients == 0, "graceful shutdown");
 Console.WriteLine("PASS: graceful server shutdown");
