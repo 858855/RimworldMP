@@ -9,6 +9,7 @@
 > - **Location:** `docs/plans/rimworldmp-full-plan.md` in the GitHub repo. A copy lives in the planning repo `E:\claude` at `docs/design/`; that copy supersedes its earlier `new-game-setup.md`, now Parts A and B below.
 > - **Task register:** every milestone in §10 has an entry with the same ID in `docs/ai/TASKS.yaml` (status `planned`).
 > - **Owner decision 2026-10-15 (ADR 0013):** full multiplayer runs on the **Steam listen host with invites**, not on the dedicated server. Read every "server" below as the `FoundationServer` embedded in the host's game. Dedicated-server rows and host migration are out of scope.
+> - **Owner decision 2026-10-15 (ADR 0015):** site selection is **not a vote**. Every player places a flag as a suggestion; only the host chooses. Character selection continues only when **every player is done**; the host cannot force-start. §6.1–§6.3 below are updated.
 > - **Correction (ADR 0014, XFER-001):** §6.4's window of 32 chunks would overflow Steam's send buffer and `SteamPeerStream`'s 1 MiB queue. The implemented window is 6 chunks, acknowledged after every chunk.
 
 ---
@@ -74,7 +75,7 @@ GitHub repo roadmap (`docs/roadmap.md`): 0.2 extensible messages and sessions ·
 
 **In scope for 1.0**
 - Lobby checks (mods and load order) and a Start button
-- Shared new-game setup: scenario, storyteller, world, site vote, ideoligion, characters
+- Shared new-game setup: scenario, storyteller, world, site flags with host choice, ideoligion, characters
 - **Deterministic lockstep gameplay sync** for vanilla and all official DLCs, in tiers
 - Pawn ownership and permissions
 - Coordinated saves; join, reconnect and resume
@@ -145,7 +146,7 @@ flowchart LR
 | Project | Gets |
 |---|---|
 | `Multiplayer.Foundation.Protocol` | Wire v3 (lobby/setup) and v4 (session) messages, plus the `SyncWriter`/`SyncReader` primitives |
-| `Multiplayer.Foundation.Lobby` | Room phase, manifest status, vote tally, pawn slots |
+| `Multiplayer.Foundation.Lobby` | Room phase, manifest status, site flags, pawn slots and ready |
 | `Multiplayer.Foundation.Session` (**new**, `netstandard2.0`, no Verse) | Sequencer, tick clock, flow control, hash comparison, chunk relay. Unit-testable without the game |
 | `Multiplayer.Foundation.Hosting` | Wires the session into `FoundationServer` |
 | `Multiplayer.Foundation.RimWorld` | Everything that touches Verse: UI, manifest, setup hooks, capture, executor, determinism patches, snapshots, ownership |
@@ -160,8 +161,8 @@ Rule (as in the repo today [V]): network libraries never reference Verse or Unit
 | Role | Is | Can |
 |---|---|---|
 | **Server** | dedicated process, or the listen host's embedded server | order commands, stamp the issuer on each command, gate ticks, compare hashes, relay chunks, enforce lobby and setup rules |
-| **Host** | the player with admin rights (`Room.Host`) | Start, host-only setup steps, overrule the site vote, set speed policy and permissions, kick, save; acts as **snapshot provider** |
-| **Player** | any member | own pawns, colony actions allowed by permissions, votes |
+| **Host** | the player with admin rights (`Room.Host`) | Start, host-only setup steps, choose the site, set speed policy and permissions, kick, save; acts as **snapshot provider** |
+| **Player** | any member | own pawns, colony actions allowed by permissions, site flags |
 
 **PlayerKey** [A] is a new, persistent identity: the SteamID on Steam, otherwise a GUID created once and stored in mod settings. It is sent in `Hello`. Everything saved (ownership, permissions) uses the PlayerKey, never the session `Guid`. On the IP transport the key can be faked, because there is no auth (known gap; see risks).
 
@@ -227,9 +228,9 @@ Every peer must have the same game build, DLCs and mods **in the same order**. O
 | 1 | Choose scenario | Host [A] |
 | 2 | Choose AI storyteller + difficulty (Custom…, Anomaly settings, reload/commitment mode) | **Host only** |
 | 3 | Create world: seed, coverage, rainfall, temperature, population, landmarks, pollution, factions | Host [A]. The world is **generated on the host and sent to clients** |
-| 4 | Select starting site | **Vote by all players; the host can overrule** |
+| 4 | Select starting site | **Everyone places a flag as a suggestion; only the host chooses** (ADR 0015) |
 | 5 | Choose ideoligion | Host [A] (one shared faction) |
-| 6 | Create characters | **Each player picks the pawn they control**; the host starts |
+| 6 | Create characters | **Each player picks the pawn they control**; it continues only when **all** players are done (ADR 0015) |
 | 7 | Game start | The host generates the game; everyone loads the same save; then lockstep starts |
 
 ### 6.2 Setup state machine (server)
@@ -241,10 +242,10 @@ stateDiagram-v2
     Scenario --> Storyteller: host Next
     Storyteller --> WorldParams: host Next
     WorldParams --> WorldTransfer: host Generate (world built on host)
-    WorldTransfer --> SiteVote: all clients loaded world, fingerprints equal
-    SiteVote --> Ideology: vote closed / host overrule
+    WorldTransfer --> SiteSelection: all clients loaded world, fingerprints equal
+    SiteSelection --> Ideology: host chooses site
     Ideology --> Characters: host Next
-    Characters --> Generating: host Start (every player owns a pawn)
+    Characters --> Generating: host Start (every connected player done)
     Generating --> GameTransfer: host saved game
     GameTransfer --> Landing: all chunks verified
     Landing --> Playing: all clients loaded → lockstep tick 0
@@ -264,18 +265,18 @@ stateDiagram-v2
 - A different fingerprint means a mod difference the manifest missed, so setup aborts with a report. The timeout is 3 minutes per client; the host can keep waiting or drop that player.
 - *Fallback if a world with no maps can't be saved and loaded (VER-001 checks this):* send the seed and parameters, let each client generate the world, and compare fingerprints. That is only safe because of §5.1.
 
-**Site vote (4).**
-- Everyone sees the vanilla world map and casts **one vote** on a valid tile. The host re-checks the tile with vanilla's settle rule [U].
-- Votes appear as coloured markers with player names, plus a tally panel.
-- The vote closes when everyone has voted and the host confirms, or when the timer runs out (default **90 s**) [A].
-- Winner: most votes. A tie goes to the host's tile, otherwise the lowest tile ID.
-- **Overrule:** "Diesen Ort erzwingen" lets the host end the vote at any time. Everyone sees "Host hat X gewählt (Abstimmung überstimmt)".
+**Site selection (4), owner decision ADR 0015.**
+- Everyone sees the vanilla world map. Each player, the host included, can place **one flag** on a tile as a suggestion ("I'd like it here, have a look"). A new flag replaces the player's old one; it can also be removed.
+- Flags have **no voting weight**. They appear live for everyone as coloured markers with player names; clicking another player's flag jumps the camera there.
+- **Only the host chooses** the site, any valid tile, flagged or not. The host's game checks it with vanilla's settle rule [U]. The server rejects a choice from anyone else.
+- No timer, no tally, no tie-break. The phase ends only when the host chooses. Everyone then sees "Host hat X gewählt".
 
 **Characters (6).**
 - Pawn count = `max(scenario count, players)` [A]. Every pawn is generated **on the host**, using vanilla start-pawn generation [U].
 - There is one shared window for all players, laid out like the vanilla page: Selected / Left behind, a pawn card, Team skills, plus an **owner badge** on each slot.
 - Each player can **claim**, **re-roll**, **swap with left-behind**, or **rename** their own pawn, then press **Ready**. Each action is a `PawnRequest`. The host's game carries it out (random rolls happen only there) and broadcasts `PawnRosterState`. Requests from non-owners are rejected.
-- The host can reorder pawns, assign owners, edit unowned pawns and force-start. On force-start, players without a pawn get a random free one. Unowned pawns are **shared**.
+- The host can reorder pawns, assign owners and edit unowned pawns. Unowned pawns are **shared**.
+- **Everyone must be done (ADR 0015).** The host's Start stays disabled until every connected player has pressed **Ready**; it shows `Warte auf: <Namen>`. There is **no force-start**. Changing one's own pawns, or the host reassigning them, clears that player's Ready. [A] A guest who disconnects stops counting, and their pawns become shared.
 - Clients see pawn **cards**: names, age, xenotype, backstories, traits, skills and passions, incapable-of, health, relations, possessions. Portraits come later.
 
 **Game transfer and landing (7).**
@@ -515,7 +516,7 @@ Local roadmap R2 publishes measured values against a reference colony and hardwa
   - `ModManifest`, `ModManifestRequest`/`Response`
   - `StartSetupRequest`, `SetupPhaseChanged`, `SetupSettings`
   - `TransferBegin`/`Chunk`/`Ack`, `WorldLoaded`
-  - `SiteVote`, `SiteVoteState`, `SiteDecided`
+  - `SiteFlag`, `SiteFlagState`, `SiteDecided` (host only)
   - `PawnRequest`, `PawnRosterState`
   - `ClientLoaded`, `SetupAborted`
   - `Hello` gains `PlayerKey`; `PlayerView` gains `ModStatus`; `LobbySummary` gains version, mod count, hash prefix and phase
@@ -570,8 +571,8 @@ How to read the columns:
 |---|---|---|---|---|
 | SETUP-001 | Host page hooks + client Setup view | START-001 | S1 | Host choices on steps 1, 2, 3 and 5 appear live on a client, including Back |
 | SETUP-002 | World transfer + fingerprint | SETUP-001, XFER-001 | S1 | Two clients load the host's world with equal fingerprints; a forced mod difference aborts with a report |
-| SETUP-003 | Site vote | SETUP-002 | S1 | Votes, markers, timer, tie-break and overrule on 2 clients |
-| SETUP-004 | Character window | SETUP-003, ID-001 | S1, P1 | Claim, re-roll, swap, rename and ready work; non-owner requests are rejected |
+| SETUP-003 | Site flags + host choice | SETUP-002 | S1 | Every player's flag visible to all; only the host can choose; a guest's choice is rejected |
+| SETUP-004 | Character window | SETUP-003, ID-001 | S1, P1 | Claim, re-roll, swap, rename and ready work; non-owner requests are rejected; start only when all players are done, no force-start |
 | SETUP-005 | Game transfer + paused landing | SETUP-004 | S1 | Both clients load a save with the same SHA-256, site, pawns and owners |
 | OWN-001 | Ownership component + labels | SETUP-005 | P1 | Owner labels and colours; ownership survives save/load |
 
@@ -649,7 +650,7 @@ How to read the columns:
 
 1. Should the scenario, world parameters and ideoligion be host-only, or should some be votes?
 2. More players than scenario pawns: raise the pawn count to the number of players? With fewer players, may one player own two pawns?
-3. Is the 90 s vote timer with "tie goes to the host's tile" OK?
+3. ~~Is the 90 s vote timer with "tie goes to the host's tile" OK?~~ **Answered (ADR 0015):** no vote; flags as suggestions, the host chooses.
 4. Custom ideoligion in v1, or presets only?
 5. Default speed policy: host decides, anyone may pause? Or "lowest wish wins"?
 6. **Source of truth:** is it `E:\claude` or `858855/RimworldMP`? (This plan and its `TASKS.yaml` entries are now on the GitHub branch `docs/full-multiplayer-plan`, waiting for review.)

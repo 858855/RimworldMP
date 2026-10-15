@@ -728,9 +728,9 @@ tasks:
   evidence: []
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: SETUP-003
-  title: 'Abstimmung über den Startort'
-  goal: 'Alle Spieler stimmen über den Startort ab; der Host kann überstimmen.'
-  description: 'Plan §6.3; lokale Roadmap S1.'
+  title: 'Startort: Fähnchen aller Spieler, Wahl durch den Host'
+  goal: 'Jeder Spieler setzt ein Fähnchen als Vorschlag auf der Weltkarte; nur der Host wählt den Startort.'
+  description: 'Plan §6.3; lokale Roadmap S1. Benutzerentscheidung ADR 0015: keine Abstimmung, kein Timer.'
   priority: medium
   components:
   - rimworld_adapter
@@ -739,7 +739,9 @@ tasks:
   depends_on:
   - SETUP-002
   acceptance:
-  - 'Stimmen, Markierungen, Timer, Gleichstandsregel und Überstimmen mit zwei Clients geprüft'
+  - 'Fähnchen aller Spieler sind bei allen live sichtbar; Ersetzen und Entfernen funktionieren'
+  - 'Nur der Host kann den Startort wählen; der Server lehnt die Wahl eines Gastes ab'
+  - 'Keine Phase endet ohne Wahl des Hosts; kein Timer'
   implementation: planned
   verification: not_tested
   integration: not_submitted
@@ -748,8 +750,8 @@ tasks:
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: SETUP-004
   title: 'Gemeinsames Charakterfenster'
-  goal: 'Jeder Spieler wählt und bearbeitet die Spielfigur, die er steuert.'
-  description: 'Plan §6.3; lokale Roadmap S1, P1.'
+  goal: 'Jeder Spieler wählt und bearbeitet die Spielfigur, die er steuert; es geht erst weiter, wenn alle fertig sind.'
+  description: 'Plan §6.3; lokale Roadmap S1, P1. Benutzerentscheidung ADR 0015: kein Erzwingen durch den Host.'
   priority: high
   components:
   - rimworld_adapter
@@ -761,6 +763,8 @@ tasks:
   acceptance:
   - 'Beanspruchen, neu würfeln, tauschen, umbenennen und Bereit funktionieren'
   - 'Anfragen von Nicht-Besitzern werden abgelehnt'
+  - 'Start erst, wenn alle verbundenen Spieler fertig sind; der Server lehnt einen früheren Start ab; kein Erzwingen'
+  - 'Pawn-Änderung setzt Fertig des Spielers zurück'
   implementation: planned
   verification: not_tested
   integration: not_submitted
