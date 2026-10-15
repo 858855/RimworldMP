@@ -22,7 +22,8 @@ namespace Multiplayer.Foundation.RimWorld
             onlyOneOfTypeAllowed = true;
         }
 
-        public override Vector2 InitialSize => new Vector2(320f, 136f);
+        // Tall enough for the flag list during site selection (SETUP-003).
+        public override Vector2 InitialSize => new Vector2(340f, 250f);
 
         public override void PostOpen()
         {

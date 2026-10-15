@@ -73,7 +73,10 @@ namespace Multiplayer.Foundation.RimWorld
         private bool guestWorldLoaded;
         private string worldText = "";
         private string? hostScenarioName;
+        // SETUP-003: a guest's own starting-site page, where "Next" sets the guest's flag.
+        private bool guestSiteMapActive;
         internal bool HostSetupActive => hostSetupActive;
+        internal bool GuestSiteMapActive => guestSiteMapActive;
         internal static FoundationMod? Instance { get; private set; }
         private static bool menuPatched;
 
@@ -524,6 +527,11 @@ namespace Multiplayer.Foundation.RimWorld
             }
             y += 8f;
             DrawSetupDetails(x, ref y, width);
+            if (lobby.Phase == SetupPhase.SiteSelection && lobby.HostId != client.SessionId && !guestSiteMapActive && guestWorldLoaded)
+            {
+                if (Widgets.ButtonText(new Rect(x, y, 200f, 30f), "Weltkarte öffnen")) OpenGuestSiteMap();
+                y += 36f;
+            }
             if (lobby.HostId == client.SessionId)
             {
                 if (Widgets.ButtonText(new Rect(x, y, 200f, 30f), "Einrichtung abbrechen"))
@@ -557,6 +565,11 @@ namespace Multiplayer.Foundation.RimWorld
                 y += 6f;
             }
             if (lobby.Phase == SetupPhase.WorldTransfer) DrawWorldTransfer(x, ref y, width);
+            if (lobby.Site != null)
+            {
+                Widgets.Label(new Rect(x, y, width, 25f), "Startort (vom Host gewählt): " + SiteFlags.Describe(SiteFlags.ToPlanetTile(lobby.Site.Value)));
+                y += 29f;
+            }
             const string info = "Startort-Fähnchen, eigene Figurenwahl und der gemeinsame Spielstart folgen in den nächsten " +
                 "Ausbauschritten (SETUP-003 bis SETUP-005). Bis dahin kann der Host die Einrichtung ansehen und abbrechen.";
             float infoHeight = Text.CalcHeight(info, width);
@@ -615,18 +628,94 @@ namespace Multiplayer.Foundation.RimWorld
                     : worldUpload != null ? "Welt wird gesendet: " + (100 * worldUpload.AcknowledgedChunks / Math.Max(1u, worldUpload.ChunkCount)) + " %"
                     : "Welt geladen: " + loaded + "/" + lobby.Players.Count;
             }
+            bool isHost = lobby != null && client != null && lobby.HostId == client.SessionId;
+            if (lobby?.Phase == SetupPhase.SiteSelection)
+                second = isHost ? "Du wählst den Startort. Fähnchen sind Vorschläge." : "Nur der Host wählt. „Weiter“ setzt dein Fähnchen.";
             Widgets.Label(new Rect(inRect.x, inRect.y + 26f, inRect.width, 26f), second);
             float buttonY = inRect.y + 58f;
+            if (lobby?.Phase == SetupPhase.SiteSelection)
+            {
+                if (Widgets.ButtonText(new Rect(inRect.x, buttonY, 105f, 30f), "Fähnchen hier")) PlaceFlagAtSelection();
+                if (Widgets.ButtonText(new Rect(inRect.x + 110f, buttonY, 95f, 30f), "Entfernen"))
+                    SendBackground(new WireMessage(MessageType.SiteFlag, requestId++, SetupPayloads.Flag(null)));
+                if (Widgets.ButtonText(new Rect(inRect.x + 210f, buttonY, 110f, 30f), "Chat / Lobby")) OpenWindow();
+                float listY = buttonY + 36f;
+                var flagged = lobby.Players.Select((p, i) => (Player: p, Index: i)).Where(e => e.Player.Flag != null).Take(4).ToList();
+                if (flagged.Count == 0)
+                    Widgets.Label(new Rect(inRect.x, listY, inRect.width, 24f), "Noch keine Fähnchen.");
+                foreach (var (player, index) in flagged)
+                {
+                    PlanetTile tile = SiteFlags.ToPlanetTile(player.Flag!.Value);
+                    GUI.color = SiteFlags.ColorFor(index);
+                    Widgets.Label(new Rect(inRect.x, listY + 3f, inRect.width - 70f, 24f), player.Name + ": " + SiteFlags.Describe(tile));
+                    GUI.color = Color.white;
+                    if (Widgets.ButtonText(new Rect(inRect.x + inRect.width - 64f, listY, 64f, 26f), "Hin")) SiteFlags.JumpTo(tile);
+                    listY += 28f;
+                }
+                if (isHost && Widgets.ButtonText(new Rect(inRect.x, inRect.yMax - 30f, 140f, 28f), "Abbrechen")) ConfirmAbort();
+                return;
+            }
             if (Widgets.ButtonText(new Rect(inRect.x, buttonY, 140f, 30f), "Chat / Lobby")) OpenWindow();
-            if (Widgets.ButtonText(new Rect(inRect.x + 150f, buttonY, 140f, 30f), "Abbrechen"))
-                Find.WindowStack.Add(Dialog_MessageBox.CreateConfirmation("Gemeinsame Einrichtung für alle abbrechen?",
-                    () => Send(MessageType.SetupAbort, Array.Empty<byte>()), true, "Einrichtung abbrechen", WindowLayer.Super));
+            if (isHost && Widgets.ButtonText(new Rect(inRect.x + 150f, buttonY, 140f, 30f), "Abbrechen")) ConfirmAbort();
+        }
+
+        private void ConfirmAbort() =>
+            Find.WindowStack.Add(Dialog_MessageBox.CreateConfirmation("Gemeinsame Einrichtung für alle abbrechen?",
+                () => Send(MessageType.SetupAbort, Array.Empty<byte>()), true, "Einrichtung abbrechen", WindowLayer.Super));
+
+        // SETUP-003, guest: the received world on the vanilla starting-site page, in suggestion-only mode.
+        private void OpenGuestSiteMap()
+        {
+            if (Current.ProgramState != ProgramState.Entry || Find.World == null) return;
+            guestSiteMapActive = true;
+            Find.WindowStack.TryRemove(typeof(FoundationWindow), false);
+            Find.WindowStack.Add(new Page_SelectStartingSite());
+            Find.WindowStack.Add(new SetupOverlayWindow(this));
+        }
+
+        internal void CloseGuestSiteMap(bool reopenWindow)
+        {
+            if (!guestSiteMapActive) return;
+            guestSiteMapActive = false;
+            foreach (Page_SelectStartingSite page in Find.WindowStack.Windows.OfType<Page_SelectStartingSite>().ToList())
+                Find.WindowStack.TryRemove(page, false);
+            Find.WindowStack.TryRemove(typeof(SetupOverlayWindow), false);
+            if (reopenWindow) OpenWindow();
+        }
+
+        /// <summary>Sets (or moves) this player's flag to the selected world tile, if a colony could start there.</summary>
+        internal void PlaceFlagAtSelection()
+        {
+            if (lobby?.Phase != SetupPhase.SiteSelection || Find.World == null) return;
+            PlanetTile tile = Find.WorldSelector.SelectedTile;
+            if (!tile.Valid) { Messages.Message("Erst ein Feld auf der Weltkarte auswählen.", MessageTypeDefOf.RejectInput, false); return; }
+            var reason = new System.Text.StringBuilder();
+            if (!TileFinder.IsValidTileForNewSettlement(tile, reason, false))
+            { Messages.Message("Hier kann keine Kolonie starten: " + reason, MessageTypeDefOf.RejectInput, false); return; }
+            if (SendBackground(new WireMessage(MessageType.SiteFlag, requestId++, SetupPayloads.Flag(SiteFlags.ToSiteTile(tile)))))
+                Messages.Message("Fähnchen gesetzt: " + SiteFlags.Describe(tile), MessageTypeDefOf.SilentInput, false);
+        }
+
+        // Flags shown on every player's map, from the latest lobby state.
+        private void UpdateSiteFlags()
+        {
+            if (WorldSelfTest.ShowingSitePage) return;
+            if (lobby?.Phase != SetupPhase.SiteSelection) { SiteFlags.Shown = Array.Empty<(string, PlanetTile, Color)>(); return; }
+            SiteFlags.Shown = lobby.Players.Select((p, i) => (Player: p, Index: i)).Where(e => e.Player.Flag != null)
+                .Select(e => (e.Player.Name, SiteFlags.ToPlanetTile(e.Player.Flag!.Value), SiteFlags.ColorFor(e.Index))).ToList();
         }
 
         private void OnPhaseChanged(SetupPhase before, SetupPhase now)
         {
             if (lobby == null || client == null) return;
             if (before == SetupPhase.Lobby && now != SetupPhase.Lobby && lobby.HostId == client.SessionId) BeginHostSetup();
+            bool guest = lobby.HostId != client.SessionId;
+            if (guest && now == SetupPhase.SiteSelection && before != SetupPhase.SiteSelection && guestWorldLoaded) OpenGuestSiteMap();
+            if (guest && before == SetupPhase.SiteSelection && now != SetupPhase.SiteSelection && guestSiteMapActive)
+            {
+                CloseGuestSiteMap(true);
+                if (lobby.Site != null) status = "Der Host hat den Startort gewählt: " + SiteFlags.Describe(SiteFlags.ToPlanetTile(lobby.Site.Value));
+            }
             if (now == SetupPhase.Lobby && before != SetupPhase.Lobby)
             {
                 hostSettings = null; lastMirror = null;
@@ -753,6 +842,8 @@ namespace Multiplayer.Foundation.RimWorld
 
         private void ResetWorld()
         {
+            CloseGuestSiteMap(false); // before the world goes away
+            SiteFlags.Shown = Array.Empty<(string, PlanetTile, Color)>();
             sentWorld = null; preparedWorld = null; worldUpload = null; worldDownload = null; pendingWorldReport = null; worldText = "";
             if (guestWorldLoaded) { guestWorldLoaded = false; WorldCodec.Discard(); }
         }
@@ -999,6 +1090,7 @@ namespace Multiplayer.Foundation.RimWorld
             WorldSelfTest.TryStart();
             UpdateManifestAndTransfers();
             UpdateHostSetup();
+            UpdateSiteFlags();
             if (client == null) return;
             try
             {

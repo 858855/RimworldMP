@@ -17,11 +17,47 @@ namespace Multiplayer.Foundation.RimWorld
     internal static class WorldSelfTest
     {
         private static bool started, quitWhenIdle, cleanupWhenIdle;
+        // SETUP-003: after loading, show the world on the starting-site page with two test flags like a guest.
+        private static int siteStage;
+        private static float siteOpenedAt;
+        private static Page_SelectStartingSite? sitePage;
+        private static bool screenshotTaken;
+
+        /// <summary>True while the self-test owns the flags on the site page.</summary>
+        internal static bool ShowingSitePage => siteStage != 0;
 
         internal static bool Requested => Environment.GetCommandLineArgs().Any(a => a == "-mpWorldSelfTest");
 
         internal static void TryStart()
         {
+            if (siteStage == 1 && !LongEventHandler.AnyEventNowOrWaiting)
+            {
+                siteStage = 2; siteOpenedAt = UnityEngine.Time.realtimeSinceStartup; SiteFlags.FramesDrawn = 0;
+                sitePage = new Page_SelectStartingSite();
+                Find.WindowStack.Add(sitePage);
+                return;
+            }
+            if (siteStage == 2)
+            {
+                float openFor = UnityEngine.Time.realtimeSinceStartup - siteOpenedAt;
+                // Optional picture of the page with the test flags, for a visual check (-mpSelfTestScreenshot).
+                if (openFor >= 3f && !screenshotTaken && Environment.GetCommandLineArgs().Any(a => a == "-mpSelfTestScreenshot"))
+                {
+                    screenshotTaken = true;
+                    string shot = System.IO.Path.Combine(GenFilePaths.SaveDataFolderPath, "MultiplayerFoundation", "selftest-site.png");
+                    UnityEngine.ScreenCapture.CaptureScreenshot(shot);
+                    Log.Message("Multiplayer Foundation world self-test: screenshot " + shot);
+                }
+                if (openFor < 4f) return;
+                bool open = sitePage != null && sitePage.IsOpen;
+                Log.Message("Multiplayer Foundation world self-test: site page " + (open && SiteFlags.FramesDrawn > 0 ? "PASS" : "FAIL") +
+                    " open=" + open + " flagFrames=" + SiteFlags.FramesDrawn + " flags=" + SiteFlags.Shown.Count);
+                if (sitePage != null) Find.WindowStack.TryRemove(sitePage, false);
+                sitePage = null; siteStage = 0;
+                SiteFlags.Shown = Array.Empty<(string, PlanetTile, UnityEngine.Color)>();
+                cleanupWhenIdle = true;
+                return;
+            }
             // Clean up a frame later: FinalizeInit queues work that runs after the long event and needs the world.
             if (cleanupWhenIdle && !LongEventHandler.AnyEventNowOrWaiting)
             {
@@ -29,7 +65,8 @@ namespace Multiplayer.Foundation.RimWorld
                 if (Current.Game != null) MemoryUtility.ClearAllMapsAndWorld();
                 Current.Game = null;
             }
-            if (quitWhenIdle && !cleanupWhenIdle && !LongEventHandler.AnyEventNowOrWaiting) { quitWhenIdle = false; Root.Shutdown(); return; }
+            if (quitWhenIdle && !cleanupWhenIdle && siteStage == 0 && !LongEventHandler.AnyEventNowOrWaiting)
+            { quitWhenIdle = false; Root.Shutdown(); return; }
             if (started || !Requested || Current.ProgramState != ProgramState.Entry || LongEventHandler.AnyEventNowOrWaiting) return;
             started = true;
             LongEventHandler.QueueLongEvent(Run, "LoadingLongEvent", false, error => Log.Error("Multiplayer Foundation world self-test: FAIL " + error));
@@ -84,6 +121,14 @@ namespace Multiplayer.Foundation.RimWorld
                     Log.Message("Multiplayer Foundation world self-test: tile " + i + " before " + tilesBefore[i] + " after " + afterLine);
                     shown++;
                 }
+                // Two flags on tiles where a colony could start, then open the site page next frame.
+                var scan = Stopwatch.StartNew();
+                var flagTiles = Enumerable.Range(0, loadedSurface.TilesCount).Select(i => loadedSurface.PlanetTileForID(i))
+                    .Where(t => TileFinder.IsValidTileForNewSettlement(t, new System.Text.StringBuilder(), false)).Take(2).ToList();
+                Log.Message("Multiplayer Foundation world self-test: flag tiles " + flagTiles.Count + " found in " + scan.ElapsedMilliseconds + "ms");
+                SiteFlags.Shown = flagTiles.Select((t, i) => (i == 0 ? "Test-Host" : "Test-Gast", t, SiteFlags.ColorFor(i))).ToList();
+                if (flagTiles.Count > 0) Find.WorldCameraDriver.JumpTo(flagTiles[0]);
+                siteStage = match ? 1 : 0;
                 Log.Message("Multiplayer Foundation world self-test: " + (match ? "PASS" : "FAIL") +
                     " coverage=" + coverage + " tiles=" + tiles + " settlements=" + settlements + " loadedSettlements=" + loaded.worldObjects.Settlements.Count +
                     " gzip=" + data.Length + " bytes generate=" + generateMs + "ms save=" + saveMs + "ms load=" + loadMs + "ms" +
@@ -91,7 +136,7 @@ namespace Multiplayer.Foundation.RimWorld
             }
             finally
             {
-                cleanupWhenIdle = true;
+                cleanupWhenIdle = siteStage == 0;
                 quitWhenIdle = Environment.GetCommandLineArgs().Any(a => a == "-mpQuitAfterSelfTest");
             }
         }
