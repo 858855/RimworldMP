@@ -377,3 +377,44 @@ tasks:
   base_branch: fix/server-heartbeat
   evidence:
   - docs/verification/2026-10-15-direct-host.md
+- id: STEAM-001
+  title: Heimnetz-übergreifendes Hosting und Beitreten über Steam
+  goal: Zwei RimWorld-Spieler hinter verschiedenen Heimroutern können abwechselnd hosten und per Steam-Einladung beitreten.
+  description: Steam-Freundeslobby zur Einladung und Steam Networking P2P als zusätzlichen Transport für das bestehende Foundation-Protokoll anbinden.
+  priority: critical
+  components:
+  - network_core
+  - dedicated_server
+  - rimworld_adapter
+  - mod_package
+  depends_on:
+  - HOST-001
+  - NET-001
+  scope:
+  - src/Multiplayer.Foundation.Network/
+  - src/Multiplayer.Foundation.Hosting/
+  - src/Multiplayer.Foundation.RimWorld/
+  - tests/
+  - docs/
+  - releases/
+  non_goals:
+  - Gameplay-Synchronisation, Steam-Test-App-ID 480, öffentlicher TCP-Port oder eigenes Relay-Hosting
+  acceptance:
+  - Host erstellt eine Steam-Freundeslobby und öffnet den P2P-Listener
+  - Gast nimmt Einladung an und führt den Foundation-Handshake über Steam P2P aus
+  - Lobby- und Ready-Zustand verwenden denselben autoritativen Serverkern
+  - Beide Spieler können nacheinander Host sein
+  - TCP- und Dedicated-Server-Modus bleiben funktionsfähig
+  - Zwei Steam-Konten auf getrennten Heimanschlüssen haben die Verbindung tatsächlich geprüft
+  test_strategy: Transport-/Server-Tests, Mod-Release-Build und zwei echte Steam-Spielclients hinter getrennten Heimanschlüssen.
+  risks:
+  - Steamworks-Laufzeit und Callback-Pump im RimWorld-Prozess ungeprüft
+  - Zwei Steam-Konten und zwei Heimanschlüsse für den Abschluss erforderlich
+  implementation: in_progress
+  verification: not_tested
+  integration: not_submitted
+  branch: feat/steam-friends-p2p
+  base_branch: main
+  base_commit: 5b533cd
+  evidence:
+  - docs/decisions/0010-steam-home-host.md
