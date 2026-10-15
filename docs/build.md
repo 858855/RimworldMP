@@ -17,7 +17,7 @@ DOTNET_BIN=/home/fabiok/.local/share/dotnet-rimworldmp/dotnet bash scripts/build
 /home/fabiok/.local/share/dotnet-rimworldmp/dotnet run --project tests/Client.Tests/Client.Tests.csproj -c Release
 ```
 
-Für andere Installationen `RIMWORLD_MANAGED` setzen. Das Paket liegt danach unter `dist/RimWorldMultiplayerFoundation/`.
+Für andere Installationen `RIMWORLD_MANAGED` setzen, unter Windows z. B. `RIMWORLD_MANAGED=E:/SteamLibrary/steamapps/common/RimWorld/RimWorldWin64_Data/Managed DOTNET_BIN=dotnet bash scripts/build-mod.sh` in Git Bash. Das Paket liegt danach unter `dist/RimWorldMultiplayerFoundation/`.
 
 ## Installierbares Mod-ZIP (RimWorld 1.6)
 

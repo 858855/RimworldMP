@@ -9,5 +9,6 @@
   <ItemGroup>
     <ProjectReference Include="../Multiplayer.Foundation.Network/Multiplayer.Foundation.Network.csproj" />
     <ProjectReference Include="../Multiplayer.Foundation.Lobby/Multiplayer.Foundation.Lobby.csproj" />
+    <InternalsVisibleTo Include="Hosting.Tests" />
   </ItemGroup>
 </Project>

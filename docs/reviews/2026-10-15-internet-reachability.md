@@ -1,0 +1,8 @@
+# Review: Internet-Erreichbarkeit
+
+- Aufgabe: `NET-002`. Quellbranch `fix/internet-connectivity`, Zielbranch `main` nur nach ausdrücklicher menschlicher Freigabe. Keine abhängigen ungemergten Branches; Basis `main` bei `5b533cd`.
+- Ursache: Standardbindung `127.0.0.1` an drei Stellen, IPv4-only-Client, keine Portweiterleitung, Loopback-Abbildung nur für `0.0.0.0`. Details und Entscheidung: ADR 0010.
+- Änderung: Dual-Stack-Listener mit Rückfall, Client mit DNS/IPv6/Mehrfachadressen, `HostEndpoint`-Parser, UPnP-Portfreigabe mit Gateway-Unicast-Suche und CGNAT-Erkennung, Adressanzeige und Kopierknopf in der Mod, migrierter Einstellungsschlüssel, aktualisiertes ZIP und aktualisierte Doku. Wire-Protokoll unverändert.
+- Nachweis: Mod-Build ohne Warnungen gegen die lokale 1.6-Installation; alle sieben Testprojekte bestanden (unter .NET 8); SSDP-Suche gegen eine echte FRITZ!Box nur lesend. Siehe `docs/verification/2026-10-15-internet-reachability.md`.
+- Risiken: Öffentlich erreichbare Lobby ohne Authentifizierung. UPnP-Freigabe mit Lease 0 bleibt nach einem Absturz im Router stehen. Mono-Verhalten von `DualMode`, `NetworkInterface` und `HttpClient` im Spielprozess ist nicht zur Laufzeit geprüft. Tests liefen nicht auf .NET 10.
+- Menschliche Prüfung: Im Spiel hosten (Host-IP `::`, UPnP an) und prüfen, ob die Freigabe in der FRITZ!Box erscheint (dort ggf. „Selbstständige Portfreigaben erlauben“ aktivieren). Ein Gast aus einem anderen Netz verbindet sich mit der angezeigten Internet-Adresse. Nach **Trennen** ist die Freigabe wieder entfernt. Tests unter .NET 10/Linux wiederholen. Keine Merge- oder Push-Freigabe dokumentiert.

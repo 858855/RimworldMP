@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
+using System.Net.Sockets;
 using System.Threading.Tasks;
 using Multiplayer.Foundation.Network;
 using Multiplayer.Foundation.Hosting;
@@ -17,6 +19,10 @@ namespace Multiplayer.Foundation.RimWorld
         private Task<LobbyClient>? connecting;
         private Task<ListenHost>? hosting;
         private ListenHost? hosted;
+        private Task<UpnpPortMapping>? mapping;
+        private UpnpPortMapping? mapped;
+        private string upnpStatus = "";
+        private IReadOnlyList<IPAddress> shareable = Array.Empty<IPAddress>();
         private Task? action;
         private IReadOnlyList<LobbySummary> available = Array.Empty<LobbySummary>();
         private LobbyView? lobby;
@@ -40,6 +46,8 @@ namespace Multiplayer.Foundation.RimWorld
             if (client == null)
             {
                 Widgets.Label(new Rect(x, y, 110f, 26f), "Server");
+                TooltipHandler.TipRegion(new Rect(x, y, width, 26f),
+                    "IP-Adresse oder Name des Hosts, optional mit :Port, z. B. 203.0.113.5:28491 oder [2001:db8::5]:28491");
                 settings.ServerAddress = Widgets.TextField(new Rect(x + 110f, y, width - 110f, 26f), settings.ServerAddress);
                 y += 31f;
                 Widgets.Label(new Rect(x, y, 110f, 26f), "Port");
@@ -54,13 +62,16 @@ namespace Multiplayer.Foundation.RimWorld
                 Widgets.Label(new Rect(x, y, width, 28f), "Ohne separaten Server: Lobby auf diesem Rechner hosten");
                 y += 31f;
                 Widgets.Label(new Rect(x, y, 110f, 26f), "Host-IP");
-                settings.HostBindAddress = Widgets.TextField(new Rect(x + 110f, y, width - 110f, 26f), settings.HostBindAddress);
+                settings.HostBindAddress = Widgets.TextField(new Rect(x + 110f, y, 200f, 26f), settings.HostBindAddress);
+                Widgets.Label(new Rect(x + 320f, y, width - 320f, 26f), ":: = LAN und Internet, 127.0.0.1 = nur dieser PC");
                 y += 31f;
                 Widgets.Label(new Rect(x, y, 110f, 26f), "Lobbyname");
                 lobbyName = Widgets.TextField(new Rect(x + 110f, y, width - 110f, 26f), lobbyName);
                 y += 31f;
                 Widgets.Label(new Rect(x, y, 110f, 26f), "Plätze");
                 lobbyCapacity = Widgets.TextField(new Rect(x + 110f, y, width - 110f, 26f), lobbyCapacity);
+                y += 31f;
+                Widgets.CheckboxLabeled(new Rect(x, y, 420f, 26f), "Port am Router automatisch öffnen (UPnP)", ref settings.UseUpnp);
                 y += 34f;
                 if (connecting == null && hosting == null && action == null &&
                     Widgets.ButtonText(new Rect(x, y, 240f, 30f), "Lobby direkt hosten")) HostLobby();
@@ -68,7 +79,17 @@ namespace Multiplayer.Foundation.RimWorld
             else
             {
                 if (Widgets.ButtonText(new Rect(x, y, 140f, 30f), "Trennen")) Disconnect();
+                string? best = BestShareAddress();
+                if (best != null && Widgets.ButtonText(new Rect(x + 150f, y, 180f, 30f), "Adresse kopieren"))
+                { GUIUtility.systemCopyBuffer = best; status = "Kopiert: " + best; }
                 y += 38f;
+                if (hosted != null)
+                {
+                    string info = Reachability();
+                    float height = Text.CalcHeight(info, width);
+                    Widgets.Label(new Rect(x, y, width, height), info);
+                    y += height + 8f;
+                }
                 if (lobby == null) DrawBrowser(x, ref y, width);
                 else DrawLobby(x, ref y, width);
             }
@@ -80,9 +101,10 @@ namespace Multiplayer.Foundation.RimWorld
         {
             if (!int.TryParse(settings.Port, out int port) || port < 1 || port > 65535)
             { status = "Ungültiger Port"; return; }
+            if (!HostEndpoint.TryParse(settings.ServerAddress, port, out string host, out port))
+            { status = "Ungültige Serveradresse"; return; }
             status = "Verbindung wird aufgebaut";
-            connecting = LobbyClient.ConnectAsync(settings.ServerAddress.Trim(), port,
-                settings.PlayerName.Trim(), TimeSpan.FromSeconds(8));
+            connecting = LobbyClient.ConnectAsync(host, port, settings.PlayerName.Trim(), TimeSpan.FromSeconds(10));
         }
 
         private void HostLobby()
@@ -109,6 +131,7 @@ namespace Multiplayer.Foundation.RimWorld
                 ListenHost running = hosted;
                 hosted = null;
                 action = running.StopAsync();
+                ReleaseMapping();
             }
             else action = old.DisconnectAsync();
             status = "Nicht verbunden";
@@ -192,7 +215,8 @@ namespace Multiplayer.Foundation.RimWorld
                 {
                     hosted = hosting.GetAwaiter().GetResult();
                     client = hosted.Client;
-                    status = "Lobby gehostet auf " + hosted.BindAddress + ":" + hosted.Port;
+                    status = "Lobby gehostet auf Port " + hosted.Port;
+                    StartReachability(hosted);
                 }
                 catch (Exception error) { status = "Host fehlgeschlagen: " + error.Message; }
                 hosting = null;
@@ -207,6 +231,22 @@ namespace Multiplayer.Foundation.RimWorld
                 }
                 catch (Exception error) { status = "Verbindung fehlgeschlagen: " + error.Message; }
                 connecting = null;
+            }
+            if (mapping != null && mapping.IsCompleted)
+            {
+                try
+                {
+                    mapped = mapping.GetAwaiter().GetResult();
+                    upnpStatus = "UPnP: Router-Port " + mapped.Port + " ist an " + mapped.InternalAddress + " weitergeleitet.";
+                }
+                catch (Exception error)
+                {
+                    upnpStatus = "UPnP fehlgeschlagen (" + error.Message + "). Für Internet-Spieler TCP-Port " +
+                        (hosted?.Port ?? 0) + " im Router manuell an diesen PC weiterleiten." +
+                        (error.Message.Contains("606") ? " FRITZ!Box: Internet → Freigaben → dieses Gerät → " +
+                            "„Selbstständige Portfreigaben erlauben“ aktivieren." : "");
+                }
+                mapping = null;
             }
             if (action != null && action.IsCompleted)
             {
@@ -248,8 +288,73 @@ namespace Multiplayer.Foundation.RimWorld
                     ListenHost running = hosted;
                     hosted = null;
                     action = running.StopAsync();
+                    ReleaseMapping();
                 }
             }
+        }
+
+        private void StartReachability(ListenHost host)
+        {
+            bool loopbackOnly = IPAddress.TryParse(host.BindAddress, out IPAddress? bound) && IPAddress.IsLoopback(bound);
+            bool everywhere = bound != null && (bound.Equals(IPAddress.Any) || bound.Equals(IPAddress.IPv6Any));
+            shareable = loopbackOnly || bound == null ? Array.Empty<IPAddress>()
+                : everywhere ? NetworkAddresses.GetShareableAddresses()
+                    .Where(a => a.AddressFamily == AddressFamily.InterNetwork ? host.AcceptsIPv4 : host.AcceptsIPv6).ToList()
+                : new[] { bound };
+            if (loopbackOnly) upnpStatus = "Host-IP ist 127.0.0.1: nur auf diesem PC erreichbar. Für LAN/Internet :: eintragen.";
+            else if (!settings.UseUpnp)
+                upnpStatus = "UPnP aus: Für Internet-Spieler TCP-Port " + host.Port + " im Router an diesen PC weiterleiten.";
+            else if (!host.AcceptsIPv4) upnpStatus = "";
+            else
+            {
+                upnpStatus = "UPnP: Router-Port wird geöffnet …";
+                mapping = UpnpPortMapping.CreateAsync(host.Port, TimeSpan.FromSeconds(4));
+            }
+        }
+
+        private string Reachability()
+        {
+            if (hosted == null) return "";
+            int port = hosted.Port;
+            var lines = new List<string> { "Mitspieler tragen eine dieser Adressen bei Server ein:" };
+            if (mapped?.ExternalAddress != null)
+                lines.Add(mapped.ExternalAddressIsPublic
+                    ? "  Internet (IPv4): " + NetworkAddresses.Format(mapped.ExternalAddress, port)
+                    : "  Internet (IPv4) nicht möglich: Der Router hat keine öffentliche IPv4 (" + mapped.ExternalAddress +
+                      ", CGNAT/DS-Lite). IPv6-Adresse oder ein VPN wie Tailscale/ZeroTier nutzen.");
+            foreach (IPAddress address in shareable.Take(4))
+                lines.Add((address.AddressFamily == AddressFamily.InterNetworkV6 ? "  Internet (IPv6): "
+                    : NetworkAddresses.IsSharedAddressSpace(address) ? "  VPN: " : "  LAN: ") +
+                    NetworkAddresses.Format(address, port));
+            if (shareable.Any(a => a.AddressFamily == AddressFamily.InterNetworkV6))
+                lines.Add("  IPv6 nur, wenn die Router-Firewall TCP-Port " + port + " für diesen PC freigibt.");
+            if (upnpStatus.Length > 0) lines.Add(upnpStatus);
+            lines.Add("Fragt Windows nach Netzwerkzugriff für RimWorld, mit „Zulassen“ bestätigen.");
+            return string.Join("\n", lines);
+        }
+
+        private string? BestShareAddress()
+        {
+            if (hosted == null) return null;
+            if (mapped?.ExternalAddress != null && mapped.ExternalAddressIsPublic)
+                return NetworkAddresses.Format(mapped.ExternalAddress, hosted.Port);
+            IPAddress? address = shareable.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetworkV6)
+                ?? shareable.FirstOrDefault();
+            return address == null ? null : NetworkAddresses.Format(address, hosted.Port);
+        }
+
+        private void ReleaseMapping()
+        {
+            _ = mapped?.RemoveAsync();
+            mapped = null;
+            mapping?.ContinueWith(t =>
+            {
+                if (t.Status == TaskStatus.RanToCompletion) _ = t.Result.RemoveAsync();
+                else _ = t.Exception;
+            }, TaskScheduler.Default);
+            mapping = null;
+            upnpStatus = "";
+            shareable = Array.Empty<IPAddress>();
         }
     }
 }

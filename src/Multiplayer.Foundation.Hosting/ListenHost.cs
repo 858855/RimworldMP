@@ -24,6 +24,8 @@ namespace Multiplayer.Foundation.Hosting
         public LobbyClient Client { get; }
         public string BindAddress { get; }
         public int Port => server.BoundPort;
+        public bool AcceptsIPv4 => server.AcceptsIPv4;
+        public bool AcceptsIPv6 => server.AcceptsIPv6;
 
         public static async Task<ListenHost> StartAsync(string bindAddress, int port, string playerName,
             string lobbyName, byte capacity)
@@ -41,8 +43,7 @@ namespace Multiplayer.Foundation.Hosting
             try
             {
                 await server.StartAsync().ConfigureAwait(false);
-                string connectAddress = bindAddress == "0.0.0.0" ? "127.0.0.1" : bindAddress;
-                client = await LobbyClient.ConnectAsync(connectAddress, server.BoundPort, playerName,
+                client = await LobbyClient.ConnectAsync(server.LoopbackAddress.ToString(), server.BoundPort, playerName,
                     TimeSpan.FromSeconds(5)).ConfigureAwait(false);
                 await client.SendAsync(MessageType.CreateLobby, 2,
                     LobbyPayloads.Create(lobbyName, capacity)).ConfigureAwait(false);

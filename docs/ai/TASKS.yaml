@@ -377,3 +377,47 @@ tasks:
   base_branch: fix/server-heartbeat
   evidence:
   - docs/verification/2026-10-15-direct-host.md
+- id: NET-002
+  title: Verbindung über das Internet ermöglichen
+  goal: Gäste erreichen Direkt-Host und dedizierten Server über das Internet per IPv4 oder IPv6.
+  description: Standardbindung dual-stack, Client mit DNS/IPv6, UPnP-Portfreigabe und Adressanzeige in der Mod.
+  priority: critical
+  components:
+  - network_core
+  - listen_host
+  - dedicated_server
+  - rimworld_adapter
+  - mod_package
+  depends_on:
+  - HOST-001
+  scope:
+  - src/Multiplayer.Foundation.Network/
+  - src/Multiplayer.Foundation.Hosting/
+  - src/Multiplayer.Foundation.Server/Program.cs
+  - src/Multiplayer.Foundation.RimWorld/
+  - deployment/serverconfig.example.json
+  - tests/Network.Tests/
+  - tests/Hosting.Tests/
+  - tests/ProcessIntegration.Tests/
+  - releases/
+  non_goals:
+  - Authentifizierung/TLS, Relay oder Hole-Punching, Steam-Networking, IPv6-Pinholes, Gameplay-Synchronisation
+  acceptance:
+  - Standardbindung nimmt IPv4 und IPv6 auf allen Schnittstellen an
+  - Client verbindet über IP, IPv6-Literal und Hostnamen inkl. Fallback
+  - Mod öffnet optional den Router-Port per UPnP, zeigt teilbare Adressen und entfernt die Freigabe beim Trennen
+  - Alte gespeicherte Host-IP 127.0.0.1 wird nicht übernommen
+  - Bestehende Tests bleiben grün, Mod baut ohne Warnungen
+  test_strategy: Network-/Hosting-Tests inkl. Fake-UPnP-Gateway, alle bestehenden Testprojekte, Mod-Build gegen lokale 1.6-Assemblies, lesende SSDP-Prüfung am echten Router.
+  risks:
+  - Öffentlich erreichbare Lobby ohne Authentifizierung
+  - Mono-Laufzeit im Spiel und echte Internetverbindung ungeprüft
+  - Tests nur unter .NET 8 statt .NET 10 ausgeführt
+  implementation: implemented
+  verification: tests_passed
+  integration: ready_for_human_review
+  branch: fix/internet-connectivity
+  base_branch: main
+  base_commit: 5b533cd
+  evidence:
+  - docs/verification/2026-10-15-internet-reachability.md

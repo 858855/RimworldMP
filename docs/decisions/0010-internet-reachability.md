@@ -1,0 +1,21 @@
+# ADR 0010: Erreichbarkeit über das Internet
+
+- Status: vorgeschlagen (`NET-002`, Branch `fix/internet-connectivity`), Merge nur nach menschlicher Freigabe.
+- Problem: Verbindungen über das Internet schlugen immer fehl. (1) Listen-Host, Mod-Einstellung und Server-Beispielkonfiguration banden standardmäßig an `127.0.0.1`; der Listener nahm nur Verbindungen vom selben Rechner an. Die öffentliche IP als Host-IP einzutragen scheitert hinter einem Router, weil sie keiner lokalen Schnittstelle gehört. (2) Der Client erzeugte `new TcpClient()`, unter Mono ein reiner IPv4-Socket; IPv6-Adressen und Namen mit nur AAAA-Eintrag waren nicht erreichbar. (3) Ohne Portweiterleitung im Router erreicht kein Gast den Host. (4) `ListenHost` bildete nur `0.0.0.0` auf Loopback ab; mit `::` konnte sich der Host nicht mit seiner eigenen Lobby verbinden.
+- Ziel: Ein Spieler hostet direkt aus der Mod und ein Gast im Internet tritt mit Adresse und Port bei, ohne den Code zu ändern. Gleiches gilt für den dedizierten Server.
+- Umfang:
+  - `HostConfig.BindAddress` ist jetzt standardmäßig `::`. `FoundationServer` öffnet dafür einen Dual-Stack-Listener (`IPv6Any`, `DualMode = true`). Ohne IPv6-Unterstützung fällt er auf `0.0.0.0` zurück. `AcceptsIPv4/IPv6` und `LoopbackAddress` zeigen den tatsächlichen Zustand.
+  - `ListenHost` verbindet den Host-Client über `LoopbackAddress`.
+  - `NetworkConnection.ConnectAsync` löst Namen per DNS auf, akzeptiert IPv6-Literale (auch `[..]`), erzeugt Sockets passend zur Adressfamilie und probiert alle Adressen innerhalb des Gesamt-Timeouts nacheinander.
+  - `HostEndpoint.TryParse` liest `host`, `host:port`, `[v6]:port` und bloße IPv6-Adressen aus dem Server-Feld.
+  - `UpnpPortMapping` (UPnP-IGD, WANIPConnection/WANPPPConnection) öffnet am Router TCP-Port → Host-PC und liest die externe IPv4. Die SSDP-Suche geht per Multicast **und** direkt an die Default-Gateways (eine FRITZ!Box 7490 antwortete nur auf Unicast). Erkannt wird auch eine nicht öffentliche WAN-Adresse (CGNAT/DS-Lite). Die Freigabe wird beim Trennen entfernt.
+  - `NetworkAddresses` liefert LAN-, VPN- (100.64/10) und globale IPv6-Adressen sowie die Formatierung `ip:port` / `[v6]:port`.
+  - Mod-UI: Host-IP-Standard `::` (neuer Einstellungsschlüssel `hostBindAddressV2`, damit der alte gespeicherte Wert `127.0.0.1` nicht übernommen wird), Option „Port am Router automatisch öffnen (UPnP)“, Liste der Adressen für Mitspieler, Knopf „Adresse kopieren“ und Hinweise zu Firewall/CGNAT.
+- Nicht-Ziele: Authentifizierung/TLS, Relay- oder NAT-Hole-Punching-Dienst, Steam-Networking, IPv6-Pinholes (`WANIPv6FirewallControl`), Gameplay-Synchronisation. Das Wire-Protokoll bleibt unverändert.
+- Persistenz: Neue Mod-Einstellungen `hostBindAddressV2` und `useUpnp`. Der alte Schlüssel `hostBindAddress` wird ignoriert.
+- Netzwerk-Sync/Determinismus: nicht betroffen. Sämtliche Arbeit läuft im Netzwerk-/Hosting-Code; die UI liest nur abgeschlossene Tasks im Settings-Fenster. Spielwelt wird nicht verändert.
+- Konfliktbereich: Ohne Authentifizierung kann sich jeder, der Adresse und Port kennt, mit einer öffentlich erreichbaren Lobby verbinden. Bestehende Limits (MaxClients, Framegröße, Handshake-Timeout) gelten weiter.
+- Performance-Risiken: UPnP-Suche maximal etwa 4 s im Hintergrund; ein HTTP-Client pro Zuordnung.
+- Tests: Dual-Stack-Host über IPv4, IPv6 und `localhost`; `0.0.0.0`-Host; Namensauflösung mit Fallback von verweigertem `::1` auf IPv4; Endpunkt-Parser; Adressklassifikation; SSDP-Parser; UPnP gegen einen lokalen Fake-Gateway (AddPortMapping-Argumente, externe IP, CGNAT-Erkennung, DeletePortMapping, Fehlercode 718); Mehrprozess-Test mit einem Client über `::1`; Mod-Build gegen die lokalen 1.6-Assemblies.
+- Rollback: Branch nicht mergen beziehungsweise Commit zurücknehmen. Wer nur die alte Bindung möchte, trägt `127.0.0.1` als Host-IP ein und schaltet UPnP aus.
+- Alternativen: Nur die Standardbindung auf `0.0.0.0` ändern (IPv6/DS-Lite bliebe unmöglich, Portweiterleitung weiter manuell); Steam-P2P (benötigt Steamworks-Integration, eigener Arbeitsumfang); Relay-Server (Betrieb und Kosten).

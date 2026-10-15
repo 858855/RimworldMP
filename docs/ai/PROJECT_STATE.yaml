@@ -14,14 +14,14 @@ target_rimworld_version:
   runtime: Unity/Mono
   game_runtime_tested: true
   other_versions_verified: []
-current_phase: dual_mode_integrated_runtime_pending
+current_phase: internet_reachability_review_pending
 git:
-  branch: main
-  base_branch: null
-  base_commit: null
+  branch: fix/internet-connectivity
+  base_branch: main
+  base_commit: 5b533cd
   current_commit_ref: HEAD
-  pushed: true
-  merged: true
+  pushed: false
+  merged: false
   dependent_branches:
   - docs/project-governance
   - feat/network-protocol
@@ -86,17 +86,20 @@ verified_capabilities:
 - 'Server: verzögertes gültiges Pong akzeptiert, Duplikat und ungesendete Nonce abgelehnt; SIGTERM beendet den Linux-Prozess mit verbundenem Client geordnet.'
 - 'Mod-ZIP: Release-Build gegen lokale 1.6-Assemblies, sieben Archiveinträge, Entpacken nach RimWorld/Mods und SHA-256 geprüft; kein Spiel-Laufzeittest.'
 - 'Direkt-Hosting: Host und Gast verbinden sich über denselben TCP-Lobby-Kern, Join/Ready und Host-Stopp in vier Testgruppen bestanden; dedizierter Server bleibt erhalten.'
+- 'Branch fix/internet-connectivity: Dual-Stack-Bindung `::`, Client über IPv6/DNS mit Fallback und UPnP gegen Fake-Gateway getestet (sieben Testprojekte unter .NET 8); Mod-Build gegen Windows-1.6-Installation (rev590) ohne Warnungen; SSDP gegen echte FRITZ!Box nur lesend.'
 known_issues:
 - 'RimWorld-UI im Spiel nicht verifiziert: -nographics verursacht Atlasfehler; grafischer Start
   kam auch im 180-s-Wiederholungsversuch nicht bis zu belegten Mod-Ladeeinträgen.'
 - 'Version.txt meldet rev598, die gestartete Spiel-Runtime rev600; exakte Laufzeitkompatibilität offen.'
-- Server und Client haben keine Authentifizierung/TLS; nur kontrolliertes LAN/Testnetz.
+- Server und Client haben keine Authentifizierung/TLS; mit Standardbindung `::` und UPnP ist eine Lobby öffentlich erreichbar.
+- 'NET-002: echte Internetverbindung, UPnP-Freigabe am echten Router und Mono-Laufzeit im Spiel nicht geprüft; Tests nur unter .NET 8.'
 blockers:
 - Vollständiger RimWorld-UI-Laufzeittest in dieser Umgebung offen.
 - 1.7-Unterstützung ungeklärt.
 active_tasks:
 - TEST-001
-next_action: Aktualisiertes ZIP mit zwei RimWorld-1.6-Spielclients installieren; Direkt-Hosting und dedizierten Server im Spiel und über LAN manuell prüfen.
+- NET-002
+next_action: NET-002 menschlich prüfen; ZIP vom Branch installieren, mit UPnP hosten und einen Gast aus einem fremden Netz verbinden lassen; danach Merge-Freigabe einholen.
 documentation_refs:
   tasks: docs/ai/TASKS.yaml
   handoff: docs/ai/SESSION_HANDOFF.md
@@ -125,4 +128,7 @@ documentation_refs:
   continuation_prompt: docs/ai/CONTINUATION_PROMPT.md
   continuation_review: docs/reviews/2026-10-15-continuation-prompt.md
   continuation_verification: docs/verification/2026-10-15-continuation-prompt.md
+  internet_reachability: docs/verification/2026-10-15-internet-reachability.md
+  internet_reachability_review: docs/reviews/2026-10-15-internet-reachability.md
+  internet_reachability_decision: docs/decisions/0010-internet-reachability.md
 last_updated: '2026-10-15'

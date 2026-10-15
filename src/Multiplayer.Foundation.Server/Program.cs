@@ -7,7 +7,8 @@ try
     var config = ServerConfig.Load(configPath);
     await using var server = new FoundationServer(config);
     await server.StartAsync();
-    Console.WriteLine($"RimWorld Multiplayer Foundation lobby server listening on {config.BindAddress}:{server.BoundPort}");
+    string families = server.AcceptsIPv4 && server.AcceptsIPv6 ? "IPv4+IPv6" : server.AcceptsIPv6 ? "IPv6" : "IPv4";
+    Console.WriteLine($"RimWorld Multiplayer Foundation lobby server listening on {config.BindAddress} port {server.BoundPort} ({families})");
     Console.WriteLine("Press Ctrl+C to stop.");
     using var stop = new CancellationTokenSource();
     Console.CancelKeyPress += (_, eventArgs) => { eventArgs.Cancel = true; stop.Cancel(); };

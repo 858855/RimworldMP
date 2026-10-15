@@ -10,7 +10,7 @@ using Multiplayer.Foundation.Server;
 
 if (args.Length > 0 && args[0] == "worker")
 {
-    await RunWorkerAsync(args[1], int.Parse(args[2]));
+    await RunWorkerAsync(args[1], int.Parse(args[2]), args.Length > 3 ? args[3] : "127.0.0.1");
     return;
 }
 
@@ -42,15 +42,15 @@ static async Task RunTestAsync()
 
         server = Start(dotnet, serverDll, configPath);
         string? startup = await ReadLineAsync(server, TimeSpan.FromSeconds(10));
-        Require(startup?.Contains("listening on 127.0.0.1:", StringComparison.Ordinal) == true, "Server did not start: " + startup);
+        Require(startup?.Contains("listening on :: port " + port + " (IPv4+IPv6)", StringComparison.Ordinal) == true, "Server did not start: " + startup);
         Console.WriteLine("PASS: independent server process started");
 
         alice = Start(dotnet, testDll, "worker", "Alice", port.ToString());
-        bob = Start(dotnet, testDll, "worker", "Bob", port.ToString());
+        bob = Start(dotnet, testDll, "worker", "Bob", port.ToString(), "::1");
         Guid aliceId = Guid.Parse((await ExpectAsync(alice, "CONNECTED")).Split(' ')[2]);
         Guid bobId = Guid.Parse((await ExpectAsync(bob, "CONNECTED")).Split(' ')[2]);
         Require(aliceId != bobId, "Clients received the same session ID.");
-        Console.WriteLine("PASS: two separate client processes connected");
+        Console.WriteLine("PASS: two separate client processes connected over IPv4 and IPv6");
 
         await SendAsync(alice, "create TestLobby");
         State initial = ParseState(await ExpectAsync(alice, "STATE"));
@@ -100,9 +100,9 @@ static async Task RunTestAsync()
     }
 }
 
-static async Task RunWorkerAsync(string name, int port)
+static async Task RunWorkerAsync(string name, int port, string host)
 {
-    using LobbyClient client = await LobbyClient.ConnectAsync("127.0.0.1", port, name, TimeSpan.FromSeconds(5));
+    using LobbyClient client = await LobbyClient.ConnectAsync(host, port, name, TimeSpan.FromSeconds(5));
     Console.WriteLine("EVENT CONNECTED " + client.SessionId);
     using var stopped = new CancellationTokenSource();
     Task pump = PumpAsync(client, stopped.Token);

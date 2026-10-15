@@ -1,5 +1,5 @@
 {
-  "BindAddress": "127.0.0.1",
+  "BindAddress": "::",
   "Port": 28491,
   "MaxClients": 32,
   "MaxPlayersPerLobby": 8,

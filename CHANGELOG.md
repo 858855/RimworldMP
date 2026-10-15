@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Internet-Verbindung
+
+- Verbindungen über das Internet funktionieren jetzt. Bisher lauschten Direkt-Host und Server nur auf `127.0.0.1` und waren damit nur vom eigenen Rechner aus erreichbar. Standard ist jetzt `::` (IPv4 und IPv6 auf allen Schnittstellen); gespeicherte alte Host-IP-Einstellungen werden dafür einmalig ersetzt.
+- Der Client löst Hostnamen auf, verbindet sich über IPv4 oder IPv6 und versucht bei mehreren Adressen die nächste. Das Server-Feld akzeptiert `host:port` und `[IPv6]:port`.
+- Beim Direkt-Hosten öffnet die Mod optional per UPnP den Router-Port, zeigt die Adressen für Mitspieler an (Internet, LAN, VPN, IPv6), erkennt fehlende öffentliche IPv4 (CGNAT/DS-Lite) und entfernt die Freigabe beim Trennen. Alle sieben Testprojekte bestanden; eine echte Verbindung aus dem Internet und die Spiel-UI sind noch nicht geprüft.
+
 ### KI-Projektregeln
 
 - Ein Fortsetzungsprompt lädt die drei ursprünglichen Anweisungen und führt eine neue KI-Sitzung zum belegten Stand und offenen RimWorld-UI-Test.
