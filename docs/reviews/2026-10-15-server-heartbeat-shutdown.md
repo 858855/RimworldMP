@@ -9,3 +9,5 @@
 - Nachweis: 16 Integrationstestgruppen und acht Mehrprozess-Schritte bestanden. Details in `docs/verification/2026-10-15-server-heartbeat-shutdown.md`.
 - Risiken: Authentifizierung/TLS fehlen; RimWorld-Spiel-UI wurde nicht ausgeführt. Prozess-SIGTERM-Test ist auf Unix-Systeme begrenzt.
 - Menschliche Prüfung: Heartbeat-Grenzen und Signalverhalten beurteilen; keine Freigabe oder Merge dokumentiert.
+
+**Nachtrag 2026-10-15:** Die spätere ausdrückliche Merge-Freigabe und die Integration in `main` sind in `docs/reviews/2026-10-15-dual-mode-merge.md` dokumentiert. Die obigen Angaben beschreiben den vorherigen Review-Stand.

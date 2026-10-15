@@ -263,7 +263,7 @@ tasks:
   - Port-Belegung zwischen Reservierung und Serverstart
   implementation: implemented
   verification: tests_passed
-  integration: ready_for_human_review
+  integration: merged
   branch: test/multi-player-process
   base_branch: main
   evidence:
@@ -294,7 +294,7 @@ tasks:
   - Nebenläufige Lese- und Heartbeat-Schleifen
   implementation: implemented
   verification: tests_passed
-  integration: ready_for_human_review
+  integration: merged
   branch: fix/server-heartbeat
   base_branch: test/multi-player-process
   base_commit: 4a6b129
@@ -328,7 +328,7 @@ tasks:
   - Mod-UI im Spiel weiterhin ungetestet
   implementation: implemented
   verification: tests_passed
-  integration: ready_for_human_review
+  integration: merged
   branch: release/mod-install-0.1-dev
   base_branch: fix/server-heartbeat
   base_commit: 1192eb5
@@ -372,7 +372,7 @@ tasks:
   - Host-IP muss für Kollegen erreichbar und LAN-Firewall geöffnet sein
   implementation: implemented
   verification: tests_passed
-  integration: ready_for_human_review
+  integration: merged
   branch: release/mod-install-0.1-dev
   base_branch: fix/server-heartbeat
   evidence:

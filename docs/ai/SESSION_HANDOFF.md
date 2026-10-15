@@ -1,10 +1,9 @@
 # Sitzungsübergabe
 
-- **Bereich:** `HOST-001`, Direkt-Hosting aus der Mod zusätzlich zum bestehenden Dedicated Server.
-- **Branch:** `release/mod-install-0.1-dev`, Basis `fix/server-heartbeat` bei `1192eb5`; dahinter `test/multi-player-process` bei `4a6b129`. Paket-Commit `a8aadae` auf `origin/release/mod-install-0.1-dev` gepusht; aktuellen Dokumentations-Commit und Remote per `git status --short --branch` prüfen. Kein Merge.
-- **Stand:** `FoundationServer` in gemeinsamen `netstandard2.1`-Hosting-Kern ausgelagert. `ListenHost` erstellt Lobby im Spielprozess; Mod bietet Host-IP, Lobbyname, Kapazität und Direkt-Host-Knopf. Gast nutzt den vorhandenen Verbindungs-/Beitreten-Ablauf. Neues ZIP enthält fünf eigene DLLs.
-- **Prüfungen:** Vier Direkt-Host-Gruppen, 16 Server-Gruppen, acht Mehrprozess-Schritte, drei Client-Gruppen, RimWorld-1.6-Release-Build ohne Warnungen und ZIP-Extraktion bestanden. Details in `docs/verification/2026-10-15-direct-host.md`.
-- **Download:** `https://raw.githubusercontent.com/858855/RimworldMP/a8aadae428446f08648d957582deb1c41f8e244b/releases/RimWorldMultiplayerFoundation-0.1.0-dev-rw1.6.zip`; HTTP 200, 42.985 Bytes und identische SHA-256-Prüfsumme bestätigt. UI mit zwei tatsächlich laufenden RimWorld-Clients, LAN über zwei Rechner und 1.7 bleiben ungeprüft. Keine Authentifizierung/TLS.
-- **Bekannte Probleme:** `Version.txt` rev598 vs. frühere Runtime rev600; grafischer Start erreichte bislang keinen belegten Mod-Ladeeintrag.
-- **Nächster Schritt:** Aktualisiertes ZIP mit zwei Spielclients installieren; Direkt-Hosting und Dedicated Server im Spiel und LAN manuell prüfen.
-- **Dateien/Befehle:** `src/Multiplayer.Foundation.Hosting/`, `src/Multiplayer.Foundation.RimWorld/FoundationMod.cs`, `scripts/build-mod.sh`, `scripts/package-mod.py`, `tests/Hosting.Tests/`; vollständige Befehle im Prüfnachweis.
+- **Bereich:** Freigegebene Integration von `TEST-002`, `SERVER-002`, `PKG-001` und `HOST-001`.
+- **Branch:** `main`; Merge-Commit `e390514` integriert `release/mod-install-0.1-dev` und dessen abhängige Arbeiten. `origin/main` enthält den Merge.
+- **Stand:** Der Mod enthält Direkt-Hosting im Spielprozess und die Verbindung zum eigenständigen Dedicated Server. Das installierbare RimWorld-1.6-ZIP liegt unter `releases/` auf `main`.
+- **Prüfungen:** Dokumentationsvalidator, vier Hosting-Gruppen, 16 Server-Gruppen, acht Mehrprozess-Schritte und Mod-Release-Build ohne Warnungen vor dem Merge bestanden. Details: `docs/verification/2026-10-15-dual-mode-merge.md`.
+- **Offen:** Spiel-UI mit zwei laufenden RimWorld-Clients, LAN über zwei Rechner und RimWorld 1.7 nicht verifiziert. `Version.txt` rev598 gegenüber früherer Runtime rev600. Keine Authentifizierung/TLS.
+- **Nächster Schritt:** ZIP aus `releases/` auf zwei RimWorld-1.6-Installationen entpacken; Direkt-Hosting und Dedicated Server im Spiel und LAN prüfen. Ergebnisse in `TEST-001` dokumentieren.
+- **Dateien/Befehle:** `mod/INSTALLATION.md`, `src/Multiplayer.Foundation.Hosting/`, `src/Multiplayer.Foundation.RimWorld/FoundationMod.cs`, `DOTNET_BIN=/home/fabiok/.local/share/dotnet-rimworldmp/dotnet bash scripts/build-mod.sh`, Testbefehle im Merge-Nachweis.

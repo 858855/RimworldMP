@@ -14,14 +14,14 @@ target_rimworld_version:
   runtime: Unity/Mono
   game_runtime_tested: true
   other_versions_verified: []
-current_phase: direct_host_built_and_tcp_verified
+current_phase: dual_mode_integrated_runtime_pending
 git:
-  branch: release/mod-install-0.1-dev
-  base_branch: fix/server-heartbeat
-  base_commit: 1192eb5
+  branch: main
+  base_branch: null
+  base_commit: null
   current_commit_ref: HEAD
   pushed: true
-  merged: false
+  merged: true
   dependent_branches:
   - docs/project-governance
   - feat/network-protocol
@@ -54,19 +54,19 @@ components:
   dedicated_server:
     implementation: implemented
     verification: tests_passed
-    integration: ready_for_human_review
+    integration: merged
   rimworld_adapter:
     implementation: implemented
     verification: build_passed
-    integration: ready_for_human_review
+    integration: merged
   mod_package:
     implementation: implemented
     verification: tests_passed
-    integration: ready_for_human_review
+    integration: merged
   listen_host:
     implementation: implemented
     verification: tests_passed
-    integration: ready_for_human_review
+    integration: merged
 verified_capabilities:
 - 'Archiv: 49 Einträge gegen eingebettetes Manifest geprüft.'
 - Drei XML-Beispiele syntaktisch geprüft; kein RimWorld-Laufzeitnachweis.
@@ -77,7 +77,7 @@ verified_capabilities:
 - 'Zwei echte TCP-Clients: Handshake, Lobby, Ready, Host-Rechte, Disconnect, Heartbeat und Shutdown in
   Integration.Tests bestanden.'
 - RimWorld-1.6-Mod gegen lokale netstandard2.1-Assemblies ohne Warnungen gebaut; Paket enthält About.xml
-  und drei eigene DLLs.
+  und fünf eigene DLLs.
 - 'LobbyClient: Snapshot, automatische Pong-Antwort über >4 Sekunden und Disconnect gegen echten TCP-Server
   getestet.'
 - 'Erweiterter TCP-Test: Reconnect ohne Doppelmitgliedschaft, ungültige Wire-Version abgelehnt und Host-Rechte
@@ -116,6 +116,8 @@ documentation_refs:
   server_stability: docs/verification/2026-10-15-server-heartbeat-shutdown.md
   mod_package: docs/verification/2026-10-15-installable-mod-zip.md
   direct_host: docs/verification/2026-10-15-direct-host.md
+  dual_mode_merge: docs/verification/2026-10-15-dual-mode-merge.md
+  dual_mode_review: docs/reviews/2026-10-15-dual-mode-merge.md
   prompt_history: docs/governance/PROMPT_HISTORY.md
   prompt_review: docs/reviews/2026-10-15-prompt-archive.md
   prompt_archive_verification: docs/verification/2026-10-15-prompt-archive.md

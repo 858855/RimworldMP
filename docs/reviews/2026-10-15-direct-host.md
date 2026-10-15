@@ -7,3 +7,5 @@
 - Nachweis: vier Direkt-Host-Gruppen, 16 Server-Gruppen, acht Mehrprozess-Schritte, drei Client-Gruppen, Mod-Release-Build und ZIP-Extraktion bestanden. Details: `docs/verification/2026-10-15-direct-host.md`.
 - Risiken: Bedienung im RimWorld-Spiel noch nicht nachgewiesen; LAN-Reichweite hängt von Bind-IP und Firewall ab. Keine Authentifizierung/TLS oder Gameplay-Synchronisation.
 - Menschliche Prüfung: Beide Knöpfe im Spiel, Gastbeitritt über LAN, Trennung beim Host-Stopp und Paketinstallation. Keine Merge-Freigabe dokumentiert.
+
+**Nachtrag 2026-10-15:** Die spätere ausdrückliche Merge-Freigabe und die Integration in `main` sind in `docs/reviews/2026-10-15-dual-mode-merge.md` dokumentiert. Die obigen Angaben beschreiben den vorherigen Review-Stand.
