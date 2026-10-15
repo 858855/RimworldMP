@@ -1,0 +1,9 @@
+# RimWorld-Laufzeitprüfung nach bereinigter Test-Modliste – 2026-10-15
+
+- **Branch:** `test/rimworld-runtime`, Basis `main`/`f86ab83`.
+- **Umgebung:** Linux/Wayland mit X11-Fenster, lokale RimWorld-Installation unter `/mnt/Spiele_1/SteamLibrary/steamapps/common/RimWorld`. Isolierte Konfiguration `/tmp/rimworldmp-game-test/Config/ModsConfig.xml` mit Core, fünf offiziellen DLCs und `rimworldmp.foundation`; normale Benutzer-Modliste unverändert.
+- **Vorbereitung:** Gebautes Paket `dist/RimWorldMultiplayerFoundation` über temporären Symlink im Spiel-`Mods/`-Verzeichnis bereitgestellt. Der Symlink wurde nach dem Lauf entfernt und sein Fehlen geprüft.
+- **Befehl:** `LC_ALL=C timeout --signal=INT 180s ./RimWorldLinux -savedatafolder=/tmp/rimworldmp-game-test -logfile /tmp/rimworldmp-game-test/graphical-retry.log -screen-fullscreen 0`.
+- **Ergebnis:** Exit 124 (Timeout). Der Prozess öffnete ein Fenster und initialisierte OpenGL 4.5; im Log stehen jedoch keine RimWorld-Mod-Ladeeinträge und keine Meldung zu unserer Mod-Assembly. Keine UI-Bedienung oder Netzwerkaktion belegt. Das Log liegt lokal unter `/tmp/rimworldmp-game-test/graphical-retry.log`; es wird wegen Umfang und möglichen privaten Umgebungsdaten nicht versioniert.
+- **Versionsabweichung:** Die Runtime meldete `RimWorld 1.6.4871 rev600`; die lokale `Version.txt` enthält `1.6.4871 rev598`. Die bisherige Zielangabe beruht auf dieser Datei. Der Build gegen die lokalen Spiel-Assemblies bleibt belegt; die exakte Laufzeitrevision und Mod-Kompatibilität sind offen.
+- **Einschränkung:** Ein Timeout mit Fenster und Grafikinitialisierung beweist weder erfolgreiches Mod-Laden noch einen Defekt unseres Mods. Der frühere `-nographics`-Versuch hatte Atlasfehler. Nächster Test: Spielstart und Mod-Ladevorgang an der Benutzeroberfläche beobachten und den vollständigen Spiel-Log bis zum Hauptmenü prüfen.
