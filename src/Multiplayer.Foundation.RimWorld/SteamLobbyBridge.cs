@@ -199,6 +199,8 @@ namespace Multiplayer.Foundation.RimWorld
         internal SteamLobbyBridge? Bridge;
         private void Update()
         {
+            // During shutdown RimWorld closes Steam before this object is destroyed.
+            if (!Verse.Steam.SteamManager.Initialized) return;
             try { Bridge?.Pump(); }
             catch (Exception error)
             {

@@ -838,6 +838,7 @@ namespace Multiplayer.Foundation.RimWorld
                 if (action.IsFaulted) status = "Aktion fehlgeschlagen: " + action.Exception?.GetBaseException().Message;
                 action = null;
             }
+            WorldSelfTest.TryStart();
             UpdateManifestAndTransfers();
             UpdateHostSetup();
             if (client == null) return;
