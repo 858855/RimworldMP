@@ -7,4 +7,5 @@
 - **Code/Produkt:** Keine Quellcodeänderung und kein neues ZIP.
 - **Prüfung:** `python3 scripts/validate_project_state.py` und `git diff --check` bestanden. Ein Steam-Test wurde von Codex nicht ausgeführt.
 - **Offen:** Heimanschlüsse, Anzahl der Konten, Einladung, Lobby-Beitritt, Ready, Disconnect, Host-Wechsel und Logs konkretisieren. `STEAM-001` bleibt `in_progress` mit `build_passed` als unabhängig belegtem Verifikationsstatus.
-- **Status:** Für lokalen Dokumentations-Merge freigegeben; Commit und Merge-Ergebnis werden nach der Integration ergänzt.
+- **Integration:** Bericht-Commit `a41109a`; lokaler Merge `e017943` nach `main`, ohne Konflikte. `origin/main` blieb unverändert.
+- **Status:** `merged` als Git-Integrationsstatus. Kein GitHub-Push; technischer Steam-Status bleibt `in_progress`.

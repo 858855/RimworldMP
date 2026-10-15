@@ -16,9 +16,9 @@ target_rimworld_version:
   other_versions_verified: []
 current_phase: steam_home_to_home_development
 git:
-  branch: docs/steam-connection-report
-  base_branch: main
-  base_commit: 6ccff08
+  branch: main
+  base_branch: null
+  base_commit: null
   current_commit_ref: HEAD
   pushed: false
   merged: true

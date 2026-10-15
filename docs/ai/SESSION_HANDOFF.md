@@ -1,7 +1,7 @@
 # Sitzungsübergabe
 
 - **Bereich:** `STEAM-001` – Steam-Freundeslobby und P2P-Transport für zwei Heimanschlüsse.
-- **Branch:** `docs/steam-connection-report` auf lokalem `main` bei `6ccff08`; der Steam-Code wurde bereits mit `7bf6b42` in `main` gemergt. Letzter relevanter Commit ist dynamisch `HEAD` (`git log -1 --oneline`). `origin/main` wurde nicht aktualisiert.
+- **Branch:** `main`; Steam-Code-Merge `7bf6b42`, Merge des Nutzerberichts `e017943`. Letzter relevanter Commit ist dynamisch `HEAD` (`git log -1 --oneline`). `origin/main` wurde nicht aktualisiert.
 - **Stand:** Die Steam-Vorschau ist lokal in `main` integriert. Sie referenziert die installierte Steamworks.NET-Assembly, nimmt Einladungen im laufenden Spiel an und führt Foundation-Frames über einen begrenzten P2P-Stream zum bestehenden Lobby-Kern. Im Steam-Modus lauscht TCP nur auf Loopback; TCP/Dedicated bleiben erhalten. Das Vorschau-ZIP liegt unter `releases/` und zusätzlich als ZIP und entpackter Mod in der lokalen RimWorld-Installation. GitHub enthält diese Änderung noch nicht.
 - **Prüfungen:** Drei Netzwerk-, fünf Hosting- und 16 Serverintegrationsgruppen bestanden; RimWorld-Mod Release-Build null Warnungen/Fehler. Ein zusätzlicher Client über einen eingespeisten Duplex-Stream führte Handshake und Lobby-Beitritt aus. Vorschau-ZIP mit sieben Einträgen und SHA-256 geprüft. Siehe `docs/verification/2026-10-15-steam-transport.md`.
 - **Offen:** Der Benutzer meldete eine erfolgreiche Steam-Verbindung; Ablauf, Netzwerke, Lobby-Beitritt, Ready, Trennen und Host-Wechsel sind nicht beschrieben. Codex hat den Spieltest nicht selbst ausgeführt. Kaltstart per Einladung und RimWorld 1.7 bleiben offen. Direkt-TCP hat keine Authentifizierung/TLS.
