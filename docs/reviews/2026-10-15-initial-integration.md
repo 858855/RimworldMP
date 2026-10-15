@@ -1,0 +1,9 @@
+# Review und Freigabe: erster GitHub-Upload
+
+- **Quelle/Ziel:** `test/lobby-integration` → bestehender GitHub-Hauptbranch `main` (`origin/HEAD -> origin/main`). Es existiert kein `master`-Branch.
+- **Umfang:** Alle versionierten Änderungen seit `0909d11`, einschließlich Governance/Wissensbasis, Protokoll, Netzwerk, Lobby, Dedicated Server, RimWorld-1.6-Mod, Deployment und Tests. Die abhängigen Arbeitsbranches liegen linear in der Historie: `docs/project-governance` → `feat/network-protocol` → `feat/dedicated-server` → `feat/rimworld-client` → `test/lobby-integration`.
+- **Relevante Commits:** `f3c795c`, `7e3a9ae`, `bf98411`, `f14142c`, `2ac3d63`, `61ee7fb`, `d20a2e6`, `c61b47d`. Der Integrations-Dokumentationscommit folgt vor dem Merge.
+- **Prüfstand:** Verifizierungsberichte unter `docs/verification/`; insbesondere 13 TCP-Integrationstestgruppen und drei Client-Testgruppen bestanden. Aktuelle Integrationsprüfung: `docs/verification/2026-10-15-initial-upload.md`.
+- **Manuell offen:** RimWorld-Mod im grafischen Spiel laden, Einstellungen öffnen und zwei echte RimWorld-Clients gegen den Server bedienen. Version 1.7, öffentliche Internet-Sicherheit und Gameplay-Synchronisation sind nicht nachgewiesen. Lizenzentscheidung `LIC-001` steht aus.
+- **Freigabe:** Der Benutzer hat am 2026-10-15 in dieser Sitzung ausdrücklich angewiesen, alle jetzigen Projektänderungen nach GitHub in den Hauptbranch hochzuladen und anschließend weiterzuarbeiten. Diese Anweisung wird als Freigabe für diese konkrete Integration und den Push dokumentiert; sie ist **keine** Abnahme der offenen Spieltests oder eine allgemeine Freigabe für spätere Merges/Pushes.
+- **Integration:** Nur Fast-Forward des unveränderten `main` nach aktueller Prüfung; kein Force-Push und kein Umschreiben der Historie. Generierte `dist/`, `bin/`, `obj/`, lokale Konfiguration und proprietäre Spiel-Assemblies bleiben gemäß `.gitignore` außerhalb von Git.

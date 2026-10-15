@@ -28,7 +28,7 @@
 18. Keine neuen Parallelisierungen im mutationsführenden Tick-Pfad ohne explizit nachgewiesenen deterministischen Scheduler/Reintegration auf Tick-Grenze.
 19. `MP.enabled`/`MP.RegisterAll`, `[SyncMethod]`, `RegisterSyncMethod/Field`, `MP.WatchBegin/Watch/WatchEnd` nur nach gegen lokale MP-API-Assembly verifizierten Signaturen einsetzen. **`MP.IsExecutingSyncCommand` ist in dieser Wissensbasis nicht ausreichend verifiziert**.
 20. Gameplay-Einstellungen, RNG-Seeds und modrelevante statische Zustände müssen für alle Peers identisch sein; UI-/Layout-Präferenzen können clientlokal bleiben.
-21. Builds strikt trennen: **1.6 `net472`**, **1.7 `net10.0`**. Keine 1.7-DLL in einen 1.6-Build einschleusen oder umgekehrt. Versionierte `Assemblies/` und `LoadFolders.xml` nur mit tatsächlichem Runtime-Nachweis verwenden.
+21. Builds strikt nach lokal geprüfter Runtime trennen: Der installierte 1.6-Build referenziert `netstandard2.1`; der aktuelle Adapter baut damit gegen dessen Assemblies. 1.7/Waylith bleibt ein separater, unbestätigter `net10.0`-Pfad. Keine Assemblies zwischen Spielversionen mischen oder Laufzeitkompatibilität aus einem Build ableiten.
 
 ## Nachweis und Diagnose
 
