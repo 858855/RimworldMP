@@ -20,7 +20,7 @@ git:
   base_branch: main
   base_commit: dfe9d23
   current_commit_ref: HEAD
-  pushed: false
+  pushed: true
   merged: false
   dependent_branches:
   - docs/project-governance
@@ -42,7 +42,7 @@ components:
   protocol:
     implementation: implemented
     verification: tests_passed
-    integration: not_submitted
+    integration: ready_for_human_review
   network_core:
     implementation: implemented
     verification: tests_passed
@@ -50,27 +50,27 @@ components:
   lobby_core:
     implementation: implemented
     verification: tests_passed
-    integration: not_submitted
+    integration: ready_for_human_review
   dedicated_server:
     implementation: implemented
     verification: tests_passed
-    integration: not_submitted
+    integration: ready_for_human_review
   rimworld_adapter:
     implementation: implemented
     verification: build_passed
-    integration: not_submitted
+    integration: ready_for_human_review
   mod_package:
     implementation: implemented
     verification: tests_passed
-    integration: not_submitted
+    integration: ready_for_human_review
   main_menu_ui:
     implementation: implemented
     verification: runtime_verified
-    integration: not_submitted
+    integration: ready_for_human_review
   lobby_chat:
     implementation: implemented
     verification: tests_passed
-    integration: not_submitted
+    integration: ready_for_human_review
   listen_host:
     implementation: implemented
     verification: tests_passed

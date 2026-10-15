@@ -445,7 +445,7 @@ tasks:
   - Menülayout ist von Bildschirmgröße und UI-Skalierung abhängig
   implementation: implemented
   verification: runtime_verified
-  integration: not_submitted
+  integration: ready_for_human_review
   branch: feat/main-menu-chat
   base_branch: main
   base_commit: dfe9d23
@@ -480,7 +480,7 @@ tasks:
   - Neue Wire-Typen erfordern denselben Mod-/Server-Build auf beiden Seiten
   implementation: implemented
   verification: tests_passed
-  integration: not_submitted
+  integration: ready_for_human_review
   branch: feat/main-menu-chat
   base_branch: main
   base_commit: dfe9d23
