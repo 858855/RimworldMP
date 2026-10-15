@@ -27,7 +27,7 @@ Strings sind `length:u16` plus strikt gültige UTF-8-Bytes. Allgemeine Strings: 
 | 16 | Error | S→C | Fehlercode, Text |
 | 17 | CloseLobby | C→S | leer; nur Host |
 
-Die konkreten Felder für Listen und Zustandsupdates werden mit `LOBBY-001` stabilisiert; bis dahin wird keine vollständige Wire-Kompatibilität behauptet. Fehlercodes: `1=InvalidMessage`, `2=VersionMismatch`, `3=Unauthorized`, `4=NotFound`, `5=Capacity`, `6=InvalidState`, `7=ServerBusy`.
+Listen- und Zustandsupdates sind in `LobbyPayloads.cs` kodiert: Liste mit `count:u8`, je Lobby GUID, Name, Hostname, Spielerzahl und Kapazität; Snapshot mit GUID, Name, Host-GUID, Revision `u64`, Kapazität und Spielerarray (GUID, Name, Ready). Der TCP-Server nutzt diese Payloads noch nicht; Wire-Kompatibilität wird erst nach Integrationstests zugesagt. Fehlercodes: `1=InvalidMessage`, `2=VersionMismatch`, `3=Unauthorized`, `4=NotFound`, `5=Capacity`, `6=InvalidState`, `7=ServerBusy`.
 
 ## Übergänge und Grenzen
 

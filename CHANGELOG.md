@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Lobby-Core
+
+- Flüchtige, serverautoritative Lobbyzustände mit Kapazität, Host-Rechten, Ready-Status und Bereinigung implementiert; Regel- und Payload-Test bestanden. Noch keine TCP-Anbindung.
+
 ### Netzwerk
 
 - TCP-Verbindung und Handshake mit Timeout ergänzt; Loopback-Tests decken echte Verbindung, gleichzeitige Sendungen und Ablehnung ab. Heartbeat und Server fehlen noch.

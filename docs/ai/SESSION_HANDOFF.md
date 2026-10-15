@@ -1,8 +1,8 @@
 # Sitzungsübergabe
 
-- **Branch/Commit:** `feat/network-protocol`, Basis `docs/project-governance` bei `7e3a9ae`; aktuellen Commit mit `git rev-parse HEAD` lesen. Kein Merge/Push.
-- **Letzte Arbeit:** `NET-001` teilweise: Frame/Payload-Codec sowie `NetworkConnection` und `HandshakeClient` implementiert. Keine Lobby- oder Serversemantik.
-- **Belegt:** Fünf Protokoll-Testgruppen und drei echte TCP-Loopback-Gruppen bestanden. Nachweise: `docs/verification/2026-10-15-protocol.md` und `2026-10-15-network.md`.
-- **Offen:** Heartbeat/Nachrichtenpumpe, Server, Lobby, RimWorld-Mod und Game-Laufzeit. Maßgebliche Status/Abhängigkeiten in `PROJECT_STATE.yaml` und `TASKS.yaml`.
-- **Umgebung:** Lokales .NET-SDK `10.0.402`; RimWorld `1.6.4871 rev598` (Steam `23969874`). Kein Game-Test.
-- **Nächster Schritt:** Heartbeat und Nachrichtenpumpen-Vertrag ergänzen; anschließend Server und Lobby auf abhängigen Branches entwickeln.
+- **Branch/Commit:** `feat/dedicated-server`, Basis `feat/network-protocol` bei `f14142c`; dieser hängt von `docs/project-governance`/`7e3a9ae` ab. `git rev-parse HEAD` liefert den aktuellen Commit. Kein Merge/Push.
+- **Letzte Arbeit:** Lobby-Domänenkern und typisierte Listen-/Snapshot-Payloads. `LOBBY-001` teilweise; `SERVER-001` beginnt.
+- **Belegt:** `dotnet run --project tests/Lobby.Tests/Lobby.Tests.csproj -c Release` bestanden. Details: `docs/verification/2026-10-15-lobby-core.md`. Protokoll-/Netzwerktests stehen in ihren früheren Nachweisen.
+- **Offen:** TCP-Server, Heartbeat, echte Mehrclient-Lobby, RimWorld-UI. Maßgeblich sind `PROJECT_STATE.yaml` und `TASKS.yaml`.
+- **Umgebung:** .NET-SDK `10.0.402`, RimWorld `1.6.4871 rev598` (Steam `23969874`); kein Game-Test.
+- **Nächster Schritt:** `ServerHost` und Konfiguration implementieren, LobbyRegistry anbinden, mit zwei unabhängigen TCP-Clients testen.

@@ -11,15 +11,17 @@ target_rimworld_version:
   runtime: Unity/Mono
   game_runtime_tested: false
   other_versions_verified: []
-current_phase: network_protocol
+current_phase: dedicated_server_and_lobby
 git:
-  branch: feat/network-protocol
-  base_branch: docs/project-governance
-  base_commit: 7e3a9ae
+  branch: feat/dedicated-server
+  base_branch: feat/network-protocol
+  base_commit: f14142c
   current_commit_ref: HEAD
   pushed: false
   merged: false
-  dependent_branches: []
+  dependent_branches:
+  - docs/project-governance
+  - feat/network-protocol
 components:
   governance:
     implementation: implemented
@@ -38,8 +40,8 @@ components:
     verification: tests_passed
     integration: not_submitted
   lobby_core:
-    implementation: planned
-    verification: not_tested
+    implementation: in_progress
+    verification: tests_passed
     integration: not_submitted
   dedicated_server:
     implementation: planned
@@ -56,15 +58,17 @@ verified_capabilities:
 - 'Wire-Version 1: 5 automatisierte Protokoll-Testgruppen bestanden (Frame/Payload).'
 - 'TCP-Loopback: Handshake, paralleles Senden, Ablehnung und Timeout mit Network.Tests
   bestanden.'
+- LobbyRegistry-Regeltest und LobbyPayloads-Roundtrip bestanden; noch ohne TCP-Server.
 known_issues:
 - Bisher kein produktiver Multiplayer-Code und keine C#-Builds.
 blockers:
 - RimWorld-API-Signaturen und Mod-Laufzeit noch nicht geprüft.
 - 1.7-Multiplayer wegen Prepatcher und fehlenden Tests ungeklärt.
 active_tasks:
-- NET-001
-next_action: 'NET-001: Heartbeat und dauerhafte Nachrichtenverarbeitung ergänzen;
-  danach Server- und Lobby-Branch.'
+- SERVER-001
+- LOBBY-001
+next_action: ServerHost mit TCP-Listener, Sessionverwaltung und LobbyRegistry verbinden;
+  zwei echte Clients testen.
 documentation_refs:
   tasks: docs/ai/TASKS.yaml
   handoff: docs/ai/SESSION_HANDOFF.md
@@ -75,4 +79,5 @@ documentation_refs:
   review: docs/reviews/2026-10-15-governance-v2.md
   protocol_verification: docs/verification/2026-10-15-protocol.md
   network_verification: docs/verification/2026-10-15-network.md
+  lobby_verification: docs/verification/2026-10-15-lobby-core.md
 last_updated: '2026-10-15'
