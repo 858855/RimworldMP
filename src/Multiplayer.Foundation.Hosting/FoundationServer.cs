@@ -142,11 +142,13 @@ public sealed class FoundationServer : IAsyncDisposable
             }
             if (hello == null || hello.Type != MessageType.Hello || hello.RequestId != 1)
             { await RejectAsync(connection, 1, "Expected Hello.", serverToken).ConfigureAwait(false); return; }
-            string name;
-            try { name = LobbyPayloads.ReadString(hello.Payload); lobbies.AddMember(sessionId, name); }
+            string name, key;
+            try { (name, key) = LobbyPayloads.ReadHello(hello.Payload); lobbies.AddMember(sessionId, name, key); }
             catch (Exception error) when (error is ProtocolException or LobbyRuleException)
-            { await RejectAsync(connection, 1, "Invalid player name.", serverToken).ConfigureAwait(false); return; }
-            peer = new Peer(sessionId, name, connection);
+            { await RejectAsync(connection, 1, "Invalid player name or key.", serverToken).ConfigureAwait(false); return; }
+            // A new login with the same key replaces the older session (reconnect before the heartbeat noticed the drop).
+            foreach (Peer stale in peers.Values.Where(p => p.PlayerKey == key).ToArray()) stale.Connection.Dispose();
+            peer = new Peer(sessionId, name, key, connection);
             peers[sessionId] = peer;
             await connection.SendAsync(new WireMessage(MessageType.HandshakeAccepted, 1,
                 LobbyPayloads.Accepted(sessionId, (ushort)config.HeartbeatIntervalSeconds)), serverToken).ConfigureAwait(false);
@@ -303,10 +305,11 @@ public sealed class FoundationServer : IAsyncDisposable
 
     private sealed class Peer
     {
-        public Peer(Guid id, string name, NetworkConnection connection)
-        { Id = id; Name = name; Connection = connection; LastPongStamp = Stopwatch.GetTimestamp(); }
+        public Peer(Guid id, string name, string playerKey, NetworkConnection connection)
+        { Id = id; Name = name; PlayerKey = playerKey; Connection = connection; LastPongStamp = Stopwatch.GetTimestamp(); }
         public Guid Id { get; }
         public string Name { get; }
+        public string PlayerKey { get; }
         public NetworkConnection Connection { get; }
         public long LastPongStamp;
         public long NextNonce;

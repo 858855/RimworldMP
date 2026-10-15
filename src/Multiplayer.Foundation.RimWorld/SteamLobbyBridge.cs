@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Multiplayer.Foundation.Hosting;
 using Multiplayer.Foundation.Network;
+using Multiplayer.Foundation.Protocol;
 using Steamworks;
 using UnityEngine;
 
@@ -64,14 +65,17 @@ namespace Multiplayer.Foundation.RimWorld
                     throw new TimeoutException("Steam lobby creation timed out.");
                 CSteamID created = await createResult.Task;
                 lobbyId = created;
-                SteamMatchmaking.SetLobbyData(created, "foundation_version", "1");
+                SteamMatchmaking.SetLobbyData(created, "foundation_version", WireVersion);
                 SteamMatchmaking.SetLobbyData(created, "name", name);
             }
             catch { Leave(); throw; }
             finally { createResult = null; }
         }
 
-        internal async Task<LobbyClient> JoinAsync(CSteamID invitedLobby, string playerName)
+        // Steam lobby tag follows the wire version so mismatched builds fail before the P2P handshake.
+        private static readonly string WireVersion = FrameCodec.Version.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+        internal async Task<LobbyClient> JoinAsync(CSteamID invitedLobby, string playerName, string playerKey)
         {
             if (disposed || host != null || lobbyId.IsValid())
                 throw new InvalidOperationException("Leave the current Steam lobby first.");
@@ -84,8 +88,8 @@ namespace Multiplayer.Foundation.RimWorld
                     throw new TimeoutException("Steam lobby join timed out.");
                 CSteamID joined = await joinResult.Task;
                 lobbyId = joined;
-                if (SteamMatchmaking.GetLobbyData(joined, "foundation_version") != "1")
-                    throw new IOException("Incompatible Steam lobby.");
+                if (SteamMatchmaking.GetLobbyData(joined, "foundation_version") != WireVersion)
+                    throw new IOException("Incompatible Steam lobby (different Multiplayer Foundation version).");
                 CSteamID owner = SteamMatchmaking.GetLobbyOwner(joined);
                 if (!owner.IsValid() || owner == SteamUser.GetSteamID())
                     throw new IOException("Steam lobby host is unavailable.");
@@ -100,8 +104,8 @@ namespace Multiplayer.Foundation.RimWorld
                 Task finished = await Task.WhenAny(stream.Connected, Task.Delay(TimeSpan.FromSeconds(20)));
                 if (finished != stream.Connected) throw new TimeoutException("Steam P2P connection timed out.");
                 await stream.Connected;
-                return await LobbyClient.ConnectOverStreamAsync(stream, playerName, TimeSpan.FromSeconds(10))
-                    .ConfigureAwait(false);
+                return await LobbyClient.ConnectOverStreamAsync(stream, playerName, TimeSpan.FromSeconds(10),
+                    default, playerKey).ConfigureAwait(false);
             }
             catch { stream?.Dispose(); Leave(); throw; }
             finally { joinResult = null; }

@@ -592,11 +592,13 @@ tasks:
   - 'Hello überträgt den PlayerKey'
   - 'Steam nutzt die SteamID, sonst eine einmalig erzeugte und gespeicherte GUID'
   - 'Schlüssel übersteht einen Spielneustart'
-  implementation: planned
-  verification: not_tested
+  implementation: implemented
+  verification: tests_passed
   integration: not_submitted
-  branch: null
-  evidence: []
+  branch: feat/lobby-hardening
+  evidence:
+  - docs/protocol.md
+  blocker: 'Automatisierte Tests bestanden (.NET-8-Harness). Spieltest mit Steam und IP offen; Steam-Fallback-Schlüssel nur ohne Steam.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: MOD-001
   title: 'Mod-Manifest und Lobby-Prüfung von Mods und Ladereihenfolge'

@@ -1,10 +1,10 @@
-# Protokoll 0.1 – Wire-Version 2
+# Protokoll – Wire-Version 3
 
 **Implementierungsstand:** Framing und Nutzdaten-Helfer auf `feat/network-protocol`; Server- und Lobby-Semantik sind auf `feat/dedicated-server` implementiert und per TCP getestet. Kein Gameplay-Sync.
 
 ## Frame
 
-Alle Ganzzahlen sind Big Endian. Vier Bytes geben die Body-Länge an (`6..65536`). Der Body enthält `version:u8` (=2), `type:u8`, `requestId:u32` und danach `payload`. TCP-Lesevorgänge dürfen Frames beliebig fragmentieren oder zusammenfassen. Ein einzelner Request erhält eine vom Client gewählte ID; Push-Nachrichten verwenden ID 0. Unbekannte Versionen und Typen werden abgelehnt. Version 2 ist wegen Chat-Nachrichten nicht mit älteren Version-1-Clients/Servern kombinierbar.
+Alle Ganzzahlen sind Big Endian. Vier Bytes geben die Body-Länge an (`6..65536`). Der Body enthält `version:u8` (=3), `type:u8`, `requestId:u32` und danach `payload`. TCP-Lesevorgänge dürfen Frames beliebig fragmentieren oder zusammenfassen. Ein einzelner Request erhält eine vom Client gewählte ID; Push-Nachrichten verwenden ID 0. Unbekannte Versionen und Typen werden abgelehnt. Version 3 (Spielerschlüssel, Mod-Manifest, Spieleinrichtung, Chunk-Übertragung) ist nicht mit Version-2-Clients/Servern kombinierbar; Version 2 brachte den Chat.
 
 Strings sind `length:u16` plus strikt gültige UTF-8-Bytes. Allgemeine Strings: höchstens 256 Bytes. Namen werden zusätzlich fachlich auf 1–40 Zeichen und Steuerzeichen geprüft. GUIDs sind 16 Bytes in kanonischer Netzwerkreihenfolge. Listen- und Spieler-Counts sind `u8`; Payloads müssen vollständig gelesen werden, zusätzliche Bytes sind Fehler.
 
@@ -12,7 +12,7 @@ Strings sind `length:u16` plus strikt gültige UTF-8-Bytes. Allgemeine Strings: 
 
 | Code | Typ | Richtung | Nutzdaten |
 |---|---|---|---|
-| 1 | Hello | C→S | Spielername |
+| 1 | Hello | C→S | Spielername, Spielerschlüssel (`steam:<SteamID64>` oder `local:<32 hex>`, höchstens 64 Bytes) |
 | 2 | HandshakeAccepted | S→C | Session-ID, Heartbeat-Sekunden |
 | 3 | HandshakeRejected | S→C | Fehlercode, Text |
 | 4/5 | Ping/Pong | beide | Nonce `u64` |
@@ -38,3 +38,5 @@ Listen- und Zustandsupdates sind in `LobbyPayloads.cs` kodiert: Liste mit `count
 Der unabhängige `LobbyClient` beantwortet `Ping` automatisch mit derselben Nonce und reicht andere Nachrichten an die Spiel-UI weiter. Die UI verwirft ältere Lobby-Revisionen. Ohne TLS und Authentifizierung ausschließlich kontrollierte LAN-/Testnetze. Siehe ADR 0003 und `docs/SPEC.md`.
 
 Chat-Anfragen sind nur für Mitglieder einer Lobby gültig. Der Server bestimmt Sender-ID und Namen aus der authentisierten Sitzung und sendet die Meldung ausschließlich an die Mitglieder dieser Lobby. Leere Texte, Steuerzeichen, ungültiges UTF-8 und mehr als 512 UTF-8-Bytes werden abgelehnt. Der Chat wird weder auf dem Server noch im Spielstand gespeichert; die UI hält nur die letzten 50 Meldungen. Steam-, Direkt-TCP- und Dedicated-Server-Modus verwenden dasselbe Format. Siehe ADR 0011.
+
+Der Spielerschlüssel (ID-001) ist die dauerhafte Identität eines Spielers über Neustarts und Reconnects hinweg. Der Mod nutzt die SteamID, ohne Steam eine einmal erzeugte und in den Mod-Einstellungen gespeicherte GUID. Ein `Hello` ohne gültigen Schlüssel wird abgelehnt. Meldet sich derselbe Schlüssel erneut an, schließt der Server die ältere Sitzung. Der Schlüssel wird nicht an andere Spieler verteilt. Ohne Authentifizierung kann er bei IP-Lobbys gefälscht werden (siehe SEC-001); Steam-Lobbys nehmen nur SteamIDs aus der Steam-Lobby an.

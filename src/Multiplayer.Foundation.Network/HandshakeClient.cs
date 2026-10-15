@@ -21,9 +21,10 @@ namespace Multiplayer.Foundation.Network
     public static class HandshakeClient
     {
         public static async Task<HandshakeResult> ConnectAsync(string host, int port, string playerName,
-            TimeSpan timeout, CancellationToken cancellationToken = default)
+            TimeSpan timeout, CancellationToken cancellationToken = default, string? playerKey = null)
         {
             ValidateName(playerName);
+            string key = ResolveKey(playerKey);
             using (var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
             {
                 deadline.CancelAfter(timeout);
@@ -32,7 +33,7 @@ namespace Multiplayer.Foundation.Network
                 {
                     connection = await NetworkConnection.ConnectAsync(host, port, timeout, deadline.Token)
                         .ConfigureAwait(false);
-                    return await PerformAsync(connection, playerName, deadline.Token).ConfigureAwait(false);
+                    return await PerformAsync(connection, playerName, key, deadline.Token).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
                 {
@@ -48,16 +49,17 @@ namespace Multiplayer.Foundation.Network
         }
 
         public static async Task<HandshakeResult> ConnectAsync(NetworkConnection connection, string playerName,
-            TimeSpan timeout, CancellationToken cancellationToken = default)
+            TimeSpan timeout, CancellationToken cancellationToken = default, string? playerKey = null)
         {
             if (connection == null) throw new ArgumentNullException(nameof(connection));
             if (timeout <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(timeout));
-            try { ValidateName(playerName); }
+            string key;
+            try { ValidateName(playerName); key = ResolveKey(playerKey); }
             catch { connection.Dispose(); throw; }
             using (var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
             {
                 deadline.CancelAfter(timeout);
-                try { return await PerformAsync(connection, playerName, deadline.Token).ConfigureAwait(false); }
+                try { return await PerformAsync(connection, playerName, key, deadline.Token).ConfigureAwait(false); }
                 catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
                 { connection.Dispose(); throw new TimeoutException("Handshake timed out."); }
                 catch { connection.Dispose(); throw; }
@@ -65,12 +67,10 @@ namespace Multiplayer.Foundation.Network
         }
 
         private static async Task<HandshakeResult> PerformAsync(NetworkConnection connection, string playerName,
-            CancellationToken cancellationToken)
+            string playerKey, CancellationToken cancellationToken)
         {
-            var payload = new PayloadWriter();
-            payload.WriteString(playerName, 160);
-            await connection.SendAsync(new WireMessage(MessageType.Hello, 1, payload.ToArray()), cancellationToken)
-                .ConfigureAwait(false);
+            await connection.SendAsync(new WireMessage(MessageType.Hello, 1, LobbyPayloads.Hello(playerName, playerKey)),
+                cancellationToken).ConfigureAwait(false);
             WireMessage? reply = await connection.ReceiveAsync(cancellationToken).ConfigureAwait(false);
             if (reply == null) throw new ProtocolException("Server closed during handshake.");
             if (reply.RequestId != 1) throw new ProtocolException("Handshake request ID mismatch.");
@@ -90,6 +90,14 @@ namespace Multiplayer.Foundation.Network
             if (sessionId == Guid.Empty || heartbeatSeconds == 0)
                 throw new ProtocolException("Invalid handshake parameters.");
             return new HandshakeResult(connection, sessionId, heartbeatSeconds);
+        }
+
+        // Without a persistent key (tests, tools) the session gets a fresh one; the mod always passes its stored key.
+        private static string ResolveKey(string? playerKey)
+        {
+            string key = playerKey ?? PlayerKeys.Local(Guid.NewGuid());
+            if (!PlayerKeys.IsValid(key)) throw new ArgumentException("Invalid player key.", nameof(playerKey));
+            return key;
         }
 
         private static void ValidateName(string playerName)

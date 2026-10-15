@@ -74,6 +74,21 @@ namespace Multiplayer.Foundation.Protocol
                 throw new ProtocolException("Chat message must contain printable text.");
         }
 
+        public static byte[] Hello(string playerName, string playerKey)
+        {
+            if (!PlayerKeys.IsValid(playerKey)) throw new ProtocolException("Invalid player key.");
+            var writer = new PayloadWriter(); writer.WriteString(playerName, 160); writer.WriteString(playerKey, PlayerKeys.MaximumBytes);
+            return writer.ToArray();
+        }
+        public static (string Name, string Key) ReadHello(byte[] bytes)
+        {
+            var reader = new PayloadReader(bytes);
+            string name = reader.ReadString(160); string key = reader.ReadString(PlayerKeys.MaximumBytes);
+            reader.EnsureComplete();
+            if (!PlayerKeys.IsValid(key)) throw new ProtocolException("Invalid player key.");
+            return (name, key);
+        }
+
         public static byte[] String(string value, int maxBytes = 160)
         { var writer = new PayloadWriter(); writer.WriteString(value, maxBytes); return writer.ToArray(); }
         public static string ReadString(byte[] bytes, int maxBytes = 160)

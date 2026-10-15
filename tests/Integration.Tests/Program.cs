@@ -215,6 +215,29 @@ Assert((await ReceiveType(chatBob, MessageType.Error)).RequestId == 4, "invalid 
 Console.WriteLine("PASS: invalid chat rejected");
 await chatServer.StopAsync();
 
+await using var keyServer = new FoundationServer(chatConfig);
+await keyServer.StartAsync();
+string sharedKey = PlayerKeys.Local(Guid.NewGuid());
+using var firstLogin = (await HandshakeClient.ConnectAsync("127.0.0.1", keyServer.BoundPort,
+    "Erik", TimeSpan.FromSeconds(3), default, sharedKey)).Connection;
+using var secondLogin = (await HandshakeClient.ConnectAsync("127.0.0.1", keyServer.BoundPort,
+    "Erik", TimeSpan.FromSeconds(3), default, sharedKey)).Connection;
+using (var closedDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(3)))
+    Assert(await firstLogin.ReceiveAsync(closedDeadline.Token) == null, "older session with same key closed");
+await secondLogin.SendAsync(new WireMessage(MessageType.LobbyListRequest, 2, Array.Empty<byte>()));
+await ReceiveType(secondLogin, MessageType.LobbyListResponse);
+using (var invalidKey = new TcpClient())
+{
+    await invalidKey.ConnectAsync("127.0.0.1", keyServer.BoundPort);
+    using var raw = NetworkConnection.FromAcceptedClient(invalidKey);
+    var noKey = new PayloadWriter(); noKey.WriteString("Mallory", 160);
+    await raw.SendAsync(new WireMessage(MessageType.Hello, 1, noKey.ToArray()));
+    WireMessage rejected = await raw.ReceiveAsync() ?? throw new Exception("no handshake reply");
+    Assert(rejected.Type == MessageType.HandshakeRejected, "hello without key rejected");
+}
+Console.WriteLine("PASS: player key replaces older session and is required");
+await keyServer.StopAsync();
+
 static async Task<WireMessage> ReceiveType(NetworkConnection connection, MessageType wanted, CancellationToken token = default)
 {
     using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);

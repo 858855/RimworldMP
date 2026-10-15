@@ -83,6 +83,21 @@ namespace Multiplayer.Foundation.RimWorld
 
         internal void TickNetwork() => UpdateNetwork();
 
+        // SteamID when Steam runs, otherwise a GUID stored once in the mod settings.
+        internal string PlayerKey
+        {
+            get
+            {
+                if (steam != null) return PlayerKeys.Steam(SteamUser.GetSteamID().m_SteamID);
+                if (!PlayerKeys.IsValid(settings.LocalPlayerKey))
+                {
+                    settings.LocalPlayerKey = PlayerKeys.Local(Guid.NewGuid());
+                    WriteSettings();
+                }
+                return settings.LocalPlayerKey;
+            }
+        }
+
         internal void DrawWindow(Rect inRect)
         {
             UpdateNetwork();
@@ -253,7 +268,8 @@ namespace Multiplayer.Foundation.RimWorld
             if (!HostEndpoint.TryParse(settings.ServerAddress, port, out string host, out port))
             { status = "Ungültige Serveradresse"; return; }
             status = "Verbindung wird aufgebaut";
-            connecting = LobbyClient.ConnectAsync(host, port, settings.PlayerName.Trim(), TimeSpan.FromSeconds(10));
+            connecting = LobbyClient.ConnectAsync(host, port, settings.PlayerName.Trim(), TimeSpan.FromSeconds(10),
+                default, PlayerKey);
         }
 
         private void HostLobby()
@@ -267,7 +283,7 @@ namespace Multiplayer.Foundation.RimWorld
             { status = "Lobbyname muss 1–40 druckbare Zeichen haben"; return; }
             status = "Lokale Lobby startet";
             hosting = ListenHost.StartAsync(settings.HostBindAddress.Trim(), port,
-                settings.PlayerName.Trim(), name, capacity);
+                settings.PlayerName.Trim(), name, capacity, PlayerKey);
         }
 
         private void HostSteamLobby()
@@ -280,13 +296,13 @@ namespace Multiplayer.Foundation.RimWorld
             { status = "Lobbyname muss 1–40 druckbare Zeichen haben"; return; }
             status = "Steam-Lobby startet";
             steamHostStarting = true;
-            hosting = StartSteamHostAsync(steam, settings.PlayerName.Trim(), name, capacity);
+            hosting = StartSteamHostAsync(steam, settings.PlayerName.Trim(), name, capacity, PlayerKey);
         }
 
         private static async Task<ListenHost> StartSteamHostAsync(SteamLobbyBridge bridge,
-            string playerName, string name, byte capacity)
+            string playerName, string name, byte capacity, string playerKey)
         {
-            ListenHost host = await ListenHost.StartAsync("127.0.0.1", 0, playerName, name, capacity);
+            ListenHost host = await ListenHost.StartAsync("127.0.0.1", 0, playerName, name, capacity, playerKey);
             try { await bridge.StartHostingAsync(host, name, capacity); return host; }
             catch { await host.DisposeAsync(); throw; }
         }
@@ -298,7 +314,7 @@ namespace Multiplayer.Foundation.RimWorld
             pendingInvite = default;
             status = "Steam-Verbindung wird aufgebaut";
             autoJoinSteamLobby = true;
-            connecting = steam.JoinAsync(invited, settings.PlayerName.Trim());
+            connecting = steam.JoinAsync(invited, settings.PlayerName.Trim(), PlayerKey);
         }
 
         private void TryInitializeSteam()

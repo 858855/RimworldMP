@@ -65,6 +65,23 @@ await Run("lobby chat payload and limits", () =>
     Throws<ProtocolException>(() => LobbyPayloads.ReadChatRequest(new byte[] { 0, 1, 10 }));
     return Task.CompletedTask;
 });
+await Run("player key and hello payload", () =>
+{
+    string steam = PlayerKeys.Steam(76561197960287930UL), local = PlayerKeys.Local(Guid.NewGuid());
+    Equal(true, PlayerKeys.IsValid(steam)); Equal(true, PlayerKeys.IsValid(local));
+    foreach (string bad in new[] { "", "steam:", "steam:0", "steam:012", "steam:18446744073709551616", "local:abc",
+        "local:" + new string('0', 32), "local:" + new string('A', 32), "other:1", "steam:1 " })
+        Equal(false, PlayerKeys.IsValid(bad));
+    var hello = LobbyPayloads.ReadHello(LobbyPayloads.Hello("Spieler Ä", steam));
+    Equal("Spieler Ä", hello.Name); Equal(steam, hello.Key);
+    Throws<ProtocolException>(() => LobbyPayloads.Hello("Alice", "steam:0"));
+    var nameOnly = new PayloadWriter(); nameOnly.WriteString("Alice", 160);
+    Throws<ProtocolException>(() => LobbyPayloads.ReadHello(nameOnly.ToArray()));
+    var badKey = new PayloadWriter(); badKey.WriteString("Alice", 160); badKey.WriteString("local:xyz", 64);
+    Throws<ProtocolException>(() => LobbyPayloads.ReadHello(badKey.ToArray()));
+    Equal((byte)3, FrameCodec.Version);
+    return Task.CompletedTask;
+});
 Console.WriteLine($"PASS: {passed} protocol test groups");
 
 async Task Run(string name, Func<Task> body)

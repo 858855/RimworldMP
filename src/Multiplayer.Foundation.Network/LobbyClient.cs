@@ -32,19 +32,19 @@ namespace Multiplayer.Foundation.Network
         public Task Completion => reader;
 
         public static async Task<LobbyClient> ConnectAsync(string host, int port, string playerName,
-            TimeSpan timeout, CancellationToken cancellationToken = default)
+            TimeSpan timeout, CancellationToken cancellationToken = default, string? playerKey = null)
         {
-            HandshakeResult handshake = await HandshakeClient.ConnectAsync(host, port, playerName, timeout, cancellationToken)
-                .ConfigureAwait(false);
+            HandshakeResult handshake = await HandshakeClient.ConnectAsync(host, port, playerName, timeout, cancellationToken,
+                playerKey).ConfigureAwait(false);
             return new LobbyClient(handshake);
         }
 
         public static async Task<LobbyClient> ConnectOverStreamAsync(Stream stream, string playerName,
-            TimeSpan timeout, CancellationToken cancellationToken = default)
+            TimeSpan timeout, CancellationToken cancellationToken = default, string? playerKey = null)
         {
             var connection = NetworkConnection.FromDuplexStream(stream);
             HandshakeResult handshake = await HandshakeClient.ConnectAsync(connection, playerName, timeout,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken, playerKey).ConfigureAwait(false);
             return new LobbyClient(handshake);
         }
 

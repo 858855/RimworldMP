@@ -30,12 +30,17 @@ namespace Multiplayer.Foundation.Lobby
         public LobbyRegistry(byte maximumCapacity)
         { if (maximumCapacity < 2 || maximumCapacity > 64) throw new ArgumentOutOfRangeException(nameof(maximumCapacity)); this.maximumCapacity = maximumCapacity; }
 
-        public void AddMember(Guid id, string name)
+        public void AddMember(Guid id, string name, string? playerKey = null)
         {
             ValidateName(name);
+            if (playerKey != null && !PlayerKeys.IsValid(playerKey)) throw new LobbyRuleException(1, "Invalid player key.");
             lock (gate)
-            { if (id == Guid.Empty || members.ContainsKey(id)) throw new LobbyRuleException(6, "Invalid session."); members.Add(id, new Member(id, name)); }
+            { if (id == Guid.Empty || members.ContainsKey(id)) throw new LobbyRuleException(6, "Invalid session."); members.Add(id, new Member(id, name, playerKey)); }
         }
+
+        /// <summary>Persistent key of a connected member; null for members added without one.</summary>
+        public string? PlayerKeyOf(Guid id)
+        { lock (gate) return GetMember(id).PlayerKey; }
 
         public IReadOnlyList<LobbySummary> List()
         {
@@ -145,9 +150,10 @@ namespace Multiplayer.Foundation.Lobby
         }
         private sealed class Member
         {
-            public Member(Guid id, string name) { Id = id; Name = name; }
+            public Member(Guid id, string name, string? playerKey) { Id = id; Name = name; PlayerKey = playerKey; }
             public Guid Id { get; }
             public string Name { get; }
+            public string? PlayerKey { get; }
             public Guid? Room { get; set; }
             public bool Ready { get; set; }
         }

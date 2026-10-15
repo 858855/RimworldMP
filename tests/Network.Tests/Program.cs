@@ -13,9 +13,8 @@ Task server = Task.Run(async () =>
     using var connection = NetworkConnection.FromAcceptedClient(accepted);
     WireMessage hello = await connection.ReceiveAsync() ?? throw new Exception("missing Hello");
     Assert(hello.Type == MessageType.Hello && hello.RequestId == 1, "Hello envelope");
-    var helloReader = new PayloadReader(hello.Payload);
-    Assert(helloReader.ReadString(160) == "Alice", "Hello name");
-    helloReader.EnsureComplete();
+    var helloFields = LobbyPayloads.ReadHello(hello.Payload);
+    Assert(helloFields.Name == "Alice" && PlayerKeys.IsValid(helloFields.Key), "Hello name and key");
     var reply = new PayloadWriter();
     reply.WriteGuid(session); reply.WriteUInt16(2);
     await connection.SendAsync(new WireMessage(MessageType.HandshakeAccepted, 1, reply.ToArray()));
