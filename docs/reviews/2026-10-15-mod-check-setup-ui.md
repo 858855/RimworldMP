@@ -33,3 +33,4 @@ Weltübertragung und Fingerabdruck (ADR 0020, Codes 31/32, `WorldStatus` im Lobb
 4. Abweichende Mods: rot, Bereit gesperrt, **Unterschiede anzeigen**.
 5. Nach „Welt erstellen“: Feld des Hosts zeigt „Welt wird gesendet …“, beim Gast „Welt wird empfangen …“, dann „Welt geladen, passt“ für alle; erst dann öffnet sich beim Server die Startortwahl (Phase „Startort“ beim Gast).
 6. Allein (Debug): nach „Welt erstellen“ geht es ohne Übertragung weiter; `Player.log` zeigt „Welt gesendet (… KiB, Prüfsumme …)“.
+7. Startortwahl: beim Gast öffnet sich die Weltkarte; Feld wählen + „Weiter“ setzt ein Fähnchen (kein Weitergehen), beide sehen beide Fähnchen mit Namen; „Hin“ springt; „Zurück“ schließt nur die Karte, „Weltkarte öffnen“ öffnet sie wieder. Host wählt mit „Weiter“, der Gast sieht danach den gewählten Startort.

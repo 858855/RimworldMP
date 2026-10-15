@@ -25,8 +25,18 @@
 | 5 | **PASS** bei 5 %, 30 %, 50 % (Tabelle in ADR 0020); keine Fehler, Spiel beendet sich selbst | – |
 | 6 | Endbuild: **PASS** bei 30 %, Mod-Prüfsumme 708c, keine Fehler | – |
 
+## Nachtrag: SETUP-003 (Startortseite und Fähnchen)
+
+| Lauf | Befund | Folge |
+|---|---|---|
+| 7 | Startortseite öffnet auf der geladenen Welt ohne Fehler, aber 0 Fähnchen | Die Fähnchenliste wurde jedes Frame aus dem (leeren) Lobbyzustand überschrieben; während des Selbsttests gehört sie jetzt dem Selbsttest |
+| 8 | **PASS**: Seite offen, 2 Fähnchen, in 774 Frames gezeichnet | – |
+| 9 | **PASS** mit `-mpSelfTestScreenshot`; Bildschirmfoto (3840×2160) zeigt rotes „Test-Host“- und blaues „Test-Gast“-Fähnchen mit Namen über den Feldern, alle Siedlungen der geladenen Welt | – |
+
+Automatisierte Tests nach SETUP-003 erneut: alle sechs Projekte Exit 0.
+
 ## Einordnung nach AGENTS.md Regel 25
 
 - `BUILD_ERFOLGREICH`; automatisierte Tests bestanden.
-- `IN_GAME_GETESTET`: Welt erzeugen, speichern, verwerfen, wie ein Gast laden, Fingerabdruck gleich (Selbsttest, ein Spielprozess).
+- `IN_GAME_GETESTET`: Welt erzeugen, speichern, verwerfen, wie ein Gast laden, Fingerabdruck gleich; Startortseite auf dieser Welt mit gezeichneten Fähnchen (Selbsttest, ein Spielprozess).
 - **Nicht geprüft:** Übertragung zwischen zwei echten Spielern, Anzeige von Fortschritt und Weltstatus im Spiel, Abbruch während der Übertragung, Allein-Lauf über die Einrichtungsseiten mit diesem Build.

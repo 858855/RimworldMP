@@ -7,6 +7,7 @@
 - In der Lobby werden Mods, Ladereihenfolge und Mod-Inhalte mit dem Host verglichen; die Spielversion wird nur angezeigt. Abweichende Spieler sind rot markiert und können nicht bereit sein; ein Bericht zeigt die Unterschiede. Die Lobbyliste zeigt vorab, ob die Mods passen.
 - Der Host hat **Spiel starten**; daneben steht, was noch fehlt. Danach öffnet sich beim Host die normale Spieleinrichtung, und die Mitspieler sehen seine Auswahl live. Der letzte Start ist gesperrt, bis der gemeinsame Spielstart fertig ist.
 - Debug-Option zum Testen: Der Host kann die Einrichtung auch allein starten (Kontrollkästchen „Debug: Spiel allein starten erlauben“).
+- In der Startortwahl sehen alle die Weltkarte und können je ein Fähnchen als Vorschlag setzen; nur der Host wählt den Startort.
 - Der Host sendet die erzeugte Welt an alle Mitspieler; jeder lädt sie und bestätigt mit einem Fingerabdruck, dass er dieselbe Welt hat. Erst dann geht es zur Startortwahl. Ein Selbsttest (`-mpWorldSelfTest`) prüft Speichern und Laden ohne Mitspieler.
 
 ### Regeln der Spieleinrichtung (Arbeitsbranch `feat/setup-rules`)

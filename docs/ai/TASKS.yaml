@@ -576,7 +576,7 @@ tasks:
   - references/verified-apis.md
   - docs/verification/2026-10-15-mod-check-setup-ui.md
   - docs/verification/2026-10-15-world-transfer.md
-  blocker: 'Metadatenteil erledigt; Laufzeit: Welt ohne Karte speichern/laden im Hauptmenü nachgewiesen, Größen gemessen (Selbsttest, ADR 0020). Offen: Anzeige auf der Startortseite beim Gast (SETUP-003), Threads im Tickpfad.'
+  blocker: 'Metadatenteil erledigt; Laufzeit: Welt ohne Karte speichern/laden und Anzeige auf der Startortseite im Hauptmenü nachgewiesen, Größen gemessen (Selbsttest, ADR 0020/0021). Offen: Threads im Tickpfad.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: ID-001
   title: 'Persistente Spieleridentität (PlayerKey)'
@@ -791,16 +791,19 @@ tasks:
   - 'Fähnchen aller Spieler sind bei allen live sichtbar; Ersetzen und Entfernen funktionieren'
   - 'Nur der Host kann den Startort wählen; der Server lehnt die Wahl eines Gastes ab'
   - 'Keine Phase endet ohne Wahl des Hosts; kein Timer'
-  implementation: in_progress
+  implementation: implemented
   verification: tests_passed
-  integration: not_submitted
-  branch: feat/setup-rules
+  integration: ready_for_human_review
+  branch: feat/mod-check-setup-ui
   base_branch: feat/player-key
   base_commit: 2221608
   evidence:
   - docs/verification/2026-10-15-setup-rules.md
   - docs/decisions/0017-setup-phase-rules.md
-  blocker: 'Serverseite fertig und getestet (Fähnchen, nur Host wählt). Fehlen: Weltkarte mit Fähnchen im Spiel (nach SETUP-002).'
+  - docs/decisions/0021-site-flags-on-the-map.md
+  - docs/verification/2026-10-15-world-transfer.md
+  - docs/reviews/2026-10-15-mod-check-setup-ui.md
+  blocker: 'Serverregeln getestet (ADR 0017); Spielseite gebaut, Startortseite mit Fähnchen im Selbsttest geprüft (Bildschirmfoto). Offen: Zwei-Spieler-Lauf.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: SETUP-004
   title: 'Gemeinsames Charakterfenster'

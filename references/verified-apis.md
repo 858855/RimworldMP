@@ -98,3 +98,15 @@ Wichtiger Unterschied: `Multiplayer.Client.Multiplayer` ist eine interne Clientk
 | `Verse.Steam.SteamManager.Initialized` | public static | BESTÄTIGT (Metadaten); Steam-Pumpe pausiert danach beim Beenden |
 
 **VER-001, Laufzeitteil:** Eine Welt ohne Karte lässt sich speichern und im Hauptmenü wieder laden (Selbsttest, 5/30/50 % Abdeckung, PASS). Größen: 50 % Welt 1,9 MB gzip. Anzeige auf der Startortseite beim Gast: mit `SETUP-003`. Threads im Tickpfad: weiter offen.
+
+## SETUP-003: Weltkarte und Fähnchen (2026-10-15, gleiche Quelle)
+
+| Symbol | Signatur in 1.6.4871 | Status |
+|---|---|---|
+| `RimWorld.Page_SelectStartingSite()`, `.ExtraOnGUI()`, `.OnAcceptKeyPressed()`, `.DoNext()` (nonpublic), `.DoCustomBottomButtons()` (nonpublic); `RimWorld.Page.DoBack()` (nonpublic) | – | BESTÄTIGT (Metadaten); Seite öffnet im Hauptmenü auf einer wie beim Gast geladenen Welt (**im Spiel geprüft**, Selbsttest) |
+| `RimWorld.Planet.GenWorldUI.WorldToUIPosition(Vector3)`; `WorldGrid.GetTileCenter(PlanetTile)`; `WorldRendererUtility.HiddenBehindTerrainNow(Vector3)` | public static / public | BESTÄTIGT (Metadaten); Fähnchen im Bildschirmfoto korrekt über den Feldern |
+| `RimWorld.Planet.WorldCameraDriver.JumpTo(PlanetTile)`; `Verse.Find.WorldCameraDriver`; `WorldSelector.SelectedTile` (set) | public | BESTÄTIGT (Metadaten) |
+| `RimWorld.Planet.PlanetTile(int tileId, int layerId)`, `PlanetTile.Invalid`; `TileFinder.IsValidTileForNewSettlement(PlanetTile, StringBuilder, bool)` | public | BESTÄTIGT (Metadaten), im Selbsttest genutzt |
+| `Verse.Widgets.DrawBoxSolid(Rect, Color)`; `Verse.Text.Font`, `.Anchor`; `UnityEngine.ScreenCapture.CaptureScreenshot(string)` (`UnityEngine.ScreenCaptureModule`, nur Kompilierreferenz) | public | BESTÄTIGT (Metadaten/Build) |
+
+**VER-001, Laufzeitteil:** Die Startortseite zeigt beim Gast die übertragene Welt (Selbsttest PASS). Offen bleibt nur: Threads im Tickpfad.
