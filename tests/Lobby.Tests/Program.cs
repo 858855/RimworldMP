@@ -115,6 +115,45 @@ LobbyView afterHost = setup.Leave(host).State!;
 Assert(afterHost.Phase == SetupPhase.Lobby && afterHost.Site == null && afterHost.HostId == g1, "host leaving ends setup, then role moves");
 Console.WriteLine("PASS: leaving guest stops counting; leaving host ends setup before the host role moves");
 
+// MOD-001: mod status per member, Ready gate in the lobby, start re-check, status follows the host.
+var mods = new LobbyRegistry(8);
+Guid mHost = Guid.NewGuid(), mSame = Guid.NewGuid(), mOther = Guid.NewGuid(), mLate = Guid.NewGuid();
+foreach (var (id, name) in new[] { (mHost, "Host"), (mSame, "Same"), (mOther, "Other"), (mLate, "Late") })
+    mods.AddMember(id, name, PlayerKey.Local(Guid.NewGuid()));
+var hostMods = new ModManifestSummary(Enumerable.Repeat((byte)1, 32).ToArray(), "1.6.4871 rev590", 12);
+var otherMods = new ModManifestSummary(Enumerable.Repeat((byte)2, 32).ToArray(), "1.6.4871 rev591", 13);
+Guid mRoom = mods.Create(mHost, "Mods", 4).State!.Id;
+Assert(mods.SetManifest(mHost, hostMods)!.State!.Players.Single().ModStatus == ModStatus.Match, "host matches itself");
+Assert(mods.List().Single().HostMods!.SameAs(hostMods), "lobby list shows host mods");
+mods.SetManifest(mSame, hostMods); mods.SetManifest(mOther, otherMods);
+mods.Join(mSame, mRoom); mods.Join(mOther, mRoom);
+var modStatus = mods.Join(mLate, mRoom).State!.Players.ToDictionary(p => p.Id, p => p.ModStatus);
+Assert(modStatus[mSame] == ModStatus.Match && modStatus[mOther] == ModStatus.Mismatch && modStatus[mLate] == ModStatus.Checking,
+    "member statuses");
+mods.Ready(mHost, true);
+Assert(mods.Ready(mSame, true).State!.Players.Single(p => p.Id == mSame).Ready, "matching member may be ready");
+Expect(8, () => mods.Ready(mOther, true));
+Expect(8, () => mods.Ready(mLate, true));
+Assert(!mods.Ready(mOther, false).State!.Players.Single(p => p.Id == mOther).Ready, "un-ready always allowed");
+Expect(8, () => mods.AdvanceSetup(mHost, SetupPhase.Scenario)); // start re-checks mods
+Assert(LobbyRegistry.StartBlockReason(mods.SetManifest(mLate, hostMods)!.State!, mHost)!.StartsWith("Mods stimmen nicht"),
+    "client-side reason names the mismatch");
+mods.Leave(mOther);
+mods.Ready(mLate, true);
+Assert(LobbyRegistry.StartBlockReason(mods.Ready(mHost, true).State!, mHost) == null, "client-side reason agrees once all match");
+Assert(mods.AdvanceSetup(mHost, SetupPhase.Scenario).State!.Phase == SetupPhase.Scenario, "start with matching mods");
+mods.AbortSetup(mHost);
+mods.Join(mOther, mRoom);
+var afterHostLeft = mods.Leave(mHost).State!;
+Assert(afterHostLeft.HostId == mSame && afterHostLeft.Players.Single(p => p.Id == mOther).ModStatus == ModStatus.Mismatch,
+    "status follows the new host");
+var plain = new LobbyRegistry(8);
+Guid p1 = Guid.NewGuid(), p2 = Guid.NewGuid();
+plain.AddMember(p1, "P1", PlayerKey.Local(Guid.NewGuid())); plain.AddMember(p2, "P2", PlayerKey.Local(Guid.NewGuid()));
+plain.Join(p2, plain.Create(p1, "Plain", 2).State!.Id);
+Assert(plain.Ready(p2, true).State!.Players.All(p => p.ModStatus == ModStatus.Unchecked), "without manifests nothing is checked");
+Console.WriteLine("PASS: mod status, ready gate, start re-check and host change (MOD-001)");
+
 static void Assert(bool condition, string name)
 { if (!condition) throw new Exception("FAIL: " + name); }
 static void Expect(byte code, Action action)

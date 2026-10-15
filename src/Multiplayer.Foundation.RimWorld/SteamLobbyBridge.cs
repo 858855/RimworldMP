@@ -65,12 +65,15 @@ namespace Multiplayer.Foundation.RimWorld
                     throw new TimeoutException("Steam lobby creation timed out.");
                 CSteamID created = await createResult.Task;
                 lobbyId = created;
-                SteamMatchmaking.SetLobbyData(created, "foundation_version", "1");
+                SteamMatchmaking.SetLobbyData(created, "foundation_version", WireVersion);
                 SteamMatchmaking.SetLobbyData(created, "name", name);
             }
             catch { Leave(); throw; }
             finally { createResult = null; }
         }
+
+        // The Steam lobby tag follows the wire version, so mismatched builds fail before the P2P handshake.
+        private static readonly string WireVersion = FrameCodec.Version.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
         internal async Task<LobbyClient> JoinAsync(CSteamID invitedLobby, string playerName)
         {
@@ -85,8 +88,8 @@ namespace Multiplayer.Foundation.RimWorld
                     throw new TimeoutException("Steam lobby join timed out.");
                 CSteamID joined = await joinResult.Task;
                 lobbyId = joined;
-                if (SteamMatchmaking.GetLobbyData(joined, "foundation_version") != "1")
-                    throw new IOException("Incompatible Steam lobby.");
+                if (SteamMatchmaking.GetLobbyData(joined, "foundation_version") != WireVersion)
+                    throw new IOException("Incompatible Steam lobby (different Multiplayer Foundation version).");
                 CSteamID owner = SteamMatchmaking.GetLobbyOwner(joined);
                 if (!owner.IsValid() || owner == SteamUser.GetSteamID())
                     throw new IOException("Steam lobby host is unavailable.");

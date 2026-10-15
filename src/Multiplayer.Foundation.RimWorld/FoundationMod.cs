@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using HarmonyLib;
 using Multiplayer.Foundation.Network;
 using Multiplayer.Foundation.Hosting;
+using Multiplayer.Foundation.Lobby;
 using Multiplayer.Foundation.Protocol;
 using Steamworks;
 using UnityEngine;
@@ -43,6 +44,17 @@ namespace Multiplayer.Foundation.RimWorld
         private Vector2 chatScroll;
         private Vector2 connectionScroll;
         private readonly GameObject updateObject;
+        // MOD-001: own manifest, built once in the background, sent once per connection.
+        private Task<ModManifest>? manifestTask;
+        private ModManifest? manifest;
+        private ModManifestSummary? manifestSummary;
+        private LobbyClient? manifestSentTo;
+        // XFER-001 state machines: the host answers mod-list requests one at a time; a guest downloads one list.
+        private TransferSender? upload;
+        private readonly Queue<Guid> manifestRequests = new Queue<Guid>();
+        private TransferReceiver? download;
+        private bool diffRequested;
+        private readonly List<Task> backgroundSends = new List<Task>();
         internal static FoundationMod? Instance { get; private set; }
         private static bool menuPatched;
 
@@ -50,6 +62,8 @@ namespace Multiplayer.Foundation.RimWorld
         {
             settings = GetSettings<FoundationSettings>();
             Instance = this;
+            try { manifestTask = ModManifestBuilder.StartAsync(); }
+            catch (Exception error) { Log.Error("Multiplayer mod manifest failed: " + error); }
             TryInitializeSteam();
             updateObject = new GameObject("Multiplayer Foundation updates");
             UnityEngine.Object.DontDestroyOnLoad(updateObject);
@@ -87,7 +101,7 @@ namespace Multiplayer.Foundation.RimWorld
         {
             UpdateNetwork();
             float x = inRect.x + 8f, y = inRect.y + 6f, width = inRect.width - 16f;
-            Widgets.Label(new Rect(x, y, width, 30f), "Multiplayer Foundation 0.1");
+            Widgets.Label(new Rect(x, y, width, 30f), "Multiplayer Foundation 0.2 (Vorschau)");
             y += 32f;
             Widgets.Label(new Rect(x, y, width, 28f), "Verbinden und gemeinsam eine Lobby nutzen · gemeinsames Spiel folgt später");
             y += 34f;
@@ -326,6 +340,7 @@ namespace Multiplayer.Foundation.RimWorld
             if (client == null) return;
             LobbyClient old = client;
             client = null; lobby = null; available = Array.Empty<LobbySummary>(); chatMessages.Clear();
+            ResetTransfers();
             steam?.Leave();
             autoJoinSteamLobby = false;
             if (hosted != null)
@@ -367,9 +382,16 @@ namespace Multiplayer.Foundation.RimWorld
             int start = listPage * 5;
             foreach (LobbySummary room in available.Skip(start).Take(5))
             {
-                Widgets.Label(new Rect(x, y, width - 110f, 28f),
-                    room.Name + " – " + room.HostName + " (" + room.PlayerCount + "/" + room.Capacity + ")");
-                if (Widgets.ButtonText(new Rect(x + width - 105f, y, 100f, 28f), "Beitreten"))
+                Rect roomRect = new Rect(x, y, width - 110f, 28f);
+                bool locked = room.Phase != SetupPhase.Lobby;
+                Widgets.Label(roomRect, room.Name + " – " + room.HostName + " (" + room.PlayerCount + "/" + room.Capacity + ")" +
+                    (locked ? " [Einrichtung]" : "") + ModsHint(room.HostMods));
+                if (room.HostMods != null)
+                    TooltipHandler.TipRegion(roomRect, "Host: " + room.HostMods.GameVersion + ", " + room.HostMods.ModCount +
+                        " Mods, Prüfsumme " + room.HostMods.ShortHash + "\nDu: " +
+                        (manifestSummary == null ? "Mod-Prüfung läuft …" : manifestSummary.GameVersion + ", " +
+                        manifestSummary.ModCount + " Mods, Prüfsumme " + manifestSummary.ShortHash));
+                if (Widgets.ButtonText(new Rect(x + width - 105f, y, 100f, 28f), "Beitreten", true, true, !locked))
                     Send(MessageType.JoinLobby, LobbyPayloads.GuidValue(room.Id));
                 y += 33f;
             }
@@ -382,16 +404,22 @@ namespace Multiplayer.Foundation.RimWorld
             if (lobby == null || client == null) return;
             Widgets.Label(new Rect(x, y, width, 28f), lobby.Name + " (" + lobby.Players.Count + "/" + lobby.Capacity + ")");
             y += 33f;
+            if (lobby.Phase != SetupPhase.Lobby) { DrawSetup(x, ref y, width); return; }
             foreach (PlayerView player in lobby.Players)
             {
                 string label = player.Name + (player.Id == lobby.HostId ? " [Host]" : "") +
                     (player.Ready ? " – bereit" : " – nicht bereit");
-                Widgets.Label(new Rect(x, y, width, 27f), label);
+                string modText = StatusText(player.ModStatus, out Color color);
+                GUI.color = color;
+                Widgets.Label(new Rect(x, y, width, 27f), label + modText);
+                GUI.color = Color.white;
                 y += 29f;
             }
             y += 8f;
-            bool myReady = lobby.Players.FirstOrDefault(p => p.Id == client.SessionId)?.Ready ?? false;
-            if (Widgets.ButtonText(new Rect(x, y, 125f, 30f), myReady ? "Nicht bereit" : "Bereit"))
+            PlayerView? me = lobby.Players.FirstOrDefault(p => p.Id == client.SessionId);
+            bool myReady = me?.Ready ?? false;
+            bool modsOk = me == null || me.ModStatus == ModStatus.Match || me.ModStatus == ModStatus.Unchecked;
+            if (Widgets.ButtonText(new Rect(x, y, 125f, 30f), myReady ? "Nicht bereit" : "Bereit", true, true, modsOk || myReady))
                 Send(MessageType.PlayerReadyChanged, LobbyPayloads.Bool(!myReady));
             if (Widgets.ButtonText(new Rect(x + 135f, y, 125f, 30f), "Verlassen"))
                 Send(MessageType.LeaveLobby, Array.Empty<byte>());
@@ -402,7 +430,224 @@ namespace Multiplayer.Foundation.RimWorld
                     Send(MessageType.CloseLobby, Array.Empty<byte>());
             }
             y += 36f;
-            Widgets.Label(new Rect(x, y, width, 25f), "Spielstart nicht verfügbar (Version 0.1)");
+            if (me?.ModStatus == ModStatus.Mismatch)
+            {
+                GUI.color = new Color(1f, 0.45f, 0.45f);
+                Widgets.Label(new Rect(x, y, width, 25f), "Deine Mods stimmen nicht mit dem Host überein.");
+                GUI.color = Color.white;
+                y += 27f;
+                bool busy = diffRequested || download != null;
+                if (Widgets.ButtonText(new Rect(x, y, 220f, 30f), busy ? "Mod-Liste wird geladen …" : "Unterschiede anzeigen",
+                    true, true, !busy && manifest != null))
+                {
+                    diffRequested = SendBackground(new WireMessage(MessageType.ModManifestRequest, 0, LobbyPayloads.GuidValue(lobby.HostId)));
+                    if (diffRequested) status = "Mod-Liste des Hosts wird geladen";
+                }
+                y += 36f;
+            }
+            else if (me?.ModStatus == ModStatus.Checking)
+            {
+                Widgets.Label(new Rect(x, y, width, 25f), "Mod-Prüfung läuft …");
+                y += 27f;
+            }
+            DrawStart(x, ref y, width);
+        }
+
+        // START-001: the host starts once at least two players are ready and all mods match (server enforces the same).
+        private void DrawStart(float x, ref float y, float width)
+        {
+            if (lobby == null || client == null) return;
+            if (lobby.HostId != client.SessionId)
+            {
+                bool startable = LobbyRegistry.StartBlockReason(lobby, lobby.HostId) == null;
+                Widgets.Label(new Rect(x, y, width, 25f), startable ? "Alle bereit – der Host kann starten." : "Warte auf den Host …");
+                return;
+            }
+            string? reason = LobbyRegistry.StartBlockReason(lobby, client.SessionId) ??
+                (Current.ProgramState != ProgramState.Entry ? "Nur im Hauptmenü möglich." : null);
+            if (Widgets.ButtonText(new Rect(x, y, 180f, 32f), "Spiel starten", true, true, reason == null))
+            {
+                int players = lobby.Players.Count;
+                Find.WindowStack.Add(Dialog_MessageBox.CreateConfirmation(
+                    "Spiel mit " + players + " Spielern starten? Die Lobby wird gesperrt.",
+                    () => Send(MessageType.SetupAdvance, SetupPayloads.Advance(SetupPhase.Scenario)), false, "Spiel starten", WindowLayer.Dialog));
+            }
+            if (reason != null) Widgets.Label(new Rect(x + 190f, y + 4f, width - 190f, 28f), reason);
+            y += 38f;
+        }
+
+        // Shown while the lobby is in setup. Until the shared setup pages exist nothing here may look like
+        // a running game (docs/SPEC.md).
+        private void DrawSetup(float x, ref float y, float width)
+        {
+            if (lobby == null || client == null) return;
+            Widgets.Label(new Rect(x, y, width, 27f), "Spieleinrichtung läuft – Lobby gesperrt (" + PhaseName(lobby.Phase) + ")");
+            y += 31f;
+            foreach (PlayerView player in lobby.Players)
+            {
+                Widgets.Label(new Rect(x, y, width, 27f), player.Name + (player.Id == lobby.HostId ? " [Host]" : ""));
+                y += 27f;
+            }
+            y += 8f;
+            DrawSetupDetails(x, ref y, width);
+            if (lobby.HostId == client.SessionId)
+            {
+                if (Widgets.ButtonText(new Rect(x, y, 200f, 30f), "Einrichtung abbrechen"))
+                    Send(MessageType.SetupAbort, Array.Empty<byte>());
+            }
+            else if (Widgets.ButtonText(new Rect(x, y, 125f, 30f), "Verlassen"))
+                Send(MessageType.LeaveLobby, Array.Empty<byte>());
+            y += 36f;
+        }
+
+        private void DrawSetupDetails(float x, ref float y, float width)
+        {
+            const string info = "Der Start wurde angenommen. Die gemeinsamen Einrichtungsseiten (Szenario, Erzähler, Welt, " +
+                "Startort, Figuren) folgen mit dem nächsten Ausbauschritt. In dieser Vorschau kann der Host die Einrichtung nur abbrechen.";
+            float infoHeight = Text.CalcHeight(info, width);
+            Widgets.Label(new Rect(x, y, width, infoHeight), info);
+            y += infoHeight + 10f;
+        }
+
+        private static string PhaseName(SetupPhase phase)
+        {
+            switch (phase)
+            {
+                case SetupPhase.Scenario: return "Szenario";
+                case SetupPhase.Storyteller: return "Erzähler";
+                case SetupPhase.WorldParams: return "Welt erstellen";
+                case SetupPhase.WorldTransfer: return "Weltübertragung";
+                case SetupPhase.SiteSelection: return "Startort";
+                case SetupPhase.Ideology: return "Ideoligion";
+                case SetupPhase.Characters: return "Figuren";
+                case SetupPhase.Generating: return "Spiel wird erzeugt";
+                default: return "Lobby";
+            }
+        }
+
+        private static string StatusText(ModStatus modStatus, out Color color)
+        {
+            color = Color.white;
+            switch (modStatus)
+            {
+                case ModStatus.Match: return " – Mods passen";
+                case ModStatus.Mismatch: color = new Color(1f, 0.45f, 0.45f); return " – Mods abweichend";
+                case ModStatus.Checking: color = new Color(1f, 0.85f, 0.45f); return " – Mod-Prüfung läuft …";
+                default: return "";
+            }
+        }
+
+        private string ModsHint(ModManifestSummary? host)
+        {
+            if (host == null) return "";
+            string hint = " · " + host.ModCount + " Mods";
+            if (manifestSummary == null) return hint;
+            return hint + (host.SameAs(manifestSummary) ? " · passt" : " · abweichend") +
+                (host.GameVersion != manifestSummary.GameVersion ? " (andere Spielversion)" : "");
+        }
+
+        private static long NowMs() => System.Diagnostics.Stopwatch.GetTimestamp() * 1000 / System.Diagnostics.Stopwatch.Frequency;
+
+        // Sends that must not wait for the single UI action slot (transfer messages, mod-list requests).
+        private bool SendBackground(WireMessage message)
+        {
+            if (client == null) return false;
+            try { backgroundSends.Add(client.SendAsync(message.Type, message.RequestId, message.Payload)); return true; }
+            catch (Exception error) { status = "Senden fehlgeschlagen: " + error.Message; return false; }
+        }
+
+        private void SendAllBackground(IEnumerable<WireMessage> messages)
+        {
+            foreach (WireMessage message in messages) SendBackground(message);
+        }
+
+        private void UpdateManifestAndTransfers()
+        {
+            if (manifestTask != null && manifestTask.IsCompleted)
+            {
+                try
+                {
+                    manifest = manifestTask.GetAwaiter().GetResult();
+                    manifestSummary = manifest.Summary();
+                    Log.Message("Multiplayer Foundation: " + manifest.Mods.Count + " Mods geprüft, Prüfsumme " + manifestSummary.ShortHash);
+                }
+                catch (Exception error) { Log.Error("Multiplayer mod manifest failed: " + error); status = "Mod-Prüfung fehlgeschlagen: " + error.Message; }
+                manifestTask = null;
+            }
+            if (client != null && manifestSummary != null && manifestSentTo != client &&
+                SendBackground(new WireMessage(MessageType.ModManifestSummary, 0, manifestSummary.ToPayload())))
+                manifestSentTo = client;
+            for (int i = backgroundSends.Count - 1; i >= 0; i--)
+            {
+                if (!backgroundSends[i].IsCompleted) continue;
+                if (backgroundSends[i].IsFaulted) status = "Senden fehlgeschlagen: " + backgroundSends[i].Exception?.GetBaseException().Message;
+                backgroundSends.RemoveAt(i);
+            }
+            if (upload != null)
+            {
+                SendAllBackground(upload.Poll(NowMs()));
+                if (upload.State == TransferState.Failed) Log.Warning("Multiplayer mod-list transfer failed: " + upload.Failure?.Reason);
+                if (upload.State != TransferState.Active) upload = null;
+            }
+            if (upload == null && client != null && manifest != null && manifestRequests.Count > 0)
+            {
+                upload = new TransferSender(TransferKind.ModManifest, manifestRequests.Dequeue(), manifest.Serialize());
+                SendAllBackground(upload.Start(NowMs()));
+            }
+        }
+
+        private void HandleTransfer(WireMessage message)
+        {
+            if (message.Type == MessageType.ModManifestRequest)
+            {
+                Guid requester = LobbyPayloads.ReadGuid(message.Payload);
+                if (!manifestRequests.Contains(requester)) manifestRequests.Enqueue(requester);
+                return;
+            }
+            if (upload != null && upload.Owns(message))
+            {
+                SendAllBackground(upload.Handle(message, NowMs()));
+                return;
+            }
+            if (message.Type == MessageType.TransferBegin)
+            {
+                TransferBegin begin = TransferPayloads.ReadBegin(message.Payload);
+                if (begin.Kind == TransferKind.ModManifest && diffRequested && download == null)
+                {
+                    try { download = new TransferReceiver(begin); }
+                    catch (ProtocolException error) { diffRequested = false; status = "Mod-Liste des Hosts unlesbar: " + error.Message; }
+                }
+                else
+                    SendBackground(new WireMessage(MessageType.TransferAbort, 0, TransferPayloads.Abort(
+                        new TransferAbort(begin.TransferId, TransferAbortCode.Rejected, "Übertragung wird hier nicht erwartet."))));
+                return;
+            }
+            if (download == null || !download.Owns(message)) return;
+            SendAllBackground(download.Handle(message));
+            if (download.State == TransferState.Completed)
+            {
+                try { ShowModDiff(ModManifest.Deserialize(download.Data!)); }
+                catch (ProtocolException error) { status = "Mod-Liste des Hosts unlesbar: " + error.Message; }
+                download = null; diffRequested = false;
+            }
+            else if (download.State == TransferState.Failed)
+            {
+                status = "Übertragung abgebrochen: " + download.Failure?.Reason;
+                download = null; diffRequested = false;
+            }
+        }
+
+        private void ShowModDiff(ModManifest host)
+        {
+            if (manifest == null) return;
+            string hostName = lobby?.Players.FirstOrDefault(p => p.Id == lobby.HostId)?.Name ?? "Host";
+            Find.WindowStack.Add(new ModDiffWindow(ModManifestDiff.Compare(manifest, host), hostName));
+            status = "Mod-Unterschiede angezeigt";
+        }
+
+        private void ResetTransfers()
+        {
+            upload = null; download = null; diffRequested = false; manifestRequests.Clear(); manifestSentTo = null;
         }
 
         private bool Send(MessageType type, byte[] payload)
@@ -463,6 +708,7 @@ namespace Multiplayer.Foundation.RimWorld
                 if (action.IsFaulted) status = "Aktion fehlgeschlagen: " + action.Exception?.GetBaseException().Message;
                 action = null;
             }
+            UpdateManifestAndTransfers();
             if (client == null) return;
             try
             {
@@ -499,6 +745,12 @@ namespace Multiplayer.Foundation.RimWorld
                                 chatScroll.y = float.MaxValue;
                             }
                             break;
+                        case MessageType.ModManifestRequest:
+                        case MessageType.TransferBegin:
+                        case MessageType.TransferChunk:
+                        case MessageType.TransferAck:
+                        case MessageType.TransferAbort:
+                            HandleTransfer(message); break;
                         case MessageType.Error:
                             var reader = new PayloadReader(message.Payload);
                             byte code = reader.ReadByte(); string reason = reader.ReadString(); reader.EnsureComplete();
@@ -515,6 +767,7 @@ namespace Multiplayer.Foundation.RimWorld
             {
                 status = "Verbindung unterbrochen: " + (client.LastError ?? "Unbekannt");
                 client.Dispose(); client = null; lobby = null; chatMessages.Clear();
+                ResetTransfers();
                 if (hosted != null)
                 {
                     ListenHost running = hosted;

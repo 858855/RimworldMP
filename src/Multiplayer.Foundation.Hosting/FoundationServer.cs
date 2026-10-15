@@ -282,6 +282,19 @@ public sealed class FoundationServer : IAsyncDisposable
             case MessageType.SiteDecided:
                 await PublishAsync(lobbies.DecideSite(peer.Id, SetupPayloads.ReadSite(message.Payload)), null, token, message.RequestId).ConfigureAwait(false);
                 break;
+            case MessageType.ModManifestSummary:
+                LobbyChange? modsChanged = lobbies.SetManifest(peer.Id, ModManifestSummary.Read(message.Payload));
+                if (modsChanged != null) await PublishAsync(modsChanged, null, token).ConfigureAwait(false);
+                break;
+            case MessageType.ModManifestRequest:
+                // A member asks for the host's full mod list; the host answers with a ModManifest transfer to that member.
+                Guid listHost = lobbies.HostOfCurrentLobby(peer.Id);
+                if (LobbyPayloads.ReadGuid(message.Payload) != listHost)
+                    throw new LobbyRuleException(4, "Only the host's mod list can be requested.");
+                if (listHost != peer.Id && peers.TryGetValue(listHost, out Peer? listOwner))
+                    await listOwner.Connection.SendAsync(new WireMessage(MessageType.ModManifestRequest, 0,
+                        LobbyPayloads.GuidValue(peer.Id)), token).ConfigureAwait(false);
+                break;
             case MessageType.TransferBegin:
                 TransferBegin begin = TransferPayloads.ReadBegin(message.Payload);
                 IReadOnlyList<Guid> members;

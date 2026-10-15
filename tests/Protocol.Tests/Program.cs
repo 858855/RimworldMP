@@ -170,6 +170,69 @@ await Run("setup payloads and lobby state", () =>
     Equal(SetupPhase.Characters, summary[0].Phase);
     return Task.CompletedTask;
 });
+await Run("mod manifest, diff report and content hash", () =>
+{
+    byte[] h(byte v) => Enumerable.Repeat(v, 32).ToArray();
+    ModEntry core = new("Ludeon.RimWorld", "Core", "", h(1)), harmony = new("brrainz.harmony", "Harmony", "2.3", h(2)),
+        ui = new("some.ui", "UI Mod", "1.0", h(3)), big = new("big.mod", "Big", "1.0", h(4));
+    var host = new ModManifest("1.6.4871 rev590", new[] { core, harmony, ui, big });
+    var copy = ModManifest.Deserialize(host.Serialize());
+    Equal(true, copy.Hash().SequenceEqual(host.Hash())); Equal("ludeon.rimworld", copy.Mods[0].PackageId);
+    Equal(true, host.Summary().SameAs(ModManifestSummary.Read(host.Summary().ToPayload())));
+    Equal(true, ModManifestDiff.Compare(copy, host).IsMatch);
+    var reordered = new ModManifest("1.6.4871 rev590", new[] { core, ui, harmony, big });
+    var order = ModManifestDiff.Compare(reordered, host);
+    Equal(false, order.IsMatch); Equal(1, order.FirstOrderDifference);
+    Equal(false, reordered.Hash().SequenceEqual(host.Hash()));
+    var otherBuild = new ModManifest("1.6.4871 rev600", host.Mods);
+    Equal(true, otherBuild.Hash().SequenceEqual(host.Hash())); // checksum covers mods only, not the game version
+    var buildOnly = ModManifestDiff.Compare(otherBuild, host);
+    Equal(true, buildOnly.IsMatch); Equal(true, buildOnly.GameVersionDiffers);
+    var renamed = new ModManifest(host.GameVersion, host.Mods.Select(m => new ModEntry(m.PackageId, "Anderer Name", m.Version, m.ContentHash)).ToArray());
+    Equal(true, renamed.Hash().SequenceEqual(host.Hash())); // display names do not count either
+    var changed = new ModManifest("1.6.4871 rev600", new[] { core, new ModEntry("brrainz.harmony", "Harmony", "2.4", h(9)), ui, new ModEntry("extra.mod", "Extra", "", h(5)) });
+    var diff = ModManifestDiff.Compare(changed, host);
+    Equal(true, diff.GameVersionDiffers); Equal("big.mod", diff.MissingLocally.Single().PackageId);
+    Equal("extra.mod", diff.ExtraLocally.Single().PackageId); Equal("2.4", diff.Changed.Single().Local.Version);
+    Equal(-1, diff.FirstOrderDifference);
+    Throws<ProtocolException>(() => ModManifest.Deserialize(new byte[] { 0, 0, 255, 255 }));
+    var longName = new ModManifest("x", new[] { new ModEntry("a.b", new string('Ä', 200), "", h(1)) });
+    Equal(80, ModManifest.Deserialize(longName.Serialize()).Mods[0].Name.Length); // cut at 160 UTF-8 bytes
+    string dir = Path.Combine(Path.GetTempPath(), "mf-" + Guid.NewGuid().ToString("N"));
+    try
+    {
+        Directory.CreateDirectory(Path.Combine(dir, "About")); Directory.CreateDirectory(Path.Combine(dir, "1.6", "Defs"));
+        Directory.CreateDirectory(Path.Combine(dir, "Textures"));
+        File.WriteAllText(Path.Combine(dir, "About", "About.xml"), "<ModMetaData/>");
+        File.WriteAllText(Path.Combine(dir, "1.6", "Defs", "a.xml"), "<Defs/>");
+        File.WriteAllText(Path.Combine(dir, "Textures", "t.png"), "png");
+        string[] folders = { Path.Combine(dir, "1.6"), dir };
+        byte[] first = ModContentHasher.Hash(dir, folders);
+        File.WriteAllText(Path.Combine(dir, "Textures", "t.png"), "other texture");
+        Equal(true, first.SequenceEqual(ModContentHasher.Hash(dir, folders))); // textures ignored
+        File.WriteAllText(Path.Combine(dir, "1.6", "Defs", "a.xml"), "<Defs><X/></Defs>");
+        Equal(false, first.SequenceEqual(ModContentHasher.Hash(dir, folders))); // defs counted
+        Equal(false, first.SequenceEqual(ModContentHasher.Hash(dir, new[] { dir }))); // load folders counted
+    }
+    finally { Directory.Delete(dir, true); }
+    return Task.CompletedTask;
+});
+await Run("mod status and host mods in lobby payloads", () =>
+{
+    var summary = new ModManifestSummary(Enumerable.Repeat((byte)3, 32).ToArray(), "1.6.4871 rev591", 7);
+    var view = new LobbyView(Guid.NewGuid(), "R", Guid.NewGuid(), 4, 4, new[]
+    {
+        new PlayerView(Guid.NewGuid(), "A", true, PlayerKey.Local(Guid.NewGuid()), null, ModStatus.Match),
+        new PlayerView(Guid.NewGuid(), "B", false, PlayerKey.Steam(76561198000000001UL), new SiteTile(1, 0), ModStatus.Mismatch)
+    });
+    LobbyView back = LobbyPayloads.ReadState(LobbyPayloads.State(view));
+    Equal(ModStatus.Match, back.Players[0].ModStatus); Equal(ModStatus.Mismatch, back.Players[1].ModStatus);
+    var listed = LobbyPayloads.ReadList(LobbyPayloads.List(new[] { new LobbySummary(Guid.NewGuid(), "R", "A", 2, 4, SetupPhase.Lobby, summary),
+        new LobbySummary(Guid.NewGuid(), "S", "B", 1, 4) }));
+    Equal(true, listed[0].HostMods!.SameAs(summary)); Equal("1.6.4871 rev591", listed[0].HostMods!.GameVersion);
+    Equal(true, listed[1].HostMods == null);
+    return Task.CompletedTask;
+});
 Console.WriteLine($"PASS: {passed} protocol test groups");
 
 async Task Run(string name, Func<Task> body)

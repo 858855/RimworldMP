@@ -47,7 +47,42 @@ namespace Multiplayer.Foundation.Lobby
         {
             lock (gate)
                 return rooms.Values.OrderBy(r => r.Name, StringComparer.Ordinal).ThenBy(r => r.Id)
-                    .Select(r => new LobbySummary(r.Id, r.Name, members[r.Host].Name, (byte)r.Members.Count, r.Capacity, r.Phase)).ToArray();
+                    .Select(r => new LobbySummary(r.Id, r.Name, members[r.Host].Name, (byte)r.Members.Count, r.Capacity, r.Phase,
+                        members[r.Host].Mods)).ToArray();
+        }
+
+        /// <summary>MOD-001: stores a member's mod summary; returns the lobby change when the member is in a lobby.</summary>
+        public LobbyChange? SetManifest(Guid actor, ModManifestSummary summary)
+        {
+            if (summary == null) throw new ArgumentNullException(nameof(summary));
+            lock (gate)
+            {
+                Member member = GetMember(actor);
+                member.Mods = summary;
+                if (member.Room == null) return null;
+                Room room = GetRoom(member.Room.Value);
+                if (room.Phase == SetupPhase.Lobby) ClearReadyWithoutMatch(room);
+                room.Revision++;
+                return Change(room, actor);
+            }
+        }
+
+        /// <summary>Session ID of the host of the actor's lobby, e.g. for the full mod list behind the diff report.</summary>
+        public Guid HostOfCurrentLobby(Guid actor)
+        { lock (gate) return GetCurrentRoom(GetMember(actor)).Host; }
+
+        /// <summary>First reason why the host may not start yet, or null. The same rules the server enforces.</summary>
+        public static string? StartBlockReason(LobbyView lobby, Guid actor)
+        {
+            if (lobby.HostId != actor) return "Nur der Host kann das Spiel starten.";
+            if (lobby.Phase != SetupPhase.Lobby) return "Spieleinrichtung läuft bereits.";
+            if (lobby.Players.Count < 2) return "Mindestens 2 Spieler nötig.";
+            if (lobby.Players.Any(p => p.ModStatus == ModStatus.Checking)) return "Mod-Prüfung läuft …";
+            string[] mismatched = lobby.Players.Where(p => p.ModStatus == ModStatus.Mismatch).Select(p => p.Name).ToArray();
+            if (mismatched.Length > 0) return "Mods stimmen nicht überein: " + string.Join(", ", mismatched);
+            int ready = lobby.Players.Count(p => p.Ready);
+            if (ready < lobby.Players.Count) return "Warte auf Bereitschaft: " + ready + "/" + lobby.Players.Count + " bereit";
+            return null;
         }
 
         public (Guid LobbyId, IReadOnlyList<Guid> Recipients) ChatRecipients(Guid actor)
@@ -94,6 +129,12 @@ namespace Multiplayer.Foundation.Lobby
                 // Ready means "ready to start" in the lobby and "done" in character selection; nowhere else.
                 if (room.Phase != SetupPhase.Lobby && room.Phase != SetupPhase.Characters)
                     throw new LobbyRuleException(6, "Ready is not used in this setup step.");
+                if (ready && room.Phase == SetupPhase.Lobby)
+                {
+                    ModStatus status = StatusOf(room, member);
+                    if (status == ModStatus.Checking) throw new LobbyRuleException(8, "Mod check is still running.");
+                    if (status == ModStatus.Mismatch) throw new LobbyRuleException(8, "Mods do not match the host.");
+                }
                 member.Ready = ready; room.Revision++;
                 return Change(room, actor);
             }
@@ -107,7 +148,7 @@ namespace Multiplayer.Foundation.Lobby
                 member.Room = null; member.Ready = false; member.Flag = null; room.Members.Remove(actor); room.Revision++;
                 if (room.Members.Count == 0) { rooms.Remove(room.Id); return new LobbyChange(null, Array.Empty<Guid>(), actor); }
                 // Only the host holds the generated setup state, so it ends before the host role moves (plan §6.2).
-                if (room.Host == actor) { ResetSetup(room); room.Host = room.Members[0]; }
+                if (room.Host == actor) { ResetSetup(room); room.Host = room.Members[0]; ClearReadyWithoutMatch(room); }
                 return Change(room, actor);
             }
         }
@@ -137,6 +178,9 @@ namespace Multiplayer.Foundation.Lobby
                 {
                     case SetupPhase.Lobby:
                         if (room.Members.Count < 2) throw new LobbyRuleException(6, "At least 2 players are needed.");
+                        // MOD-001: start again checks that every member's mods match the host's.
+                        if (room.Members.Any(id => StatusOf(room, members[id]) is ModStatus.Checking or ModStatus.Mismatch))
+                            throw new LobbyRuleException(8, "Mods do not match for every player.");
                         RequireEveryoneReady(room, "Not every player is ready.");
                         break;
                     case SetupPhase.SiteSelection:
@@ -210,6 +254,21 @@ namespace Multiplayer.Foundation.Lobby
             if (room.Host != actor) throw new LobbyRuleException(3, "Only the host can do this.");
             return room;
         }
+        // MOD-001: compare each member's mod checksum with the current host's.
+        private ModStatus StatusOf(Room room, Member member)
+        {
+            ModManifestSummary? host = members[room.Host].Mods;
+            if (host == null) return member.Mods == null || member.Id == room.Host ? ModStatus.Unchecked : ModStatus.Checking;
+            if (member.Mods == null) return ModStatus.Checking;
+            return member.Mods.SameAs(host) ? ModStatus.Match : ModStatus.Mismatch;
+        }
+
+        private void ClearReadyWithoutMatch(Room room)
+        {
+            foreach (Guid id in room.Members)
+                if (StatusOf(room, members[id]) is ModStatus.Checking or ModStatus.Mismatch) members[id].Ready = false;
+        }
+
         private void RequireEveryoneReady(Room room, string message)
         { if (room.Members.Any(id => !members[id].Ready)) throw new LobbyRuleException(6, message); }
         // Ready and flags belong to one phase; a lobby "ready" must never count as "done" later.
@@ -233,7 +292,7 @@ namespace Multiplayer.Foundation.Lobby
         private LobbyChange Change(Room room, Guid actor)
         {
             var players = room.Members.Select(id => new PlayerView(id, members[id].Name, members[id].Ready, members[id].Key,
-                members[id].Flag)).ToArray();
+                members[id].Flag, StatusOf(room, members[id]))).ToArray();
             return new LobbyChange(new LobbyView(room.Id, room.Name, room.Host, room.Revision, room.Capacity, players,
                 room.Phase, room.Site), room.Members.ToArray(), actor);
         }
@@ -243,6 +302,7 @@ namespace Multiplayer.Foundation.Lobby
             public Guid Id { get; }
             public string Name { get; }
             public PlayerKey Key { get; }
+            public ModManifestSummary? Mods { get; set; }
             public Guid? Room { get; set; }
             public bool Ready { get; set; }
             public SiteTile? Flag { get; set; }

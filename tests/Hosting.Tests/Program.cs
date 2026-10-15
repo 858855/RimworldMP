@@ -295,6 +295,37 @@ await using (var setupHost = await ListenHost.StartAsync("127.0.0.1", 0, "Host",
 }
 Console.WriteLine("PASS: setup rules hold over the network: guest refused for host steps, start and characters wait for everyone");
 
+// MOD-001 end to end over a Steam-like link: status in the snapshot, Ready refused, host's list requested and transferred.
+await using (var modHost = await ListenHost.StartAsync("127.0.0.1", 0, "ModHost", "Mod Room", 4, PlayerKey.Steam(76561198000000050UL)))
+{
+    LobbyView modRoom = LobbyPayloads.ReadState((await ReceiveAsync(modHost.Client, MessageType.LobbyStateUpdate)).Payload);
+    using var modLink = new SteamLikeLink();
+    PlayerKey modGuestKey = PlayerKey.Steam(76561198000000060UL);
+    Assert(modHost.AttachConnection(NetworkConnection.FromDuplexStream(modLink.A), modGuestKey), "mod guest attached");
+    using LobbyClient modGuest = await LobbyClient.ConnectOverStreamAsync(modLink.B, "ModGuest", TimeSpan.FromSeconds(4),
+        CancellationToken.None, modGuestKey);
+    var hostList = new ModManifest("1.6.4871 rev591", new[] { new ModEntry("ludeon.rimworld", "Core", "", Enumerable.Repeat((byte)1, 32).ToArray()),
+        new ModEntry("some.mod", "Some Mod", "1.0", Enumerable.Repeat((byte)2, 32).ToArray()) });
+    var guestList = new ModManifest("1.6.4871 rev590", hostList.Mods.Take(1).ToArray());
+    uint req = 500;
+    await modHost.Client.SendAsync(MessageType.ModManifestSummary, ++req, hostList.Summary().ToPayload());
+    await modGuest.SendAsync(MessageType.ModManifestSummary, ++req, guestList.Summary().ToPayload());
+    LobbyView joined = await StateAsync(modGuest, MessageType.JoinLobby, ++req, LobbyPayloads.GuidValue(modRoom.Id));
+    Assert(joined.Players.Single(p => p.Key == modGuestKey).ModStatus == ModStatus.Mismatch, "guest marked as mismatch");
+    Assert(await ErrorCodeAsync(modGuest, MessageType.PlayerReadyChanged, ++req, LobbyPayloads.Bool(true)) == 8, "ready refused on mismatch");
+    await modGuest.SendAsync(MessageType.ModManifestRequest, ++req, LobbyPayloads.GuidValue(modRoom.HostId));
+    WireMessage asked = await ReceiveAsync(modHost.Client, MessageType.ModManifestRequest);
+    Guid requester = LobbyPayloads.ReadGuid(asked.Payload);
+    Assert(requester == joined.Players.Single(p => p.Key == modGuestKey).Id, "request reaches the host with the requester");
+    byte[][] arrived = await TransferAsync(modHost.Client, new[] { modGuest }, requester, hostList.Serialize(), true);
+    var diff = ModManifestDiff.Compare(guestList, ModManifest.Deserialize(arrived[0]));
+    Assert(diff.MissingLocally.Single().PackageId == "some.mod" && diff.GameVersionDiffers, "guest sees what is missing");
+    await modGuest.SendAsync(MessageType.ModManifestSummary, ++req, new ModManifest("1.6.4871 rev590", hostList.Mods).Summary().ToPayload());
+    LobbyView fixedUp = await LatestStateAsync(modGuest, joined.Revision + 1);
+    Assert(fixedUp.Players.All(p => p.ModStatus == ModStatus.Match), "same mods on another game build match");
+}
+Console.WriteLine("PASS: mod check over a Steam-like link: status, ready gate, host list request and diff (MOD-001)");
+
 // Sends a request and returns the error code the server answers with.
 static async Task<byte> ErrorCodeAsync(LobbyClient client, MessageType type, uint requestId, byte[] payload)
 {

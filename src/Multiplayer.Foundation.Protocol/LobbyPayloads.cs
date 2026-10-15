@@ -6,8 +6,9 @@ namespace Multiplayer.Foundation.Protocol
 {
     public sealed class PlayerView
     {
-        public PlayerView(Guid id, string name, bool ready, PlayerKey key, SiteTile? flag = null)
-        { Id = id; Name = name; Ready = ready; Key = key; Flag = flag; }
+        public PlayerView(Guid id, string name, bool ready, PlayerKey key, SiteTile? flag = null,
+            ModStatus modStatus = ModStatus.Unchecked)
+        { Id = id; Name = name; Ready = ready; Key = key; Flag = flag; ModStatus = modStatus; }
         /// <summary>Session ID of this connection; changes on every reconnect.</summary>
         public Guid Id { get; }
         /// <summary>Persistent identity; use this for anything saved.</summary>
@@ -17,6 +18,8 @@ namespace Multiplayer.Foundation.Protocol
         public bool Ready { get; }
         /// <summary>Site suggestion during SiteSelection; carries no voting weight (ADR 0015).</summary>
         public SiteTile? Flag { get; }
+        /// <summary>This member's mods compared with the current host's (MOD-001).</summary>
+        public ModStatus ModStatus { get; }
     }
 
     public sealed class LobbyView
@@ -37,8 +40,11 @@ namespace Multiplayer.Foundation.Protocol
 
     public sealed class LobbySummary
     {
-        public LobbySummary(Guid id, string name, string hostName, byte playerCount, byte capacity, SetupPhase phase = SetupPhase.Lobby)
-        { Id = id; Name = name; HostName = hostName; PlayerCount = playerCount; Capacity = capacity; Phase = phase; }
+        public LobbySummary(Guid id, string name, string hostName, byte playerCount, byte capacity, SetupPhase phase = SetupPhase.Lobby,
+            ModManifestSummary? hostMods = null)
+        { Id = id; Name = name; HostName = hostName; PlayerCount = playerCount; Capacity = capacity; Phase = phase; HostMods = hostMods; }
+        /// <summary>Host's mod checksum, mod count and game version, so joiners see a mismatch before joining.</summary>
+        public ModManifestSummary? HostMods { get; }
         public Guid Id { get; }
         public string Name { get; }
         public string HostName { get; }
@@ -127,7 +133,7 @@ namespace Multiplayer.Foundation.Protocol
             foreach (PlayerView player in state.Players)
             {
                 writer.WriteGuid(player.Id); writer.WriteString(player.Name, 160); writer.WriteBool(player.Ready);
-                player.Key.Write(writer); SiteTile.WriteOptional(writer, player.Flag);
+                player.Key.Write(writer); SiteTile.WriteOptional(writer, player.Flag); writer.WriteByte((byte)player.ModStatus);
             }
             return writer.ToArray();
         }
@@ -141,8 +147,13 @@ namespace Multiplayer.Foundation.Protocol
             if (count > 64 || count > capacity) throw new ProtocolException("Invalid player count.");
             var players = new List<PlayerView>();
             for (int i = 0; i < count; i++)
-                players.Add(new PlayerView(reader.ReadGuid(), reader.ReadString(160), reader.ReadBool(), PlayerKey.Read(reader),
-                    SiteTile.ReadOptional(reader)));
+            {
+                Guid playerId = reader.ReadGuid(); string playerName = reader.ReadString(160); bool ready = reader.ReadBool();
+                PlayerKey key = PlayerKey.Read(reader); SiteTile? flag = SiteTile.ReadOptional(reader);
+                var modStatus = (ModStatus)reader.ReadByte();
+                if (!Enum.IsDefined(typeof(ModStatus), modStatus)) throw new ProtocolException("Invalid mod status.");
+                players.Add(new PlayerView(playerId, playerName, ready, key, flag, modStatus));
+            }
             reader.EnsureComplete(); return new LobbyView(id, name, host, revision, capacity, players, phase, site);
         }
         public static byte[] List(IReadOnlyList<LobbySummary> lobbies)
@@ -153,6 +164,7 @@ namespace Multiplayer.Foundation.Protocol
             {
                 writer.WriteGuid(lobby.Id); writer.WriteString(lobby.Name, 160); writer.WriteString(lobby.HostName, 160);
                 writer.WriteByte(lobby.PlayerCount); writer.WriteByte(lobby.Capacity); writer.WriteByte((byte)lobby.Phase);
+                writer.WriteBool(lobby.HostMods != null); lobby.HostMods?.Write(writer);
             }
             return writer.ToArray();
         }
@@ -163,8 +175,10 @@ namespace Multiplayer.Foundation.Protocol
             var lobbies = new List<LobbySummary>();
             for (int i = 0; i < count; i++)
             {
-                lobbies.Add(new LobbySummary(reader.ReadGuid(), reader.ReadString(160), reader.ReadString(160), reader.ReadByte(),
-                    reader.ReadByte(), SetupPayloads.ReadPhase(reader)));
+                Guid id = reader.ReadGuid(); string name = reader.ReadString(160), host = reader.ReadString(160);
+                byte players = reader.ReadByte(), capacity = reader.ReadByte(); SetupPhase phase = SetupPayloads.ReadPhase(reader);
+                ModManifestSummary? mods = reader.ReadBool() ? ModManifestSummary.Read(reader) : null;
+                lobbies.Add(new LobbySummary(id, name, host, players, capacity, phase, mods));
             }
             reader.EnsureComplete(); return lobbies;
         }
