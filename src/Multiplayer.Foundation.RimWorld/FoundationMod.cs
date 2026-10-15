@@ -94,6 +94,8 @@ namespace Multiplayer.Foundation.RimWorld
         {
             Widgets.Label(new Rect(inRect.x + 8f, inRect.y + 8f, inRect.width - 16f, 54f),
                 "Verbindung, Steam-Einladungen und Lobby befinden sich im Multiplayer-Fenster.");
+            Widgets.CheckboxLabeled(new Rect(inRect.x + 8f, inRect.y + 112f, Mathf.Min(560f, inRect.width - 16f), 28f),
+                "Debug: Spiel allein starten erlauben (nur zum Testen)", ref settings.AllowSoloStart);
             if (Widgets.ButtonText(new Rect(inRect.x + 8f, inRect.y + 66f, 250f, 36f),
                 "Multiplayer öffnen")) OpenWindow();
         }
@@ -118,10 +120,15 @@ namespace Multiplayer.Foundation.RimWorld
             if (client == null)
             {
                 Rect viewport = new Rect(x, y, width, statusY - y - 8f);
-                Widgets.BeginScrollView(viewport, ref connectionScroll, new Rect(0f, 0f, width - 18f, 560f));
+                Widgets.BeginScrollView(viewport, ref connectionScroll, new Rect(0f, 0f, width - 18f, 600f));
                 float contentY = 0f, contentWidth = width - 18f;
                 Widgets.Label(new Rect(0f, contentY, 110f, 26f), "Spielername");
                 settings.PlayerName = Widgets.TextField(new Rect(112f, contentY, contentWidth - 112f, 26f), settings.PlayerName);
+                contentY += 32f;
+                Rect soloRect = new Rect(0f, contentY, Mathf.Min(520f, contentWidth), 26f);
+                Widgets.CheckboxLabeled(soloRect, "Debug: Spiel allein starten erlauben (nur zum Testen)", ref settings.AllowSoloStart);
+                TooltipHandler.TipRegion(soloRect, "Gilt beim nächsten Hosten. Der Host darf dann ohne Mitspieler starten, " +
+                    "um die Spieleinrichtung allein zu testen.");
                 contentY += 40f;
                 DrawSteamSection(0f, ref contentY, contentWidth);
                 contentY += 12f;
@@ -303,7 +310,7 @@ namespace Multiplayer.Foundation.RimWorld
             { status = "Lobbyname muss 1–40 druckbare Zeichen haben"; return; }
             status = "Lokale Lobby startet";
             hosting = ListenHost.StartAsync(settings.HostBindAddress.Trim(), port,
-                settings.PlayerName.Trim(), name, capacity, CurrentPlayerKey());
+                settings.PlayerName.Trim(), name, capacity, CurrentPlayerKey(), settings.AllowSoloStart);
         }
 
         private void HostSteamLobby()
@@ -316,13 +323,13 @@ namespace Multiplayer.Foundation.RimWorld
             { status = "Lobbyname muss 1–40 druckbare Zeichen haben"; return; }
             status = "Steam-Lobby startet";
             steamHostStarting = true;
-            hosting = StartSteamHostAsync(steam, settings.PlayerName.Trim(), name, capacity, CurrentPlayerKey());
+            hosting = StartSteamHostAsync(steam, settings.PlayerName.Trim(), name, capacity, CurrentPlayerKey(), settings.AllowSoloStart);
         }
 
         private static async Task<ListenHost> StartSteamHostAsync(SteamLobbyBridge bridge,
-            string playerName, string name, byte capacity, PlayerKey playerKey)
+            string playerName, string name, byte capacity, PlayerKey playerKey, bool allowSoloStart)
         {
-            ListenHost host = await ListenHost.StartAsync("127.0.0.1", 0, playerName, name, capacity, playerKey);
+            ListenHost host = await ListenHost.StartAsync("127.0.0.1", 0, playerName, name, capacity, playerKey, allowSoloStart);
             try { await bridge.StartHostingAsync(host, name, capacity); return host; }
             catch { await host.DisposeAsync(); throw; }
         }
@@ -472,7 +479,8 @@ namespace Multiplayer.Foundation.RimWorld
                 Widgets.Label(new Rect(x, y, width, 25f), startable ? "Alle bereit – der Host kann starten." : "Warte auf den Host …");
                 return;
             }
-            string? reason = LobbyRegistry.StartBlockReason(lobby, client.SessionId) ??
+            bool solo = hosted?.AllowSoloStart == true;
+            string? reason = LobbyRegistry.StartBlockReason(lobby, client.SessionId, solo) ??
                 (Current.ProgramState != ProgramState.Entry ? "Nur im Hauptmenü möglich." : null);
             if (Widgets.ButtonText(new Rect(x, y, 180f, 32f), "Spiel starten", true, true, reason == null))
             {
@@ -483,6 +491,13 @@ namespace Multiplayer.Foundation.RimWorld
             }
             if (reason != null) Widgets.Label(new Rect(x + 190f, y + 4f, width - 190f, 28f), reason);
             y += 38f;
+            if (solo)
+            {
+                GUI.color = new Color(1f, 0.85f, 0.45f);
+                Widgets.Label(new Rect(x, y, width, 25f), "Debug: Allein-Start erlaubt");
+                GUI.color = Color.white;
+                y += 27f;
+            }
         }
 
         // Shown while the lobby is in setup. Until the shared setup pages exist nothing here may look like

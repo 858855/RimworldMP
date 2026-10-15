@@ -22,6 +22,10 @@ Wie in `docs/verification/2026-10-15-lobby-hardening.md`: Die Testprojekte ziele
 | Rauchtest im Spiel | Hauptmenü nach 14 s, `Player.log`: „Multiplayer Foundation: 7 Mods geprüft, Prüfsumme 69d3“, keine Fehler; Harmony-Patches ohne Fehler geladen; Spiel regulär geschlossen |
 | Projektdateien | `scripts/validate_project_state.py`: PASS |
 
+## Nachtrag: Debug-Option „allein starten“
+
+Lobby.Tests („solo start only with the debug option“) und Hosting.Tests („debug solo start over a listen host, refused without the option“) bestanden; alle sechs Testprojekte erneut grün. Mod ohne Warnungen gebaut, installiert; Rauchtest: Spiel lädt, „7 Mods geprüft, Prüfsumme 0b7d“ (die Prüfsumme enthält die geänderten Mod-DLLs), keine Fehler. Das Kontrollkästchen selbst wurde im Spiel nicht bedient.
+
 ## Einordnung nach AGENTS.md Regel 25
 
 - `BUILD_ERFOLGREICH`; automatisierte Tests bestanden.

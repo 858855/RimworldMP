@@ -10,3 +10,10 @@
 - **Protokoll:** Codes 28 `ModManifestSummary` und 29 `ModManifestRequest`; Mod-Status je Spieler im Snapshot; optionale Host-Zusammenfassung in der Lobbyliste. Die Steam-Lobby-Kennung `foundation_version` folgt jetzt der Wire-Version (`3`).
 - **Tests:** Protocol (Manifest, Bericht, Inhalts-Hash, Prüfsumme ohne Spielversion, Nutzdaten), Lobby (Status, Bereit-Sperre, Start-Prüfung, Host-Wechsel), Hosting über Steam-ähnlichen Strom (Status, Sperre, Listenanfrage, Übertragung, Bericht). Spieltest: Benutzerbericht auf `feat/lobby-hardening`.
 - **Rollback:** Commit zurücknehmen; Codes 28/29 entfallen, der Rest von ADR 0017 bleibt.
+
+## Nachtrag 2026-10-15: Debug-Option „allein starten“
+
+- **Anlass:** Wunsch des Benutzers, die Spieleinrichtung ohne zweiten Spieler testen zu können.
+- **Regel:** `HostConfig.AllowSoloStart` (Standard `false`) senkt die Mindestspielerzahl für `SetupAdvance(Scenario)` von 2 auf 1. Der Server des Hosts setzt das durch; `StartBlockReason` erhält denselben Schalter, damit Knopf und Server übereinstimmen.
+- **Mod:** Kontrollkästchen „Debug: Spiel allein starten erlauben (nur zum Testen)“ im Multiplayer-Fenster und in den Mod-Einstellungen; gilt beim nächsten Hosten (Direkt oder Steam). In der Lobby steht dann „Debug: Allein-Start erlaubt“. Alle übrigen Bedingungen (bereit, Mods passen) bleiben.
+- **Dedicated Server:** unverändert, solange `AllowSoloStart` in der Konfiguration nicht gesetzt ist.

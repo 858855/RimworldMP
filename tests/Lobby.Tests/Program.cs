@@ -154,6 +154,20 @@ plain.Join(p2, plain.Create(p1, "Plain", 2).State!.Id);
 Assert(plain.Ready(p2, true).State!.Players.All(p => p.ModStatus == ModStatus.Unchecked), "without manifests nothing is checked");
 Console.WriteLine("PASS: mod status, ready gate, start re-check and host change (MOD-001)");
 
+// Debug option: one player may start only when the host's server allows it.
+foreach (bool allowSolo in new[] { false, true })
+{
+    var soloRegistry = new LobbyRegistry(4, allowSolo ? (byte)1 : (byte)2);
+    Guid alone = Guid.NewGuid();
+    soloRegistry.AddMember(alone, "Alone", PlayerKey.Local(Guid.NewGuid()));
+    soloRegistry.Create(alone, "Solo", 2);
+    LobbyView soloReady = soloRegistry.Ready(alone, true).State!;
+    Assert((LobbyRegistry.StartBlockReason(soloReady, alone, allowSolo) == null) == allowSolo, "client-side reason follows the option");
+    if (allowSolo) Assert(soloRegistry.AdvanceSetup(alone, SetupPhase.Scenario).State!.Phase == SetupPhase.Scenario, "solo start allowed");
+    else Expect(6, () => soloRegistry.AdvanceSetup(alone, SetupPhase.Scenario));
+}
+Console.WriteLine("PASS: solo start only with the debug option");
+
 static void Assert(bool condition, string name)
 { if (!condition) throw new Exception("FAIL: " + name); }
 static void Expect(byte code, Action action)

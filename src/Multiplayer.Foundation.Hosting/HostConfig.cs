@@ -14,6 +14,8 @@ public class HostConfig
     public int HeartbeatIntervalSeconds { get; set; } = 5;
     public int ClientTimeoutSeconds { get; set; } = 15;
     public string LogLevel { get; set; } = "Information";
+    /// <summary>Debug only: the host may start the shared setup alone (one player). Off by default.</summary>
+    public bool AllowSoloStart { get; set; }
 
     public IPAddress Validate(bool allowEphemeralPort)
     {

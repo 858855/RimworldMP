@@ -26,9 +26,15 @@ namespace Multiplayer.Foundation.Lobby
         private readonly Dictionary<Guid, Member> members = new Dictionary<Guid, Member>();
         private readonly Dictionary<Guid, Room> rooms = new Dictionary<Guid, Room>();
         private readonly byte maximumCapacity;
+        private readonly byte minimumStartPlayers;
 
-        public LobbyRegistry(byte maximumCapacity)
-        { if (maximumCapacity < 2 || maximumCapacity > 64) throw new ArgumentOutOfRangeException(nameof(maximumCapacity)); this.maximumCapacity = maximumCapacity; }
+        /// <param name="minimumStartPlayers">Players needed to start the shared setup: 2 normally, 1 only as a debug option.</param>
+        public LobbyRegistry(byte maximumCapacity, byte minimumStartPlayers = 2)
+        {
+            if (maximumCapacity < 2 || maximumCapacity > 64) throw new ArgumentOutOfRangeException(nameof(maximumCapacity));
+            if (minimumStartPlayers < 1 || minimumStartPlayers > 2) throw new ArgumentOutOfRangeException(nameof(minimumStartPlayers));
+            this.maximumCapacity = maximumCapacity; this.minimumStartPlayers = minimumStartPlayers;
+        }
 
         public void AddMember(Guid id, string name, PlayerKey key)
         {
@@ -72,11 +78,11 @@ namespace Multiplayer.Foundation.Lobby
         { lock (gate) return GetCurrentRoom(GetMember(actor)).Host; }
 
         /// <summary>First reason why the host may not start yet, or null. The same rules the server enforces.</summary>
-        public static string? StartBlockReason(LobbyView lobby, Guid actor)
+        public static string? StartBlockReason(LobbyView lobby, Guid actor, bool allowSoloStart = false)
         {
             if (lobby.HostId != actor) return "Nur der Host kann das Spiel starten.";
             if (lobby.Phase != SetupPhase.Lobby) return "Spieleinrichtung läuft bereits.";
-            if (lobby.Players.Count < 2) return "Mindestens 2 Spieler nötig.";
+            if (lobby.Players.Count < (allowSoloStart ? 1 : 2)) return "Mindestens 2 Spieler nötig.";
             if (lobby.Players.Any(p => p.ModStatus == ModStatus.Checking)) return "Mod-Prüfung läuft …";
             string[] mismatched = lobby.Players.Where(p => p.ModStatus == ModStatus.Mismatch).Select(p => p.Name).ToArray();
             if (mismatched.Length > 0) return "Mods stimmen nicht überein: " + string.Join(", ", mismatched);
@@ -177,7 +183,7 @@ namespace Multiplayer.Foundation.Lobby
                 switch (room.Phase)
                 {
                     case SetupPhase.Lobby:
-                        if (room.Members.Count < 2) throw new LobbyRuleException(6, "At least 2 players are needed.");
+                        if (room.Members.Count < minimumStartPlayers) throw new LobbyRuleException(6, "At least 2 players are needed.");
                         // MOD-001: start again checks that every member's mods match the host's.
                         if (room.Members.Any(id => StatusOf(room, members[id]) is ModStatus.Checking or ModStatus.Mismatch))
                             throw new LobbyRuleException(8, "Mods do not match for every player.");

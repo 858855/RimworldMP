@@ -23,7 +23,7 @@ public sealed class FoundationServer : IAsyncDisposable
     public FoundationServer(HostConfig config)
     {
         this.config = config ?? throw new ArgumentNullException(nameof(config));
-        lobbies = new LobbyRegistry(config.MaxPlayersPerLobby);
+        lobbies = new LobbyRegistry(config.MaxPlayersPerLobby, config.AllowSoloStart ? (byte)1 : (byte)2);
     }
     public int BoundPort => listener == null ? 0 : ((IPEndPoint)listener.LocalEndpoint).Port;
     public int ConnectedClients => peers.Count;

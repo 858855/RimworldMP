@@ -11,6 +11,8 @@ namespace Multiplayer.Foundation.RimWorld
         public string PlayerName = "Player";
         public string HostBindAddress = "::";
         public bool UseUpnp = true;
+        // Debug: host may start the shared setup alone. Only read when hosting starts.
+        public bool AllowSoloStart;
         // Created once and kept: identifies this player when Steam is unavailable (ADR 0016).
         public string LocalPlayerKey = "";
 
@@ -34,6 +36,7 @@ namespace Multiplayer.Foundation.RimWorld
             // New key: the old "hostBindAddress" defaulted to 127.0.0.1 (this PC only) and must not carry over.
             Scribe_Values.Look(ref HostBindAddress, "hostBindAddressV2", "::");
             Scribe_Values.Look(ref UseUpnp, "useUpnp", true);
+            Scribe_Values.Look(ref AllowSoloStart, "allowSoloStart", false);
             Scribe_Values.Look(ref LocalPlayerKey, "localPlayerKey", "");
         }
     }

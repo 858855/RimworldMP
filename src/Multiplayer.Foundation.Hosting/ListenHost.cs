@@ -23,6 +23,8 @@ namespace Multiplayer.Foundation.Hosting
 
         public LobbyClient Client { get; }
         public string BindAddress { get; }
+        /// <summary>Debug: this host's server lets it start the shared setup alone.</summary>
+        public bool AllowSoloStart { get; private set; }
         public int Port => server.BoundPort;
         public bool AcceptsIPv4 => server.AcceptsIPv4;
         public bool AcceptsIPv6 => server.AcceptsIPv6;
@@ -30,7 +32,7 @@ namespace Multiplayer.Foundation.Hosting
             server.AttachConnection(connection, verifiedKey);
 
         public static async Task<ListenHost> StartAsync(string bindAddress, int port, string playerName,
-            string lobbyName, byte capacity, PlayerKey? playerKey = null)
+            string lobbyName, byte capacity, PlayerKey? playerKey = null, bool allowSoloStart = false)
         {
             if (string.IsNullOrWhiteSpace(playerName) || playerName.Length > 40 || playerName.Any(char.IsControl))
                 throw new ArgumentException("Player name must have 1-40 characters.", nameof(playerName));
@@ -39,7 +41,7 @@ namespace Multiplayer.Foundation.Hosting
             if (capacity < 2 || capacity > 64)
                 throw new ArgumentOutOfRangeException(nameof(capacity));
             var config = new HostConfig { BindAddress = bindAddress, Port = port,
-                MaxPlayersPerLobby = capacity };
+                MaxPlayersPerLobby = capacity, AllowSoloStart = allowSoloStart };
             var server = new FoundationServer(config);
             LobbyClient? client = null;
             try
@@ -49,7 +51,7 @@ namespace Multiplayer.Foundation.Hosting
                     TimeSpan.FromSeconds(5), CancellationToken.None, playerKey).ConfigureAwait(false);
                 await client.SendAsync(MessageType.CreateLobby, 2,
                     LobbyPayloads.Create(lobbyName, capacity)).ConfigureAwait(false);
-                return new ListenHost(server, client, bindAddress);
+                return new ListenHost(server, client, bindAddress) { AllowSoloStart = allowSoloStart };
             }
             catch
             {

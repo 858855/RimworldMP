@@ -345,6 +345,24 @@ await using (var mirrorHost = await ListenHost.StartAsync("127.0.0.1", 0, "Host"
 }
 Console.WriteLine("PASS: host page mirror reaches guests during setup only, host only (SETUP-001)");
 
+// Debug option end to end: a listen host started with allowSoloStart may start the setup alone.
+await using (var soloHost = await ListenHost.StartAsync("127.0.0.1", 0, "Solo", "Solo Room", 2, PlayerKey.Steam(76561198000000080UL), true))
+{
+    await ReceiveAsync(soloHost.Client, MessageType.LobbyStateUpdate);
+    Assert(soloHost.AllowSoloStart, "host reports the option");
+    await StateAsync(soloHost.Client, MessageType.PlayerReadyChanged, 900, LobbyPayloads.Bool(true));
+    LobbyView soloStarted = await StateAsync(soloHost.Client, MessageType.SetupAdvance, 901, SetupPayloads.Advance(SetupPhase.Scenario));
+    Assert(soloStarted.Phase == SetupPhase.Scenario && soloStarted.Players.Count == 1, "host started alone");
+}
+await using (var normalHost = await ListenHost.StartAsync("127.0.0.1", 0, "Solo", "Normal Room", 2, PlayerKey.Steam(76561198000000081UL)))
+{
+    await ReceiveAsync(normalHost.Client, MessageType.LobbyStateUpdate);
+    await StateAsync(normalHost.Client, MessageType.PlayerReadyChanged, 902, LobbyPayloads.Bool(true));
+    Assert(await ErrorCodeAsync(normalHost.Client, MessageType.SetupAdvance, 903, SetupPayloads.Advance(SetupPhase.Scenario)) == 6,
+        "without the option one player cannot start");
+}
+Console.WriteLine("PASS: debug solo start over a listen host, refused without the option");
+
 // Sends a request and returns the error code the server answers with.
 static async Task<byte> ErrorCodeAsync(LobbyClient client, MessageType type, uint requestId, byte[] payload)
 {

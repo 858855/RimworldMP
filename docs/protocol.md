@@ -76,3 +76,5 @@ Die Lobby-Prüfsumme ist ein SHA-256 nur über die Mods in Ladereihenfolge (Pack
 ## Seitenspiegel (SETUP-001, ADR 0019)
 
 `SetupSettings` ist reine Anzeige: was der Host auf seiner vanilla-Seite gerade sieht. Der Server prüft nur Absender (Host, sonst Code 3), Phase (nicht `Lobby`, sonst Code 6) und Format und leitet an die übrigen Mitglieder weiter.
+
+Debug-Option: Ein Host-Server mit `AllowSoloStart` nimmt `SetupAdvance(Scenario)` schon mit einem Spieler an; Standard sind mindestens zwei (ADR 0018, Nachtrag).
