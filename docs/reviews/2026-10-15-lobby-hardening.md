@@ -17,6 +17,10 @@
 
 Siehe `docs/verification/2026-10-15-lobby-hardening.md`: sechs Testprojekte im .NET-8-Harness bestanden, Mod-Build ohne Warnungen, Rauchtest im Spiel (Mod lädt, Manifest geloggt).
 
+## Überschneidung mit parallelen Branches
+
+`origin/feat/player-key`, `origin/feat/chunk-transfer` und `origin/feat/setup-rules` setzen ID-001, XFER-001 und die Serverregeln der Einrichtung unabhängig um (ADR 0013–0017). Vor einem Merge muss einer der beiden Stände die Grundlage sein. Empfehlung: `feat/setup-rules` als Grundlage nehmen und MOD-001 sowie die Lobby-UI darauf übertragen.
+
 ## Risiken
 
 - Wire-Version 3 bricht die Kompatibilität mit allen älteren ZIPs; alle Spieler und ein Dedicated Server brauchen denselben Stand.

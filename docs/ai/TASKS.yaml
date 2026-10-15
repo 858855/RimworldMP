@@ -622,13 +622,13 @@ tasks:
   - 'Abweichende Reihenfolge, fehlender Mod, zusätzlicher Mod und andere Version füllen jeweils den richtigen Berichtsabschnitt und sperren Bereit'
   - 'Server lehnt Bereit bei Mismatch ab (Test)'
   implementation: implemented
-  verification: tests_passed
+  verification: runtime_verified
   integration: ready_for_human_review
   branch: feat/lobby-hardening
   evidence:
   - docs/verification/2026-10-15-lobby-hardening.md
   - docs/reviews/2026-10-15-lobby-hardening.md
-  blocker: 'Manifest, Vergleich, Ready-Sperre und Mod-Listen-Anfrage automatisiert geprüft (.NET-8-Harness); Mod gebaut. Offen: Prüfung mit zwei echten RimWorld-Clients (gleiche/abweichende Mods, Unterschiede-Fenster).'
+  blocker: 'Automatisierte Tests bestanden; Benutzer meldet Zwei-Spieler-Test erfolgreich (2026-10-15, ohne Detailprotokoll). Überschneidung mit origin/feat/setup-rules vor Merge auflösen.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: START-001
   title: 'Start-Knopf und Setup-Zustandsmaschine'
@@ -647,13 +647,13 @@ tasks:
   - 'Server prüft beim Start erneut'
   - 'Lobby-Sperre, Abbruch und keine Host-Migration während der Einrichtung getestet'
   implementation: implemented
-  verification: tests_passed
+  verification: runtime_verified
   integration: ready_for_human_review
   branch: feat/lobby-hardening
   evidence:
   - docs/verification/2026-10-15-lobby-hardening.md
   - docs/reviews/2026-10-15-lobby-hardening.md
-  blocker: 'Startbedingungen, Sperre, Abbruch und Host-Verlassen automatisiert geprüft (.NET-8-Harness); Mod gebaut. Die Einrichtungsseiten selbst folgen mit SETUP-001: nach dem Start zeigt die Mod eine ehrliche Einrichtungsansicht mit Abbrechen. Spieltest mit zwei Clients offen.'
+  blocker: 'Automatisierte Tests bestanden; Benutzer meldet Zwei-Spieler-Test erfolgreich (2026-10-15, ohne Detailprotokoll). Überschneidung mit origin/feat/setup-rules vor Merge auflösen.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: XFER-001
   title: 'Chunk-Kanal für große Übertragungen'

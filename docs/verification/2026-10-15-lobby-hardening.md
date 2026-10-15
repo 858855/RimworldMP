@@ -28,6 +28,14 @@ Die Testprojekte zielen auf `net10.0`; auf diesem Rechner ist nur .NET 8 install
 
 Auf Wunsch des Benutzers hängt die Lobby-Prüfsumme nur noch von den Mods ab (Package-ID, Version, Inhalts-Hash in Ladereihenfolge), nicht von Spielversion oder Anzeigenamen. Protocol.Tests prüft das neu: anderer Spielbuild und andere Anzeigenamen ergeben dieselbe Prüfsumme, der Bericht meldet die Spielversion nur als Hinweis. Alle sechs Testprojekte im .NET-8-Harness erneut bestanden; Mod neu gebaut (0 Warnungen) und über die installierte Vorschau kopiert.
 
+## Nutzerbericht: Zwei-Spieler-Test
+
+Der Benutzer meldete am 2026-10-15 nach einem eigenen Test der installierten Vorschau mit zwei Spielern: „works“. Ablauf, Transport (Steam oder IP), getestete Prüfpunkte und Modlisten sind **nicht dokumentiert**. Eingeordnet als Nutzerbericht, nicht als eigener Lauf.
+
+## Überschneidung mit parallelen Branches
+
+Auf `origin` liegen parallel entstandene Branches eines anderen Beitragenden: `feat/chunk-transfer` (XFER-001, ADR 0014), `feat/player-key` (ID-001, ADR 0016) und `feat/setup-rules` (Serverregeln der Einrichtung, ADR 0015/0017), alle auf `docs/full-multiplayer-plan`. Sie decken ID-001, XFER-001 und die Serverseite von START-001 anders ab (andere Nachrichtencodes, Fenster 6, verifizierte SteamID, Fähnchen statt Abstimmung). Dieser Branch und jene sind **nicht kombinierbar, ohne zusammengeführt zu werden**. Einzig hier: MOD-001 (Mod-Prüfung) und die Lobby-UI (Start-Knopf, Einrichtungsansicht).
+
 ## Einordnung nach AGENTS.md Regel 25
 
 - `BUILD_ERFOLGREICH` für den Mod gegen die lokale 1.6-Installation.

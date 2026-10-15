@@ -118,6 +118,7 @@ verified_capabilities:
 - 'Lobby 0.2-Vorschau (feat/lobby-hardening): Spielerschlüssel, Chunk-Übertragung (50 MB über TCP), Mod-Manifest mit Ready-Sperre und Unterschiedsbericht, Start-Knopf mit Lobby-Sperre in sechs Testprojekten bestanden (.NET-8-Harness); Mod ohne Warnungen gebaut; Rauchtest im Spiel: Mod lädt und loggt das Manifest. Siehe docs/verification/2026-10-15-lobby-hardening.md.'
 - 'VER-001 Metadatenteil: alle im Gesamtplan Teil A-B benötigten RimWorld-1.6-Symbole in Assembly-CSharp.dll (1.6.4871 rev590 Windows) vorhanden; siehe references/verified-apis.md.'
 user_reported_capabilities:
+- 'Lobby-0.2-Vorschau (feat/lobby-hardening) laut Benutzer am 2026-10-15 mit zwei Spielern funktionsfähig („works“); Ablauf und Transport nicht dokumentiert.'
 - 'Steam-Verbindung laut Benutzer am 2026-10-15 erfolgreich; Ablauf, Heimanschlüsse und weitere Lobbyfunktionen noch nicht dokumentiert. Siehe docs/verification/2026-10-15-steam-user-connection.md.'
 - 'Multiplayer-Knopf direkt unter Tutorial und Fensteröffnung vom Benutzer am 2026-10-15 im Spiel bestätigt; siehe docs/verification/2026-10-15-menu-chat.md.'
 - 'Spieltest durch Benutzer (Windows, 1.6.4871 rev590): Mod lädt, Einstellungsfenster bedienbar, Direkt-Host erstellt Lobby. Dabei gefundene UPnP-/Adressfehler auf fix/internet-connectivity korrigiert.'
