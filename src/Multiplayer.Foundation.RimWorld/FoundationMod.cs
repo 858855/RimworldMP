@@ -21,6 +21,7 @@ namespace Multiplayer.Foundation.RimWorld
         private ListenHost? hosted;
         private Task<UpnpPortMapping>? mapping;
         private UpnpPortMapping? mapped;
+        private IPAddress? externalAddress;
         private string upnpStatus = "";
         private IReadOnlyList<IPAddress> shareable = Array.Empty<IPAddress>();
         private Task? action;
@@ -237,10 +238,12 @@ namespace Multiplayer.Foundation.RimWorld
                 try
                 {
                     mapped = mapping.GetAwaiter().GetResult();
+                    externalAddress = mapped.ExternalAddress;
                     upnpStatus = "UPnP: Router-Port " + mapped.Port + " ist an " + mapped.InternalAddress + " weitergeleitet.";
                 }
                 catch (Exception error)
                 {
+                    externalAddress = (error as PortMappingException)?.ExternalAddress;
                     upnpStatus = "UPnP fehlgeschlagen (" + error.Message + "). Für Internet-Spieler TCP-Port " +
                         (hosted?.Port ?? 0) + " im Router manuell an diesen PC weiterleiten." +
                         (error.Message.Contains("606") ? " FRITZ!Box: Internet → Freigaben → dieses Gerät → " +
@@ -317,11 +320,13 @@ namespace Multiplayer.Foundation.RimWorld
             if (hosted == null) return "";
             int port = hosted.Port;
             var lines = new List<string> { "Mitspieler tragen eine dieser Adressen bei Server ein:" };
-            if (mapped?.ExternalAddress != null)
-                lines.Add(mapped.ExternalAddressIsPublic
-                    ? "  Internet (IPv4): " + NetworkAddresses.Format(mapped.ExternalAddress, port)
-                    : "  Internet (IPv4) nicht möglich: Der Router hat keine öffentliche IPv4 (" + mapped.ExternalAddress +
-                      ", CGNAT/DS-Lite). IPv6-Adresse oder ein VPN wie Tailscale/ZeroTier nutzen.");
+            if (externalAddress != null)
+                lines.Add(!NetworkAddresses.IsPublic(externalAddress)
+                    ? "  Internet (IPv4) nicht möglich: Der Router hat keine öffentliche IPv4 (" + externalAddress +
+                      ", CGNAT/DS-Lite). IPv6-Adresse oder ein VPN wie Tailscale/ZeroTier nutzen."
+                    : "  Internet (IPv4): " + NetworkAddresses.Format(externalAddress, port) +
+                      (mapped != null ? "" : mapping != null ? " (Portfreigabe läuft …)"
+                          : " (erst erreichbar, wenn der Port im Router weitergeleitet ist)"));
             foreach (IPAddress address in shareable.Take(4))
                 lines.Add((address.AddressFamily == AddressFamily.InterNetworkV6 ? "  Internet (IPv6): "
                     : NetworkAddresses.IsSharedAddressSpace(address) ? "  VPN: " : "  LAN: ") +
@@ -336,8 +341,8 @@ namespace Multiplayer.Foundation.RimWorld
         private string? BestShareAddress()
         {
             if (hosted == null) return null;
-            if (mapped?.ExternalAddress != null && mapped.ExternalAddressIsPublic)
-                return NetworkAddresses.Format(mapped.ExternalAddress, hosted.Port);
+            if (externalAddress != null && NetworkAddresses.IsPublic(externalAddress))
+                return NetworkAddresses.Format(externalAddress, hosted.Port);
             IPAddress? address = shareable.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetworkV6)
                 ?? shareable.FirstOrDefault();
             return address == null ? null : NetworkAddresses.Format(address, hosted.Port);
@@ -353,6 +358,7 @@ namespace Multiplayer.Foundation.RimWorld
                 else _ = t.Exception;
             }, TaskScheduler.Default);
             mapping = null;
+            externalAddress = null;
             upnpStatus = "";
             shareable = Array.Empty<IPAddress>();
         }

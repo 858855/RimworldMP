@@ -9,7 +9,11 @@ namespace Multiplayer.Foundation.Hosting;
 
 public sealed class PortMappingException : Exception
 {
-    public PortMappingException(string message, Exception? inner = null) : base(message, inner) { }
+    public PortMappingException(string message, Exception? inner = null, IPAddress? externalAddress = null)
+        : base(message, inner) => ExternalAddress = externalAddress;
+
+    /// <summary>The router's WAN address, if it could still be read although the mapping failed.</summary>
+    public IPAddress? ExternalAddress { get; }
 }
 
 /// <summary>
@@ -66,6 +70,7 @@ public sealed class UpnpPortMapping : IAsyncDisposable
         if (locations.Count == 0)
             throw new PortMappingException("No UPnP router found. Enable UPnP on the router or forward the port manually.");
         Exception? lastError = null;
+        IPAddress? knownExternal = null;
         foreach (Uri location in locations)
         {
             var http = new HttpClient { Timeout = timeout };
@@ -75,31 +80,38 @@ public sealed class UpnpPortMapping : IAsyncDisposable
                     .ConfigureAwait(false);
                 IPAddress local = await LocalAddressTowardsAsync(control.Host).ConfigureAwait(false);
                 var mapping = new UpnpPortMapping(http, control, service, port, local);
-                await mapping.InvokeAsync("AddPortMapping", cancellationToken,
-                    ("NewRemoteHost", ""), ("NewExternalPort", Number(port)), ("NewProtocol", "TCP"),
-                    ("NewInternalPort", Number(port)), ("NewInternalClient", local.ToString()), ("NewEnabled", "1"),
-                    ("NewPortMappingDescription", Description), ("NewLeaseDuration", "0")).ConfigureAwait(false);
+                // Read the WAN address first: it is needed to tell guests where to connect even if the router
+                // refuses the mapping and the port has to be forwarded by hand.
                 try
                 {
                     XmlDocument reply = await mapping.InvokeAsync("GetExternalIPAddress", cancellationToken)
                         .ConfigureAwait(false);
                     if (IPAddress.TryParse(FindText(reply.DocumentElement, "NewExternalIPAddress"), out IPAddress? external))
-                        mapping.ExternalAddress = external;
+                        knownExternal = mapping.ExternalAddress = external;
                 }
                 catch (PortMappingException) { }
+                await mapping.InvokeAsync("AddPortMapping", cancellationToken,
+                    ("NewRemoteHost", ""), ("NewExternalPort", Number(port)), ("NewProtocol", "TCP"),
+                    ("NewInternalPort", Number(port)), ("NewInternalClient", local.ToString()), ("NewEnabled", "1"),
+                    ("NewPortMappingDescription", Description), ("NewLeaseDuration", "0")).ConfigureAwait(false);
                 return mapping;
             }
-            catch (Exception error) when (error is PortMappingException or HttpRequestException or XmlException
-                or SocketException or TaskCanceledException or UriFormatException)
+            catch (Exception error) when (!cancellationToken.IsCancellationRequested)
             {
+                // Router firmware and runtimes fail in many ways (HTTP, XML, encodings, sockets); try the next device.
                 http.Dispose();
                 lastError = error;
-                cancellationToken.ThrowIfCancellationRequested();
+            }
+            catch
+            {
+                http.Dispose();
+                throw;
             }
         }
-        throw lastError as PortMappingException ?? new PortMappingException(lastError is TaskCanceledException
-            ? "UPnP router did not answer in time."
-            : "UPnP router did not accept the port mapping: " + lastError?.Message, lastError);
+        string message = lastError is PortMappingException ? lastError.Message
+            : lastError is TaskCanceledException ? "UPnP router did not answer in time."
+            : "UPnP router did not accept the port mapping: " + lastError?.Message;
+        throw new PortMappingException(message, lastError, knownExternal);
     }
 
     public async Task RemoveAsync()
@@ -179,8 +191,7 @@ public sealed class UpnpPortMapping : IAsyncDisposable
         using HttpResponseMessage response = await http.GetAsync(location, cancellationToken).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
             throw new PortMappingException("Router description returned HTTP " + (int)response.StatusCode + ".");
-        var document = new XmlDocument { XmlResolver = null };
-        document.LoadXml(await response.Content.ReadAsStringAsync().ConfigureAwait(false));
+        XmlDocument document = await ReadXmlAsync(response).ConfigureAwait(false);
         Uri baseUri = Uri.TryCreate(FindText(document.DocumentElement, "URLBase"), UriKind.Absolute, out Uri? urlBase)
             ? urlBase : location;
         foreach (string wanted in new[] { "WANIPConnection", "WANPPPConnection" })
@@ -208,26 +219,35 @@ public sealed class UpnpPortMapping : IAsyncDisposable
         body.Append("</u:").Append(action).Append("></s:Body></s:Envelope>");
         using var request = new HttpRequestMessage(HttpMethod.Post, controlUrl)
         {
-            Content = new StringContent(body.ToString(), Encoding.UTF8, "text/xml"),
+            Content = new ByteArrayContent(Encoding.UTF8.GetBytes(body.ToString())),
         };
+        request.Content.Headers.TryAddWithoutValidation("Content-Type", "text/xml; charset=\"utf-8\"");
         request.Headers.ExpectContinue = false;
         request.Headers.TryAddWithoutValidation("SOAPAction", "\"" + serviceType + "#" + action + "\"");
         using HttpResponseMessage response = await http.SendAsync(request, cancellationToken).ConfigureAwait(false);
-        string text = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-        var document = new XmlDocument { XmlResolver = null };
         if (!response.IsSuccessStatusCode)
         {
             string detail = "HTTP " + (int)response.StatusCode;
             try
             {
-                document.LoadXml(text);
-                detail = "UPnP error " + FindText(document.DocumentElement, "errorCode") + " " +
-                    FindText(document.DocumentElement, "errorDescription");
+                XmlDocument fault = await ReadXmlAsync(response).ConfigureAwait(false);
+                detail = "UPnP error " + FindText(fault.DocumentElement, "errorCode") + " " +
+                    FindText(fault.DocumentElement, "errorDescription");
             }
             catch (XmlException) { }
             throw new PortMappingException("Router rejected " + action + ": " + detail.Trim() + ".");
         }
-        document.LoadXml(text);
+        return await ReadXmlAsync(response).ConfigureAwait(false);
+    }
+
+    // Not ReadAsStringAsync: RimWorld's Mono cannot decode a quoted charset (FRITZ!Box sends charset="utf-8")
+    // and throws ArgumentException. XmlDocument detects the encoding from the bytes and XML declaration itself.
+    private static async Task<XmlDocument> ReadXmlAsync(HttpResponseMessage response)
+    {
+        byte[] bytes = await response.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
+        var document = new XmlDocument { XmlResolver = null };
+        using var stream = new MemoryStream(bytes);
+        document.Load(stream);
         return document;
     }
 

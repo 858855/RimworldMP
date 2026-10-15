@@ -86,6 +86,7 @@ verified_capabilities:
 - 'Server: verzögertes gültiges Pong akzeptiert, Duplikat und ungesendete Nonce abgelehnt; SIGTERM beendet den Linux-Prozess mit verbundenem Client geordnet.'
 - 'Mod-ZIP: Release-Build gegen lokale 1.6-Assemblies, sieben Archiveinträge, Entpacken nach RimWorld/Mods und SHA-256 geprüft; kein Spiel-Laufzeittest.'
 - 'Direkt-Hosting: Host und Gast verbinden sich über denselben TCP-Lobby-Kern, Join/Ready und Host-Stopp in vier Testgruppen bestanden; dedizierter Server bleibt erhalten.'
+- 'Spieltest durch Benutzer (Windows, 1.6.4871 rev590): Mod lädt, Einstellungsfenster bedienbar, Direkt-Host erstellt Lobby. Dabei gefundene UPnP-/Adressfehler auf fix/internet-connectivity korrigiert.'
 - 'Branch fix/internet-connectivity: Dual-Stack-Bindung `::`, Client über IPv6/DNS mit Fallback und UPnP gegen Fake-Gateway getestet (sieben Testprojekte unter .NET 8); Mod-Build gegen Windows-1.6-Installation (rev590) ohne Warnungen; SSDP gegen echte FRITZ!Box nur lesend.'
 known_issues:
 - 'RimWorld-UI im Spiel nicht verifiziert: -nographics verursacht Atlasfehler; grafischer Start

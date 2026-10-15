@@ -59,6 +59,8 @@ public static class NetworkAddresses
         catch (NetworkInformationException) { }
         catch (NotImplementedException) { }
         catch (PlatformNotSupportedException) { }
+        // Adapters without a gateway (VMware/VirtualBox host-only, Hyper-V) are only listed if there is no routed LAN.
+        if (result.Any(r => r.Rank == 0)) result.RemoveAll(r => r.Rank == 3);
         // Among IPv6 prefer the longest-lived (stable rather than temporary privacy) address.
         return result.OrderBy(r => r.Rank).ThenByDescending(r => r.Lifetime).Select(r => r.Address).ToList();
     }

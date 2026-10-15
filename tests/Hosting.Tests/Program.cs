@@ -79,6 +79,8 @@ string add = igdCalls.Single(c => c.Contains("#AddPortMapping"));
 Assert(add.Contains("<NewExternalPort>28491</NewExternalPort>") && add.Contains("<NewInternalClient>127.0.0.1</NewInternalClient>") &&
     add.Contains("<NewProtocol>TCP</NewProtocol>") && add.IndexOf("NewRemoteHost") < add.IndexOf("NewLeaseDuration"),
     "AddPortMapping arguments");
+Assert(igdCalls.FindIndex(c => c.Contains("#GetExternalIPAddress")) < igdCalls.FindIndex(c => c.Contains("#AddPortMapping")),
+    "external address read before mapping");
 Assert(igdCalls.Any(c => c.Contains("#GetExternalIPAddress")) && igdCalls.Any(c => c.Contains("#DeletePortMapping")),
     "external address queried and mapping removed");
 await using (var refusing = FakeGateway.Start(new List<string>(), "203.0.113.9", failAdd: true))
@@ -88,7 +90,11 @@ await using (var refusing = FakeGateway.Start(new List<string>(), "203.0.113.9",
         await UpnpPortMapping.CreateAsync(28491, TimeSpan.FromSeconds(3), refusing.DescriptionUrl);
         throw new Exception("FAIL: refused mapping accepted");
     }
-    catch (PortMappingException error) { Assert(error.Message.Contains("718"), "router error code reported"); }
+    catch (PortMappingException error)
+    {
+        Assert(error.Message.Contains("718"), "router error code reported");
+        Assert(error.ExternalAddress?.ToString() == "203.0.113.9", "external address known although mapping failed");
+    }
 }
 Console.WriteLine("PASS: UPnP port mapping against fake internet gateway");
 
