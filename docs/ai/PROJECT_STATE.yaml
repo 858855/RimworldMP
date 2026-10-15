@@ -14,14 +14,14 @@ target_rimworld_version:
   runtime: Unity/Mono
   game_runtime_tested: true
   other_versions_verified: []
-current_phase: menu_chat_and_internet_reachability_merged
+current_phase: lobby_hardening_0_2_preview_local
 git:
-  branch: main
-  base_branch: null
-  base_commit: null
+  branch: feat/lobby-hardening
+  base_branch: docs/full-multiplayer-plan
+  base_commit: 1e5a529
   current_commit_ref: HEAD
-  pushed: true
-  merged: true
+  pushed: false
+  merged: false
   dependent_branches:
   - docs/project-governance
   - feat/network-protocol
@@ -79,6 +79,18 @@ components:
     implementation: in_progress
     verification: build_passed
     integration: merged
+  mod_manifest:
+    implementation: implemented
+    verification: tests_passed
+    integration: ready_for_human_review
+  chunk_transfer:
+    implementation: implemented
+    verification: tests_passed
+    integration: ready_for_human_review
+  setup_start:
+    implementation: implemented
+    verification: tests_passed
+    integration: ready_for_human_review
 verified_capabilities:
 - 'Archiv: 49 Einträge gegen eingebettetes Manifest geprüft.'
 - Drei XML-Beispiele syntaktisch geprüft; kein RimWorld-Laufzeitnachweis.
@@ -103,6 +115,8 @@ verified_capabilities:
 - 'Steam-Vorschau-ZIP: sieben Einträge und SHA-256 geprüft; Steam-Laufzeit durch Codex nicht nachgewiesen, Nutzerbericht separat erfasst.'
 - 'Lobby-Chat: zwei TCP-Clients empfangen dieselbe serverseitig zugeordnete Nachricht; Nichtmitglieder/andere Lobby isoliert, ungültiger Text abgelehnt.'
 - 'Menü-/Chat-Vorschau: RimWorld-1.6-Release-Build mit Harmony-Patch ohne Warnungen; neun ZIP-Einträge und lokale Installation bytegleich geprüft.'
+- 'Lobby 0.2-Vorschau (feat/lobby-hardening): Spielerschlüssel, Chunk-Übertragung (50 MB über TCP), Mod-Manifest mit Ready-Sperre und Unterschiedsbericht, Start-Knopf mit Lobby-Sperre in sechs Testprojekten bestanden (.NET-8-Harness); Mod ohne Warnungen gebaut; Rauchtest im Spiel: Mod lädt und loggt das Manifest. Siehe docs/verification/2026-10-15-lobby-hardening.md.'
+- 'VER-001 Metadatenteil: alle im Gesamtplan Teil A-B benötigten RimWorld-1.6-Symbole in Assembly-CSharp.dll (1.6.4871 rev590 Windows) vorhanden; siehe references/verified-apis.md.'
 user_reported_capabilities:
 - 'Steam-Verbindung laut Benutzer am 2026-10-15 erfolgreich; Ablauf, Heimanschlüsse und weitere Lobbyfunktionen noch nicht dokumentiert. Siehe docs/verification/2026-10-15-steam-user-connection.md.'
 - 'Multiplayer-Knopf direkt unter Tutorial und Fensteröffnung vom Benutzer am 2026-10-15 im Spiel bestätigt; siehe docs/verification/2026-10-15-menu-chat.md.'
@@ -110,6 +124,8 @@ user_reported_capabilities:
 - 'Branch fix/internet-connectivity: Dual-Stack-Bindung `::`, Client über IPv6/DNS mit Fallback und UPnP gegen Fake-Gateway getestet (sieben Testprojekte unter .NET 8); Mod-Build gegen Windows-1.6-Installation (rev590) ohne Warnungen; SSDP gegen echte FRITZ!Box nur lesend.'
 - 'Merge von feat/main-menu-chat und fix/internet-connectivity in main: RimWorld-1.6-Mod (Linux, 1.6.4871 rev598) ohne Warnungen gebaut, Dedicated Server gebaut, alle sieben Testprojekte unter .NET 10.0.13 auf Linux bestanden. Siehe docs/verification/2026-10-15-merge-menu-chat-internet.md.'
 known_issues:
+- 'Wire-Version 3 (feat/lobby-hardening) ist nicht mit Wire-Version-2-Mods/Servern kombinierbar.'
+- 'Tests der Lobby-0.2-Vorschau liefen unter .NET 8 statt .NET 10; ProcessIntegration.Tests und Serverbuild nicht ausgeführt.'
 - 'RimWorld-UI durch Codex nicht verifiziert: -nographics verursacht Atlasfehler; grafischer Start
   kam auch im 180-s-Wiederholungsversuch nicht bis zu belegten Mod-Ladeeinträgen.'
 - 'Version.txt meldet rev598, die gestartete Spiel-Runtime rev600; exakte Laufzeitkompatibilität offen.'
@@ -130,7 +146,12 @@ active_tasks:
 - CHAT-001
 - NET-002
 - PLAN-001
-next_action: Gemergten Stand als ZIP installieren; mit zwei Spielern Steam-Lobby und IP-Lobby mit UPnP aus fremdem Netz prüfen, dabei Chat, Ready, Disconnect und Adresse kopieren testen.
+- VER-001
+- ID-001
+- XFER-001
+- MOD-001
+- START-001
+next_action: 'Lobby-0.2-Vorschau mit zwei echten RimWorld-Clients prüfen (gleiche und abweichende Modliste, Start und Abbruch, Steam-Lobby); danach SETUP-001 und parallel TOOL-001/DET-001.'
 documentation_refs:
   tasks: docs/ai/TASKS.yaml
   handoff: docs/ai/SESSION_HANDOFF.md
@@ -173,4 +194,6 @@ documentation_refs:
   full_plan: docs/plans/rimworldmp-full-plan.md
   full_plan_verification: docs/verification/2026-10-15-full-plan.md
   full_plan_review: docs/reviews/2026-10-15-full-plan.md
+  lobby_hardening_verification: docs/verification/2026-10-15-lobby-hardening.md
+  lobby_hardening_review: docs/reviews/2026-10-15-lobby-hardening.md
 last_updated: '2026-10-15'

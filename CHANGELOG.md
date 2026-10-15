@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Lobby 0.2-Vorschau (lokaler Arbeitsbranch `feat/lobby-hardening`)
+
+- In der Lobby werden Spielversion, Mods, Ladereihenfolge und Mod-Inhalte mit dem Host verglichen. Abweichende Spieler werden rot markiert und können nicht bereit sein; ein Bericht zeigt, was fehlt, zusätzlich ist, sich unterscheidet oder falsch sortiert ist. Die Lobbyliste zeigt vorab, ob die Mods zum Host passen.
+- Der Host hat einen **Spiel starten**-Knopf, der erst bei mindestens zwei bereiten Spielern mit passenden Mods aktiv wird. Danach ist die Lobby gesperrt; die gemeinsamen Einrichtungsseiten folgen später, bis dahin kann nur abgebrochen werden.
+- Spieler melden sich mit einem dauerhaften Schlüssel an (SteamID oder gespeicherte GUID). Eine erneute Anmeldung mit demselben Schlüssel ersetzt die alte Sitzung.
+- Große Daten (zuerst die Mod-Liste, später Welt und Spielstand) können blockweise mit Prüfsumme zwischen Lobbymitgliedern übertragen werden.
+- Wire-Version 3: nicht mit älteren Ständen kombinierbar.
+
 ### Gesamtplan (Arbeitsbranch `docs/full-multiplayer-plan`)
 
 - Neuer Planentwurf `docs/plans/rimworldmp-full-plan.md`: Mod- und Ladereihenfolgeprüfung in der Lobby, Start-Knopf, gemeinsame Spieleinrichtung mit Weltübertragung, Startort-Abstimmung und Charakterwahl, deterministische Lockstep-Gameplay-Synchronisation, Speichern/Beitritt/Reconnect, Desync-Erkennung und -Reparatur, öffentliche Sync-API sowie Meilensteine bis 1.0. Keine Funktionsänderung; die 35 Meilensteine in `TASKS.yaml` stehen auf `planned`, `PLAN-001` selbst wartet auf Review.

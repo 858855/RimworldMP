@@ -28,3 +28,8 @@
 | `mod/About/About.xml`, `scripts/build-mod.sh` | Mod-Metadaten und Paketbau | XML/Paketprüfung | geprüft |
 | `tests/ProcessIntegration.Tests/Program.cs` | Server und zwei Client-Prozesse über echte TCP-Lobby steuern | `dotnet run --project ...` | acht Prozess-Testschritte bestanden |
 | `scripts/package-mod.py`, `mod/INSTALLATION.md` | Geprüftes Mod-ZIP einschließlich Harmony-Lizenz und manuelle Installation | ZIP-Extraktionsprüfung | neun Einträge geprüft, Spiel-Laufzeit offen |
+| `src/Multiplayer.Foundation.Protocol/PlayerKeys.cs` | Persistenter Spielerschlüssel `steam:`/`local:` (ID-001) | `tests/Protocol.Tests`, `Integration.Tests` | implementiert, getestet |
+| `src/Multiplayer.Foundation.Protocol/ModManifest.cs` | Mod-Manifest, Zusammenfassung, Unterschiedsbericht, Inhalts-Hash (MOD-001) | `tests/Protocol.Tests`, `Lobby.Tests`, `Integration.Tests` | implementiert, getestet |
+| `src/Multiplayer.Foundation.Protocol/TransferPayloads.cs`, `src/Multiplayer.Foundation.Network/TransferUpload.cs` | Chunk-Übertragung: Nachrichten, Sender mit Fenster, Empfänger mit SHA-256, Upload-Pumpe (XFER-001) | `tests/Protocol.Tests`, `Integration.Tests` (50 MB) | implementiert, getestet |
+| `src/Multiplayer.Foundation.Protocol/SetupPhase.cs` | Einrichtungsphasen der Lobby (START-001, SETUP-*) | `tests/Lobby.Tests`, `Integration.Tests` | Phase 0/1 genutzt |
+| `src/Multiplayer.Foundation.RimWorld/ModManifestBuilder.cs`, `ModDiffWindow.cs` | Manifest aus `LoadedModManager` bauen; Unterschiedsfenster | Mod-Build; Spielstart-Log | gebaut, Manifest im Spiel geloggt |

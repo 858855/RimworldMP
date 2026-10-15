@@ -574,6 +574,7 @@ tasks:
   branch: feat/lobby-hardening
   evidence:
   - references/verified-apis.md
+  - docs/verification/2026-10-15-lobby-hardening.md
   blocker: 'Metadatenteil erledigt (125 Symbole gegen 1.6.4871 rev590 Windows). Offen: Welt ohne Karte speichern/laden, Größen messen, Tickpfad-Threads – braucht laufendes Spiel.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: ID-001
@@ -594,10 +595,12 @@ tasks:
   - 'Schlüssel übersteht einen Spielneustart'
   implementation: implemented
   verification: tests_passed
-  integration: not_submitted
+  integration: ready_for_human_review
   branch: feat/lobby-hardening
   evidence:
   - docs/protocol.md
+  - docs/verification/2026-10-15-lobby-hardening.md
+  - docs/reviews/2026-10-15-lobby-hardening.md
   blocker: 'Automatisierte Tests bestanden (.NET-8-Harness). Spieltest mit Steam und IP offen; Steam-Fallback-Schlüssel nur ohne Steam.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: MOD-001
@@ -620,9 +623,11 @@ tasks:
   - 'Server lehnt Bereit bei Mismatch ab (Test)'
   implementation: implemented
   verification: tests_passed
-  integration: not_submitted
+  integration: ready_for_human_review
   branch: feat/lobby-hardening
-  evidence: []
+  evidence:
+  - docs/verification/2026-10-15-lobby-hardening.md
+  - docs/reviews/2026-10-15-lobby-hardening.md
   blocker: 'Manifest, Vergleich, Ready-Sperre und Mod-Listen-Anfrage automatisiert geprüft (.NET-8-Harness); Mod gebaut. Offen: Prüfung mit zwei echten RimWorld-Clients (gleiche/abweichende Mods, Unterschiede-Fenster).'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: START-001
@@ -643,9 +648,11 @@ tasks:
   - 'Lobby-Sperre, Abbruch und keine Host-Migration während der Einrichtung getestet'
   implementation: implemented
   verification: tests_passed
-  integration: not_submitted
+  integration: ready_for_human_review
   branch: feat/lobby-hardening
-  evidence: []
+  evidence:
+  - docs/verification/2026-10-15-lobby-hardening.md
+  - docs/reviews/2026-10-15-lobby-hardening.md
   blocker: 'Startbedingungen, Sperre, Abbruch und Host-Verlassen automatisiert geprüft (.NET-8-Harness); Mod gebaut. Die Einrichtungsseiten selbst folgen mit SETUP-001: nach dem Start zeigt die Mod eine ehrliche Einrichtungsansicht mit Abbrechen. Spieltest mit zwei Clients offen.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: XFER-001
@@ -667,9 +674,11 @@ tasks:
   - 'Wiederaufnahme nach verlorenem Ack getestet'
   implementation: implemented
   verification: tests_passed
-  integration: not_submitted
+  integration: ready_for_human_review
   branch: feat/lobby-hardening
-  evidence: []
+  evidence:
+  - docs/verification/2026-10-15-lobby-hardening.md
+  - docs/reviews/2026-10-15-lobby-hardening.md
   blocker: 'TCP-Relay mit 50 MB, Fensterbegrenzung und Abbruch automatisiert geprüft (.NET-8-Harness). Steam-P2P-Lauf im Spiel offen. Wiederaufnahme nach Verbindungsabbruch nicht umgesetzt: Abbruch und Neustart der Übertragung.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: SETUP-001
