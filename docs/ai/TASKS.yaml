@@ -645,25 +645,49 @@ tasks:
 - id: XFER-001
   title: 'Chunk-Kanal für große Übertragungen'
   goal: 'Große Dateien (Manifest, Welt, Spielstand) geordnet, hashgeprüft und mit Gegendruck übertragen.'
-  description: 'Plan §6.4; lokale Roadmap S4 (Teil).'
+  description: 'Plan §6.4; lokale Roadmap S4 (Teil). Design ADR 0014, Grundlage ADR 0013 (Steam-Listen-Host).'
   priority: critical
   components:
   - protocol
   - network_core
-  - dedicated_server
+  - listen_host
   - steam_p2p
   depends_on:
   - NET-001
   - STEAM-001
+  scope:
+  - src/Multiplayer.Foundation.Protocol/
+  - src/Multiplayer.Foundation.Network/TransferSender.cs
+  - src/Multiplayer.Foundation.Network/TransferReceiver.cs
+  - src/Multiplayer.Foundation.Hosting/TransferRelay.cs
+  - src/Multiplayer.Foundation.Hosting/FoundationServer.cs
+  - tests/Protocol.Tests/
+  - tests/Network.Tests/
+  - tests/Hosting.Tests/
+  - docs/
+  non_goals:
+  - 'Nutzung im Spiel (Fortschrittsanzeige, Welt-/Spielstandübertragung): kommt mit MOD-001, SETUP-002, SETUP-005'
+  - Kompression, Fortsetzen nach Verbindungsabbruch, mehrere ausgehende Übertragungen je Absender
   acceptance:
   - '50-MB-Nutzlast über TCP und Steam P2P mit gleichem SHA-256'
   - 'Gegendruck hält die Steam-Empfangsqueue unter 1 MiB'
   - 'Wiederaufnahme nach verlorenem Ack getestet'
-  implementation: planned
-  verification: not_tested
-  integration: not_submitted
-  branch: null
-  evidence: []
+  test_strategy: 'Protokollgrenzen; Zustandsmaschinen mit Fehlereinspeisung und virtueller Uhr; Relay über ListenHost mit TCP- und Steam-ähnlichem Gast (1-MiB-Queue, 512-KiB-Sendepuffer, Pump 8 Nachrichten/16 ms); Gegenprobe mit dem Plan-Fenster 32.'
+  risks:
+  - 'Echtes Steam P2P nicht getestet; Steam-Sendepuffer 512 KB nur laut Dokumentation (WAHRSCHEINLICH)'
+  - 'Wire-Version 3 und Nachrichtencodes 20–23 können mit parallel entwickelten Meilensteinen kollidieren'
+  - 'Empfänger reserviert die angekündigte Länge (bis 256 MiB für Spielstände)'
+  implementation: implemented
+  verification: tests_passed
+  integration: ready_for_human_review
+  branch: feat/chunk-transfer
+  base_branch: docs/full-multiplayer-plan
+  base_commit: 1e5a529
+  evidence:
+  - docs/verification/2026-10-15-chunk-transfer.md
+  - docs/decisions/0014-chunk-transfer-channel.md
+  - docs/decisions/0013-steam-listen-host-basis.md
+  blocker: 'Abnahme „über Steam P2P“ nur mit Steam-Nachbildung erfüllt; echter Test mit zwei Steam-Konten offen.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: SETUP-001
   title: 'Host-Seiten-Hooks und Setup-Ansicht der Clients'

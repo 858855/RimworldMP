@@ -65,6 +65,58 @@ await Run("lobby chat payload and limits", () =>
     Throws<ProtocolException>(() => LobbyPayloads.ReadChatRequest(new byte[] { 0, 1, 10 }));
     return Task.CompletedTask;
 });
+await Run("transfer payloads and limits", () =>
+{
+    Equal((byte)3, FrameCodec.Version);
+    byte[] hash = new byte[32]; hash[0] = 7;
+    Guid id = Guid.NewGuid(), peer = Guid.NewGuid();
+    ulong length = 3UL * TransferPayloads.ChunkSize + 5;
+    Equal(4u, TransferPayloads.ChunkCountFor(length));
+    Equal(1u, TransferPayloads.ChunkCountFor(1));
+    Equal(2u, TransferPayloads.ChunkCountFor(2UL * TransferPayloads.ChunkSize));
+    Equal(TransferPayloads.ChunkSize, TransferPayloads.ChunkLength(length, 0));
+    Equal(5, TransferPayloads.ChunkLength(length, 3));
+    Throws<ProtocolException>(() => TransferPayloads.ChunkLength(length, 4));
+
+    TransferBegin begin = TransferPayloads.ReadBegin(TransferPayloads.Begin(
+        new TransferBegin(id, TransferKind.World, peer, length, 4, hash)));
+    Equal(id, begin.TransferId); Equal(TransferKind.World, begin.Kind); Equal(peer, begin.Peer);
+    Equal(length, begin.TotalLength); Equal(4u, begin.ChunkCount); Equal((byte)7, begin.Sha256[0]);
+    Equal(peer, begin.WithPeer(peer).Peer);
+
+    Throws<ProtocolException>(() => TransferPayloads.Begin(new TransferBegin(id, TransferKind.World, peer, 0, 0, hash)));
+    Throws<ProtocolException>(() => TransferPayloads.Begin(new TransferBegin(id, TransferKind.World, peer, length, 3, hash)));
+    Throws<ProtocolException>(() => TransferPayloads.Begin(new TransferBegin(id, TransferKind.World, peer, length, 4, new byte[31])));
+    Throws<ProtocolException>(() => TransferPayloads.Begin(new TransferBegin(Guid.Empty, TransferKind.World, peer, length, 4, hash)));
+    Throws<ProtocolException>(() => TransferPayloads.Begin(new TransferBegin(id, (TransferKind)9, peer, length, 4, hash)));
+    ulong manifestLimit = TransferPayloads.MaximumLength(TransferKind.ModManifest);
+    Throws<ProtocolException>(() => TransferPayloads.Begin(new TransferBegin(id, TransferKind.ModManifest, peer,
+        manifestLimit + 1, TransferPayloads.ChunkCountFor(manifestLimit + 1), hash)));
+    TransferPayloads.Begin(new TransferBegin(id, TransferKind.ModManifest, peer, manifestLimit,
+        TransferPayloads.ChunkCountFor(manifestLimit), hash));
+
+    byte[] data = new byte[TransferPayloads.ChunkSize]; data[^1] = 9;
+    TransferChunk chunk = TransferPayloads.ReadChunk(TransferPayloads.Chunk(new TransferChunk(id, 2, data)));
+    Equal(id, chunk.TransferId); Equal(2u, chunk.Index); Equal(TransferPayloads.ChunkSize, chunk.Data.Length); Equal((byte)9, chunk.Data[^1]);
+    Throws<ProtocolException>(() => TransferPayloads.Chunk(new TransferChunk(id, 0, new byte[TransferPayloads.ChunkSize + 1])));
+    Throws<ProtocolException>(() => TransferPayloads.Chunk(new TransferChunk(id, 0, Array.Empty<byte>())));
+    var oversized = new PayloadWriter(); oversized.WriteGuid(id); oversized.WriteUInt32(0); oversized.WriteUInt32(TransferPayloads.ChunkSize + 1);
+    Throws<ProtocolException>(() => TransferPayloads.ReadChunk(oversized.ToArray()));
+    // A full chunk frame fits the 64 KiB frame body and Steam's per-message limit.
+    Equal(true, FrameCodec.MinimumBodyLength + TransferPayloads.Chunk(new TransferChunk(id, 0, data)).Length <= FrameCodec.MaximumBodyLength);
+
+    var ack = TransferPayloads.ReadAck(TransferPayloads.Ack(id, 42));
+    Equal(id, ack.TransferId); Equal(42u, ack.Received);
+    Throws<ProtocolException>(() => TransferPayloads.ReadAck(TransferPayloads.Ack(id, 1).Concat(new byte[] { 0 }).ToArray()));
+    TransferAbort abort = TransferPayloads.ReadAbort(TransferPayloads.Abort(new TransferAbort(id, TransferAbortCode.PeerLeft, "gone")));
+    Equal(TransferAbortCode.PeerLeft, abort.Code); Equal("gone", abort.Reason);
+    var badCode = new PayloadWriter(); badCode.WriteGuid(id); badCode.WriteByte(99); badCode.WriteString("x");
+    Throws<ProtocolException>(() => TransferPayloads.ReadAbort(badCode.ToArray()));
+    Equal(id, TransferPayloads.ReadTransferId(TransferPayloads.Ack(id, 0)));
+    // Plan §6.4 asked for 32 chunks in flight; that would exceed SteamPeerStream's 1 MiB queue (ADR 0014).
+    Equal(true, (TransferPayloads.MaximumWindowChunks * (TransferPayloads.ChunkSize + 64)) < 512 * 1024);
+    return Task.CompletedTask;
+});
 Console.WriteLine($"PASS: {passed} protocol test groups");
 
 async Task Run(string name, Func<Task> body)

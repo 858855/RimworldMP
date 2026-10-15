@@ -8,6 +8,8 @@
 > - **Target game:** RimWorld **1.6.4871** (Unity/Mono). Not 1.7 / Waylith.
 > - **Location:** `docs/plans/rimworldmp-full-plan.md` in the GitHub repo. A copy lives in the planning repo `E:\claude` at `docs/design/`; that copy supersedes its earlier `new-game-setup.md`, now Parts A and B below.
 > - **Task register:** every milestone in §10 has an entry with the same ID in `docs/ai/TASKS.yaml` (status `planned`).
+> - **Owner decision 2026-10-15 (ADR 0013):** full multiplayer runs on the **Steam listen host with invites**, not on the dedicated server. Read every "server" below as the `FoundationServer` embedded in the host's game. Dedicated-server rows and host migration are out of scope.
+> - **Correction (ADR 0014, XFER-001):** §6.4's window of 32 chunks would overflow Steam's send buffer and `SteamPeerStream`'s 1 MiB queue. The implemented window is 6 chunks, acknowledged after every chunk.
 
 ---
 
@@ -283,8 +285,8 @@ stateDiagram-v2
 ### 6.4 Chunk channel (shared by manifest, world, game and join snapshots)
 
 - One transfer at a time per lobby. Frames are ≤ 60 KiB (the frame limit is 64 KiB [V]).
-- `TransferBegin` → `TransferChunk` × n → the receiver sends `TransferAck(highest index)` every 16 chunks.
-- The sender keeps at most 32 chunks unacknowledged. This back-pressure is needed for Steam's 1 MiB receive queue [V].
+- `TransferBegin` → `TransferChunk` × n → the receiver sends `TransferAck(count)` after **every** chunk it has consumed (implemented, ADR 0014).
+- The sender keeps at most **6** chunks unacknowledged (≈ 360 KiB). The originally planned 32 (≈ 1.9 MiB) overflows Steam's send buffer and the 1 MiB receive queue [V, tested].
 - Size caps: manifest 4 MiB, world 64 MiB, game or snapshot 256 MiB [A].
 - The server relays chunks and keeps no full copy. For joins it keeps a copy only until the joiner has acknowledged all chunks.
 - SHA-256 of the whole file is checked at the end; a mismatch means retry once, then abort.

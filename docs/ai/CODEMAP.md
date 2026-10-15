@@ -2,7 +2,7 @@
 
 | Pfad | Aufgabe / Einstieg | Zugehörige Prüfung | Stand |
 |---|---|---|---|
-| `src/Multiplayer.Foundation.Protocol/FrameCodec.cs` | Wire-Version 2, TCP-Frames lesen/schreiben, Limit 64 KiB | `tests/Protocol.Tests/Program.cs` | implementiert, getestet |
+| `src/Multiplayer.Foundation.Protocol/FrameCodec.cs` | Wire-Version 3, TCP-Frames lesen/schreiben, Limit 64 KiB | `tests/Protocol.Tests/Program.cs` | implementiert, getestet |
 | `src/Multiplayer.Foundation.Protocol/PayloadCodec.cs` | Strikte binäre Feldkodierung, UTF-8 und GUID | `tests/Protocol.Tests/Program.cs` | implementiert, getestet |
 | `src/Multiplayer.Foundation.Protocol/MessageType.cs`, `WireMessage.cs` | Nachrichtentypen und Envelope | `tests/Protocol.Tests/Program.cs` | implementiert, getestet |
 | `src/Multiplayer.Foundation.Protocol/LobbyPayloads.cs` | Typisierte Lobby-Snapshots, Listen und begrenzte Chat-Payloads | `tests/Lobby.Tests/Program.cs`, `Protocol.Tests` | Roundtrip und Grenzen getestet |
@@ -17,6 +17,9 @@
 | `src/Multiplayer.Foundation.Lobby/LobbyRegistry.cs` | Autoritativer In-Memory-Zustand, Rechte, Revisionen und Chat-Empfängerliste | `tests/Lobby.Tests/Program.cs`, `Integration.Tests` | Domänenkern und TCP-Anbindung getestet |
 | `src/Multiplayer.Foundation.Hosting/FoundationServer.cs`, `HostConfig.cs` | Gemeinsamer Dual-Stack-TCP-Listener (`::`) sowie Aufnahme externer Streams; Sitzungen, Chat-Routing und Heartbeat | `tests/Integration.Tests/Program.cs`, `Hosting.Tests` | 18 Server- und acht Host-Gruppen bestanden |
 | `src/Multiplayer.Foundation.Hosting/UpnpPortMapping.cs`, `NetworkAddresses.cs` | UPnP-Portfreigabe am Router (SSDP Multicast + Gateway-Unicast, SOAP), externe IP, CGNAT-Erkennung, teilbare LAN/VPN/IPv6-Adressen | `tests/Hosting.Tests/` mit `FakeGateway.cs` | Fake-Gateway-Test bestanden, SSDP gegen echte FRITZ!Box nur lesend |
+| `src/Multiplayer.Foundation.Protocol/TransferPayloads.cs` | Chunk-Kanal: Nutzdaten, Chunkgröße, Fenster, Größengrenzen je Art | `tests/Protocol.Tests/Program.cs` | getestet |
+| `src/Multiplayer.Foundation.Network/TransferSender.cs`, `TransferReceiver.cs` | Zustandsmaschinen für Senden/Empfangen ohne Threads; Fenster, Go-Back-N, SHA-256 | `tests/Network.Tests/Program.cs` | Fehlereinspeisung getestet |
+| `src/Multiplayer.Foundation.Hosting/TransferRelay.cs` | Relay im eingebetteten Server: Empfängerprüfung, Fenstergrenze, Minimum-Bestätigung, Abbruch bei Abgang | `tests/Hosting.Tests/Program.cs`, `SteamLikeLink.cs` | 50 MB über TCP und Steam-Nachbildung |
 | `src/Multiplayer.Foundation.Network/HostEndpoint.cs` | Server-Feld `host`, `host:port`, `[v6]:port` parsen | `tests/Network.Tests/Program.cs` | getestet |
 | `src/Multiplayer.Foundation.Hosting/ListenHost.cs` | Integrierten Host starten, Host-Client verbinden und Lobby anlegen | `tests/Hosting.Tests/Program.cs` | vier Gruppen bestanden |
 | `src/Multiplayer.Foundation.Server/ServerConfig.cs`, `Program.cs` | JSON-Konfiguration, Serverstart und SIGTERM/Strg+C-Shutdown | Integrationstests/Mehrprozess-Test | getestet |

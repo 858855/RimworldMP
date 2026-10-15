@@ -12,6 +12,7 @@ public sealed class FoundationServer : IAsyncDisposable
 {
     private readonly HostConfig config;
     private readonly LobbyRegistry lobbies;
+    private readonly TransferRelay transfers = new();
     private readonly ConcurrentDictionary<Guid, Peer> peers = new();
     private readonly ConcurrentDictionary<Guid, Task> peerTasks = new();
     private readonly CancellationTokenSource stopping = new();
@@ -26,6 +27,7 @@ public sealed class FoundationServer : IAsyncDisposable
     }
     public int BoundPort => listener == null ? 0 : ((IPEndPoint)listener.LocalEndpoint).Port;
     public int ConnectedClients => peers.Count;
+    public int ActiveTransfers => transfers.ActiveTransfers;
     public bool AcceptsIPv4 { get; private set; }
     public bool AcceptsIPv6 { get; private set; }
 
@@ -177,11 +179,17 @@ public sealed class FoundationServer : IAsyncDisposable
             {
                 peers.TryRemove(sessionId, out _);
                 LobbyChange? change = lobbies.RemoveMember(sessionId);
-                if (change?.State != null && !serverToken.IsCancellationRequested)
+                var gone = transfers.PeerGone(sessionId);
+                if (!serverToken.IsCancellationRequested)
                 {
-                    try { await PublishAsync(change, MessageType.PlayerLeft, serverToken).ConfigureAwait(false); }
+                    try
+                    {
+                        if (change?.State != null) await PublishAsync(change, MessageType.PlayerLeft, serverToken).ConfigureAwait(false);
+                        await DeliverAsync(gone, serverToken).ConfigureAwait(false);
+                    }
                     catch (IOException) { }
                     catch (ObjectDisposedException) { }
+                    catch (OperationCanceledException) { }
                 }
             }
             Interlocked.Decrement(ref pendingConnections);
@@ -219,6 +227,7 @@ public sealed class FoundationServer : IAsyncDisposable
             case MessageType.LeaveLobby:
                 RequireEmpty(message.Payload);
                 await PublishAsync(lobbies.Leave(peer.Id), MessageType.PlayerLeft, token).ConfigureAwait(false);
+                await DeliverAsync(transfers.PeerGone(peer.Id), token).ConfigureAwait(false);
                 await peer.Connection.SendAsync(new WireMessage(MessageType.LeaveLobby, message.RequestId, Array.Empty<byte>()), token).ConfigureAwait(false);
                 break;
             case MessageType.PlayerReadyChanged:
@@ -228,6 +237,8 @@ public sealed class FoundationServer : IAsyncDisposable
             case MessageType.CloseLobby:
                 RequireEmpty(message.Payload);
                 LobbyChange closed = lobbies.Close(peer.Id);
+                foreach (Guid member in closed.Recipients)
+                    await DeliverAsync(transfers.PeerGone(member), token).ConfigureAwait(false);
                 foreach (Guid recipient in closed.Recipients)
                     if (peers.TryGetValue(recipient, out Peer? target))
                         await target.Connection.SendAsync(new WireMessage(MessageType.LeaveLobby,
@@ -246,6 +257,22 @@ public sealed class FoundationServer : IAsyncDisposable
                         }
                         catch (IOException) { chatTarget.Connection.Dispose(); }
                         catch (ObjectDisposedException) { }
+                break;
+            case MessageType.TransferBegin:
+                TransferBegin begin = TransferPayloads.ReadBegin(message.Payload);
+                IReadOnlyList<Guid> members;
+                try { members = lobbies.ChatRecipients(peer.Id).Recipients; }
+                catch (LobbyRuleException) { members = Array.Empty<Guid>(); }
+                await DeliverAsync(transfers.Begin(peer.Id, begin, members), token).ConfigureAwait(false);
+                break;
+            case MessageType.TransferChunk:
+                await DeliverAsync(transfers.Chunk(peer.Id, message), token).ConfigureAwait(false);
+                break;
+            case MessageType.TransferAck:
+                await DeliverAsync(transfers.Ack(peer.Id, message), token).ConfigureAwait(false);
+                break;
+            case MessageType.TransferAbort:
+                await DeliverAsync(transfers.Abort(peer.Id, message), token).ConfigureAwait(false);
                 break;
             default: throw new ProtocolException("Message not valid in current state.");
         }
@@ -270,6 +297,17 @@ public sealed class FoundationServer : IAsyncDisposable
                 await target.Connection.SendAsync(new WireMessage(MessageType.LobbyStateUpdate,
                     recipient == change.Actor ? actorRequestId : 0, state), token).ConfigureAwait(false);
             }
+            catch (IOException) { target.Connection.Dispose(); }
+            catch (ObjectDisposedException) { }
+        }
+    }
+
+    private async Task DeliverAsync(IReadOnlyList<(Guid To, WireMessage Message)> outgoing, CancellationToken token)
+    {
+        foreach (var (to, message) in outgoing)
+        {
+            if (!peers.TryGetValue(to, out Peer? target)) continue;
+            try { await target.Connection.SendAsync(message, token).ConfigureAwait(false); }
             catch (IOException) { target.Connection.Dispose(); }
             catch (ObjectDisposedException) { }
         }

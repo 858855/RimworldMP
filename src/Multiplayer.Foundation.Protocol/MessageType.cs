@@ -20,6 +20,10 @@ namespace Multiplayer.Foundation.Protocol
         Error = 16,
         CloseLobby = 17,
         LobbyChatRequest = 18,
-        LobbyChatMessage = 19
+        LobbyChatMessage = 19,
+        TransferBegin = 20,
+        TransferChunk = 21,
+        TransferAck = 22,
+        TransferAbort = 23
     }
 }

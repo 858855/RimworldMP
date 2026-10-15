@@ -1,10 +1,10 @@
-# Protokoll 0.1 – Wire-Version 2
+# Protokoll – Wire-Version 3
 
 **Implementierungsstand:** Framing und Nutzdaten-Helfer auf `feat/network-protocol`; Server- und Lobby-Semantik sind auf `feat/dedicated-server` implementiert und per TCP getestet. Kein Gameplay-Sync.
 
 ## Frame
 
-Alle Ganzzahlen sind Big Endian. Vier Bytes geben die Body-Länge an (`6..65536`). Der Body enthält `version:u8` (=2), `type:u8`, `requestId:u32` und danach `payload`. TCP-Lesevorgänge dürfen Frames beliebig fragmentieren oder zusammenfassen. Ein einzelner Request erhält eine vom Client gewählte ID; Push-Nachrichten verwenden ID 0. Unbekannte Versionen und Typen werden abgelehnt. Version 2 ist wegen Chat-Nachrichten nicht mit älteren Version-1-Clients/Servern kombinierbar.
+Alle Ganzzahlen sind Big Endian. Vier Bytes geben die Body-Länge an (`6..65536`). Der Body enthält `version:u8` (=3), `type:u8`, `requestId:u32` und danach `payload`. TCP-Lesevorgänge dürfen Frames beliebig fragmentieren oder zusammenfassen. Ein einzelner Request erhält eine vom Client gewählte ID; Push-Nachrichten verwenden ID 0. Unbekannte Versionen und Typen werden abgelehnt. Version 2 brachte Chat-Nachrichten, Version 3 den Chunk-Kanal; Versionen sind untereinander nicht kombinierbar.
 
 Strings sind `length:u16` plus strikt gültige UTF-8-Bytes. Allgemeine Strings: höchstens 256 Bytes. Namen werden zusätzlich fachlich auf 1–40 Zeichen und Steuerzeichen geprüft. GUIDs sind 16 Bytes in kanonischer Netzwerkreihenfolge. Listen- und Spieler-Counts sind `u8`; Payloads müssen vollständig gelesen werden, zusätzliche Bytes sind Fehler.
 
@@ -28,6 +28,10 @@ Strings sind `length:u16` plus strikt gültige UTF-8-Bytes. Allgemeine Strings: 
 | 17 | CloseLobby | C→S | leer; nur Host |
 | 18 | LobbyChatRequest | C→S | Text, höchstens 512 UTF-8-Bytes |
 | 19 | LobbyChatMessage | S→C | Lobby-ID, Sender-Session-ID, serverseitiger Spielername, Text |
+| 20 | TransferBegin | beide | Transfer-ID, Art `u8`, Gegenstelle, Länge `u64`, Chunkzahl `u32`, SHA-256 (32 Byte) |
+| 21 | TransferChunk | beide | Transfer-ID, Index `u32`, Daten (`u32`-Länge, höchstens 61 440 Byte) |
+| 22 | TransferAck | beide | Transfer-ID, Anzahl lückenlos verarbeiteter Chunks `u32` |
+| 23 | TransferAbort | beide | Transfer-ID, Grund `u8`, Text |
 
 Listen- und Zustandsupdates sind in `LobbyPayloads.cs` kodiert: Liste mit `count:u8`, je Lobby GUID, Name, Hostname, Spielerzahl und Kapazität; Snapshot mit GUID, Name, Host-GUID, Revision `u64`, Kapazität und Spielerarray (GUID, Name, Ready). Der TCP-Server verwendet diese Payloads; zwei unabhängige TCP-Testclients bestanden die Integrationstests. RimWorld-Client-Kompatibilität ist noch offen. Fehlercodes: `1=InvalidMessage`, `2=VersionMismatch`, `3=Unauthorized`, `4=NotFound`, `5=Capacity`, `6=InvalidState`, `7=ServerBusy`.
 
@@ -38,3 +42,7 @@ Listen- und Zustandsupdates sind in `LobbyPayloads.cs` kodiert: Liste mit `count
 Der unabhängige `LobbyClient` beantwortet `Ping` automatisch mit derselben Nonce und reicht andere Nachrichten an die Spiel-UI weiter. Die UI verwirft ältere Lobby-Revisionen. Ohne TLS und Authentifizierung ausschließlich kontrollierte LAN-/Testnetze. Siehe ADR 0003 und `docs/SPEC.md`.
 
 Chat-Anfragen sind nur für Mitglieder einer Lobby gültig. Der Server bestimmt Sender-ID und Namen aus der authentisierten Sitzung und sendet die Meldung ausschließlich an die Mitglieder dieser Lobby. Leere Texte, Steuerzeichen, ungültiges UTF-8 und mehr als 512 UTF-8-Bytes werden abgelehnt. Der Chat wird weder auf dem Server noch im Spielstand gespeichert; die UI hält nur die letzten 50 Meldungen. Steam-, Direkt-TCP- und Dedicated-Server-Modus verwenden dasselbe Format. Siehe ADR 0011.
+
+## Chunk-Kanal (Wire-Version 3)
+
+Große Daten (Mod-Manifest bis 4 MiB, Welt bis 64 MiB, Spielstand und Snapshot bis 256 MiB) gehen in Chunks zu 61 440 Byte; die Chunkzahl ist ⌈Länge / 61 440⌉. Ein Absender hat höchstens 6 unbestätigte Chunks unterwegs; der Server bricht ab Index „bestätigt + 8“ ab. In `TransferBegin` nennt der Absender den Empfänger (`Guid.Empty` = alle anderen Lobbymitglieder); der Server ersetzt das Feld beim Weiterleiten durch die serverseitige Session-ID des Absenders. Empfänger bestätigen erst nach Verarbeitung, die letzte Bestätigung erst nach erfolgreicher SHA-256-Prüfung. Der Server meldet dem Absender nach jeder Bestätigung das Minimum über alle Empfänger. Abbruchgründe: `1=Rejected`, `2=Cancelled`, `3=HashMismatch`, `4=Timeout`, `5=PeerLeft`, `6=InvalidData`. Verletzungen der Transfer-Regeln beenden nur die Übertragung, nicht die Verbindung. Siehe ADR 0014.

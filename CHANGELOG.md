@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Chunk-Kanal (Arbeitsbranch `feat/chunk-transfer`, XFER-001)
+
+- Große Daten wie Welt und Spielstand lassen sich jetzt zwischen Lobbymitgliedern übertragen: in Stücken, mit SHA-256-Prüfung und mit Gegendruck. Ein Steam-Gast kann dadurch nicht überlaufen. Das ist die Grundlage für Weltübertragung, Spielstart und späteren Beitritt; im Spiel wird es noch nicht genutzt.
+- Gegenüber dem Gesamtplan ist das Fenster kleiner (6 statt 32 Stücke). Die Plan-Zahl hätte Steam-Verbindungen abbrechen lassen; eine Gegenprobe im Test bestätigt das. Begründung in ADR 0014.
+- Entscheidung des Benutzers: Der vollständige Multiplayer baut auf dem Steam-Listen-Host mit Einladung auf, nicht auf dem Dedicated Server (ADR 0013).
+- Wire-Version 3: Beide Spieler brauchen denselben Build.
+
 ### Gesamtplan (Arbeitsbranch `docs/full-multiplayer-plan`)
 
 - Neuer Planentwurf `docs/plans/rimworldmp-full-plan.md`: Mod- und Ladereihenfolgeprüfung in der Lobby, Start-Knopf, gemeinsame Spieleinrichtung mit Weltübertragung, Startort-Abstimmung und Charakterwahl, deterministische Lockstep-Gameplay-Synchronisation, Speichern/Beitritt/Reconnect, Desync-Erkennung und -Reparatur, öffentliche Sync-API sowie Meilensteine bis 1.0. Keine Funktionsänderung; die 35 Meilensteine in `TASKS.yaml` stehen auf `planned`, `PLAN-001` selbst wartet auf Review.

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using Multiplayer.Foundation.Hosting;
 using Multiplayer.Foundation.Network;
 using Multiplayer.Foundation.Protocol;
@@ -117,6 +118,153 @@ await using (var refusing = FakeGateway.Start(new List<string>(), "203.0.113.9",
     }
 }
 Console.WriteLine("PASS: UPnP port mapping against fake internet gateway");
+
+// XFER-001: chunk transfers through the embedded listen host, the Steam-invite model of ADR 0013.
+await using (var room = await ListenHost.StartAsync("127.0.0.1", 0, "Host", "Transfer Room", 4))
+{
+    LobbyView roomState = LobbyPayloads.ReadState((await ReceiveAsync(room.Client, MessageType.LobbyStateUpdate)).Payload);
+    using LobbyClient tcpGuest = await LobbyClient.ConnectAsync("127.0.0.1", room.Port, "TcpGuest", TimeSpan.FromSeconds(4));
+    using var steam = new SteamLikeLink();
+    Assert(room.AttachConnection(NetworkConnection.FromDuplexStream(steam.A)), "host accepts Steam-like guest");
+    using LobbyClient steamGuest = await LobbyClient.ConnectOverStreamAsync(steam.B, "SteamGuest", TimeSpan.FromSeconds(4));
+    foreach (LobbyClient member in new[] { tcpGuest, steamGuest })
+    {
+        await member.SendAsync(MessageType.JoinLobby, 2, LobbyPayloads.GuidValue(roomState.Id));
+        await ReceiveAsync(member, MessageType.LobbyStateUpdate);
+    }
+
+    byte[] big = new byte[50 * 1024 * 1024];
+    new Random(42).NextBytes(big);
+    string expected = Convert.ToHexString(SHA256.HashData(big));
+    var clock = System.Diagnostics.Stopwatch.StartNew();
+    byte[][] overTcp = await TransferAsync(room.Client, new[] { tcpGuest }, tcpGuest.SessionId, big, framePaced: false);
+    Assert(Convert.ToHexString(SHA256.HashData(overTcp[0])) == expected, "TCP copy has the same SHA-256");
+    Console.WriteLine($"PASS: 50 MB host to guest over TCP via the listen host, SHA-256 equal ({clock.Elapsed.TotalSeconds:F1} s)");
+
+    clock.Restart();
+    byte[][] overSteam = await TransferAsync(room.Client, new[] { steamGuest }, steamGuest.SessionId, big, framePaced: true);
+    Assert(Convert.ToHexString(SHA256.HashData(overSteam[0])) == expected, "Steam-like copy has the same SHA-256");
+    Assert(steam.Failure == null, "Steam-like link survived: " + steam.Failure);
+    Assert(steam.MaxReceiveQueueBytes < SteamLikeLink.ReceiveQueueBytes, "receive queue stayed under 1 MiB");
+    Assert(steam.MaxSendBufferBytes <= SteamLikeLink.SendBufferBytes, "send buffer never overflowed");
+    Console.WriteLine($"PASS: 50 MB over Steam-like P2P, SHA-256 equal; peak send buffer {steam.MaxSendBufferBytes / 1024} of " +
+        $"{SteamLikeLink.SendBufferBytes / 1024} KiB, peak receive queue {steam.MaxReceiveQueueBytes / 1024} of " +
+        $"{SteamLikeLink.ReceiveQueueBytes / 1024} KiB ({clock.Elapsed.TotalSeconds:F1} s)");
+
+    byte[] world = big.AsSpan(0, 8 * 1024 * 1024).ToArray();
+    byte[][] fanOut = await TransferAsync(room.Client, new[] { tcpGuest, steamGuest }, Guid.Empty, world, framePaced: true);
+    Assert(fanOut.All(copy => copy.AsSpan().SequenceEqual(world)), "both recipients received identical bytes");
+    Assert(steam.Failure == null, "Steam-like link survived the fan-out");
+    Console.WriteLine("PASS: one transfer reaches TCP and Steam-like recipients; the slowest sets the pace");
+
+    // A recipient leaves mid-transfer: the sender is told, nothing hangs.
+    var leaving = new TransferSender(TransferKind.World, tcpGuest.SessionId, world);
+    await SendAllAsync(room.Client, leaving.Start(Environment.TickCount64));
+    TransferReceiver? partial = null;
+    using (var leaveDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(20)))
+    {
+        while (partial == null || partial.ReceivedChunks < 3)
+        {
+            leaveDeadline.Token.ThrowIfCancellationRequested();
+            while (tcpGuest.TryDequeue(out WireMessage? message) && message != null)
+            {
+                if (message.Type == MessageType.TransferBegin) partial = new TransferReceiver(TransferPayloads.ReadBegin(message.Payload));
+                else if (partial != null && partial.Owns(message)) await SendAllAsync(tcpGuest, partial.Handle(message));
+            }
+            while (room.Client.TryDequeue(out WireMessage? message) && message != null)
+                if (leaving.Owns(message)) await SendAllAsync(room.Client, leaving.Handle(message, Environment.TickCount64));
+            await Task.Delay(1, leaveDeadline.Token);
+        }
+    }
+    await tcpGuest.SendAsync(MessageType.LeaveLobby, 3, Array.Empty<byte>());
+    TransferAbort peerLeft = await ReceiveAbortAsync(room.Client, leaving.TransferId);
+    Assert(peerLeft.Code == TransferAbortCode.PeerLeft, "sender learns that the recipient left");
+    TransferAbort notMember = await StartAndExpectAbortAsync(room.Client, new TransferSender(TransferKind.World, tcpGuest.SessionId, world));
+    Assert(notMember.Code == TransferAbortCode.Rejected && notMember.Reason.Contains("not in your lobby"), "recipient outside the lobby rejected");
+    TransferAbort noLobby = await StartAndExpectAbortAsync(tcpGuest, new TransferSender(TransferKind.World, Guid.Empty, world));
+    Assert(noLobby.Code == TransferAbortCode.Rejected, "sender outside any lobby rejected");
+    Console.WriteLine("PASS: leaving mid-transfer aborts for the sender; senders and recipients outside the lobby are rejected");
+
+    // A misbehaving sender cannot push past the window, and gets only one outgoing transfer at a time.
+    await tcpGuest.SendAsync(MessageType.JoinLobby, 4, LobbyPayloads.GuidValue(roomState.Id));
+    await ReceiveAsync(tcpGuest, MessageType.LobbyStateUpdate);
+    Guid rogue = Guid.NewGuid();
+    ulong rogueLength = 20UL * TransferPayloads.ChunkSize;
+    await room.Client.SendAsync(MessageType.TransferBegin, 0, TransferPayloads.Begin(new TransferBegin(rogue, TransferKind.World,
+        tcpGuest.SessionId, rogueLength, TransferPayloads.ChunkCountFor(rogueLength), new byte[32])));
+    for (uint index = 0; index <= TransferPayloads.MaximumWindowChunks; index++)
+        await room.Client.SendAsync(MessageType.TransferChunk, 0, TransferPayloads.Chunk(
+            new TransferChunk(rogue, index, new byte[TransferPayloads.ChunkSize])));
+    TransferAbort overrun = await ReceiveAbortAsync(room.Client, rogue);
+    Assert(overrun.Code == TransferAbortCode.Rejected && overrun.Reason.Contains("window"), "window overrun rejected");
+    var first = new TransferSender(TransferKind.World, tcpGuest.SessionId, world);
+    await SendAllAsync(room.Client, first.Start(Environment.TickCount64).Take(1));
+    TransferAbort second = await StartAndExpectAbortAsync(room.Client, new TransferSender(TransferKind.World, tcpGuest.SessionId, world));
+    Assert(second.Reason.Contains("still running"), "second concurrent transfer from one sender rejected");
+    await SendAllAsync(room.Client, first.Cancel("test done"));
+    Console.WriteLine("PASS: server rejects a window overrun and a second concurrent transfer");
+}
+
+static async Task<byte[][]> TransferAsync(LobbyClient from, LobbyClient[] to, Guid recipient, byte[] data, bool framePaced)
+{
+    using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(120));
+    var sender = new TransferSender(TransferKind.Game, recipient, data);
+    Task<byte[]>[] receiving = to.Select(client => ReceiveTransferAsync(client, framePaced, deadline.Token)).ToArray();
+    await SendAllAsync(from, sender.Start(Environment.TickCount64));
+    while (sender.State == TransferState.Active)
+    {
+        deadline.Token.ThrowIfCancellationRequested();
+        bool idle = true;
+        while (from.TryDequeue(out WireMessage? message) && message != null)
+            if (sender.Owns(message)) { idle = false; await SendAllAsync(from, sender.Handle(message, Environment.TickCount64)); }
+        await SendAllAsync(from, sender.Poll(Environment.TickCount64));
+        if (idle) await Task.Delay(1, deadline.Token);
+    }
+    Assert(sender.State == TransferState.Completed, "sender completed: " + sender.Failure?.Reason);
+    return await Task.WhenAll(receiving);
+}
+
+// Like the game: drain the client queue once per frame, acknowledge only what was consumed.
+static async Task<byte[]> ReceiveTransferAsync(LobbyClient client, bool framePaced, CancellationToken token)
+{
+    TransferReceiver? receiver = null;
+    while (receiver?.State != TransferState.Completed)
+    {
+        while (client.TryDequeue(out WireMessage? message) && message != null)
+        {
+            if (message.Type == MessageType.TransferBegin && receiver == null)
+                receiver = new TransferReceiver(TransferPayloads.ReadBegin(message.Payload));
+            else if (receiver != null && receiver.Owns(message))
+                await SendAllAsync(client, receiver.Handle(message));
+            if (receiver?.State == TransferState.Failed) throw new Exception("receiver failed: " + receiver.Failure!.Reason);
+        }
+        await Task.Delay(framePaced ? 16 : 1, token);
+    }
+    return receiver.Data!;
+}
+
+static async Task SendAllAsync(LobbyClient client, IEnumerable<WireMessage> messages)
+{
+    foreach (WireMessage message in messages) await client.SendAsync(message.Type, message.RequestId, message.Payload);
+}
+
+static async Task<TransferAbort> StartAndExpectAbortAsync(LobbyClient client, TransferSender sender)
+{
+    await SendAllAsync(client, sender.Start(Environment.TickCount64).Take(1));
+    return await ReceiveAbortAsync(client, sender.TransferId);
+}
+
+static async Task<TransferAbort> ReceiveAbortAsync(LobbyClient client, Guid transferId)
+{
+    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+    while (true)
+    {
+        while (client.TryDequeue(out WireMessage? message) && message != null)
+            if (message.Type == MessageType.TransferAbort && TransferPayloads.ReadTransferId(message.Payload) == transferId)
+                return TransferPayloads.ReadAbort(message.Payload);
+        await Task.Delay(10, timeout.Token);
+    }
+}
 
 static async Task<WireMessage> ReceiveAsync(LobbyClient client, MessageType wanted)
 {

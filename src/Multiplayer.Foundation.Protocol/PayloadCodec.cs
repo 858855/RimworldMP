@@ -40,6 +40,19 @@ namespace Multiplayer.Foundation.Protocol
             for (int i = 0; i < 16; i++)
                 WriteByte(byte.Parse(hex.Substring(i * 2, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture));
         }
+        public void WriteBytes(byte[] value, int maximumBytes)
+        {
+            if (value == null) throw new ArgumentNullException(nameof(value));
+            if (value.Length > maximumBytes) throw new ProtocolException("Byte block exceeds limit.");
+            WriteUInt32((uint)value.Length);
+            stream.Write(value, 0, value.Length);
+        }
+        public void WriteFixed(byte[] value, int length)
+        {
+            if (value == null) throw new ArgumentNullException(nameof(value));
+            if (value.Length != length) throw new ProtocolException("Fixed-size field has the wrong length.");
+            stream.Write(value, 0, value.Length);
+        }
         public byte[] ToArray() => stream.ToArray();
     }
 
@@ -93,6 +106,20 @@ namespace Multiplayer.Foundation.Protocol
                 chars[i * 2 + 1] = hex[value & 15];
             }
             return Guid.ParseExact(new string(chars), "N");
+        }
+        public byte[] ReadBytes(int maximumBytes)
+        {
+            uint length = ReadUInt32();
+            if (length > (uint)maximumBytes) throw new ProtocolException("Byte block exceeds limit.");
+            return ReadFixed((int)length);
+        }
+        public byte[] ReadFixed(int length)
+        {
+            Require(length);
+            byte[] value = new byte[length];
+            Buffer.BlockCopy(data, offset, value, 0, length);
+            offset += length;
+            return value;
         }
         public void EnsureComplete()
         {

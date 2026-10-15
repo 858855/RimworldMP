@@ -88,6 +88,146 @@ await server; listener.Stop();
 await Expect<SocketException>(() => NetworkConnection.ConnectAsync("127.0.0.1", port, TimeSpan.FromSeconds(3)));
 Console.WriteLine("PASS: IPv6 literal, DNS name with fallback, refused connection reported");
 
+// Chunk transfer state machines over a simulated channel with a virtual clock (ADR 0014).
+var random = new Random(1234);
+byte[] payload = new byte[TransferPayloads.ChunkSize * 20 + 777];
+random.NextBytes(payload);
+
+var clean = SimulateTransfer(payload);
+Assert(clean.Sender.State == TransferState.Completed, "clean transfer completes");
+Assert(clean.Receiver!.Data!.AsSpan().SequenceEqual(payload), "receiver holds identical bytes");
+Assert(clean.MaxInFlight <= TransferPayloads.WindowChunks && clean.MaxInFlight == TransferPayloads.WindowChunks,
+    "window filled but never exceeded");
+Assert(clean.Retransmits == 0, "no retransmits without loss");
+Console.WriteLine("PASS: transfer completes with identical SHA-256 and a bounded window");
+
+// Lose every acknowledgement for a while: the window fills and stalls, then resumes after the timeout.
+int acks = 0;
+var lostAcks = SimulateTransfer(payload, towardSender: m => m.Type == MessageType.TransferAck && ++acks is >= 3 and <= 9 ? null : m);
+Assert(lostAcks.Sender.State == TransferState.Completed && lostAcks.Receiver!.Data!.AsSpan().SequenceEqual(payload),
+    "transfer resumes after lost acknowledgements");
+Assert(lostAcks.Retransmits >= 1, "resume happened through a retransmit");
+// Lose only the final acknowledgement: the retransmitted last chunk is answered again.
+int finalAcks = 0;
+var lostFinal = SimulateTransfer(payload, towardSender: m =>
+    m.Type == MessageType.TransferAck && TransferPayloads.ReadAck(m.Payload).Received == 21 && ++finalAcks == 1 ? null : m);
+Assert(lostFinal.Sender.State == TransferState.Completed, "completed receiver repeats its final acknowledgement");
+Console.WriteLine("PASS: resume after lost acknowledgements, including the final one");
+
+// Swap two chunks: the receiver never acknowledges past a gap, the timeout repairs it.
+WireMessage? held = null;
+bool heldOnce = false;
+var reordered = SimulateTransfer(payload, towardReceiver: m =>
+{
+    if (m.Type != MessageType.TransferChunk || heldOnce) return m;
+    if (TransferPayloads.ReadChunk(m.Payload).Index == 4) { held = m; heldOnce = true; return null; }
+    return m;
+}, reinject: () => { var h = held; held = null; return h; });
+Assert(reordered.Sender.State == TransferState.Completed && reordered.Receiver!.Data!.AsSpan().SequenceEqual(payload),
+    "out-of-order chunk does not corrupt the result");
+Console.WriteLine("PASS: out-of-order chunk is ignored and repaired");
+
+// Corrupt one byte once: the receiver reports a hash mismatch, the sender restarts once with a new ID.
+int corruptions = 0;
+Func<WireMessage, WireMessage?> corruptOnce = m =>
+{
+    if (m.Type != MessageType.TransferChunk || corruptions >= 1) return m;
+    TransferChunk c = TransferPayloads.ReadChunk(m.Payload);
+    if (c.Index != 2) return m;
+    corruptions++;
+    byte[] bad = (byte[])c.Data.Clone(); bad[10] ^= 0xFF;
+    return new WireMessage(m.Type, 0, TransferPayloads.Chunk(new TransferChunk(c.TransferId, c.Index, bad)));
+};
+var retried = SimulateTransfer(payload, towardReceiver: corruptOnce);
+Assert(retried.Sender.State == TransferState.Completed && retried.Receivers == 2, "hash mismatch restarts once with a new transfer");
+Assert(retried.Receiver!.Data!.AsSpan().SequenceEqual(payload), "second attempt delivers the original bytes");
+int alwaysCorrupt = 0;
+var hopeless = SimulateTransfer(payload, towardReceiver: m =>
+{
+    if (m.Type != MessageType.TransferChunk) return m;
+    TransferChunk c = TransferPayloads.ReadChunk(m.Payload);
+    if (c.Index != 2) return m;
+    alwaysCorrupt++;
+    byte[] bad = (byte[])c.Data.Clone(); bad[0] ^= 1;
+    return new WireMessage(m.Type, 0, TransferPayloads.Chunk(new TransferChunk(c.TransferId, c.Index, bad)));
+});
+Assert(hopeless.Sender.State == TransferState.Failed && hopeless.Sender.Failure!.Code == TransferAbortCode.HashMismatch,
+    "a second hash mismatch fails the transfer");
+Console.WriteLine("PASS: hash mismatch retried once, then reported");
+
+// A receiver that never answers: three retransmits, then the sender gives up with Timeout.
+var silent = SimulateTransfer(payload, towardSender: _ => null);
+Assert(silent.Sender.State == TransferState.Failed && silent.Sender.Failure!.Code == TransferAbortCode.Timeout,
+    "silent receiver times out");
+Assert(silent.Retransmits == TransferSender.MaximumRetransmits, "exactly the allowed retransmits");
+Assert(silent.Receiver!.State == TransferState.Failed, "receiver learns about the timeout");
+Console.WriteLine("PASS: unresponsive receiver times out after bounded retransmits");
+
+// Malformed and cancelled transfers.
+byte[] small = new byte[TransferPayloads.ChunkSize + 10];
+var shortChunk = SimulateTransfer(small, towardReceiver: m =>
+{
+    if (m.Type != MessageType.TransferChunk) return m;
+    TransferChunk c = TransferPayloads.ReadChunk(m.Payload);
+    return c.Index != 0 ? m : new WireMessage(m.Type, 0, TransferPayloads.Chunk(new TransferChunk(c.TransferId, 0, new byte[100])));
+});
+Assert(shortChunk.Receiver!.Failure!.Code == TransferAbortCode.InvalidData && shortChunk.Sender.State == TransferState.Failed,
+    "wrong chunk length aborts both sides");
+var cancelled = new TransferSender(TransferKind.Game, Guid.Empty, small);
+cancelled.Start(0);
+Assert(cancelled.Cancel("user").Single().Type == MessageType.TransferAbort && cancelled.State == TransferState.Failed,
+    "sender cancel emits abort");
+Assert(cancelled.Cancel("again").Count == 0, "cancel is idempotent");
+Expect<ArgumentException>(() => Task.FromResult(new TransferSender(TransferKind.ModManifest, Guid.Empty,
+    new byte[(int)TransferPayloads.MaximumLength(TransferKind.ModManifest) + 1]))).GetAwaiter().GetResult();
+Expect<ArgumentException>(() => Task.FromResult(new TransferSender(TransferKind.World, Guid.Empty, Array.Empty<byte>()))).GetAwaiter().GetResult();
+Console.WriteLine("PASS: invalid chunk, cancel and size limits");
+
+static TransferSim SimulateTransfer(byte[] data, Func<WireMessage, WireMessage?>? towardReceiver = null,
+    Func<WireMessage, WireMessage?>? towardSender = null, Func<WireMessage?>? reinject = null)
+{
+    Guid senderSession = Guid.NewGuid();
+    var sender = new TransferSender(TransferKind.World, Guid.Empty, data);
+    var toReceiver = new Queue<WireMessage>(sender.Start(0));
+    var toSender = new Queue<WireMessage>();
+    TransferReceiver? receiver = null;
+    int receivers = 0, maxInFlight = 0, retransmits = 0;
+    long now = 0;
+    for (int step = 0; step < 200_000 && (sender.State == TransferState.Active || toReceiver.Count > 0); step++)
+    {
+        maxInFlight = Math.Max(maxInFlight, (int)sender.UnacknowledgedChunks);
+        if (toReceiver.Count > 0)
+        {
+            WireMessage? message = Filter(towardReceiver, toReceiver.Dequeue());
+            if (message == null) continue;
+            if (message.Type == MessageType.TransferBegin)
+            {
+                // The server stamps the sender's session ID before forwarding.
+                receiver = new TransferReceiver(TransferPayloads.ReadBegin(message.Payload).WithPeer(senderSession));
+                receivers++;
+                continue;
+            }
+            if (receiver != null) foreach (WireMessage reply in receiver.Handle(message)) toSender.Enqueue(reply);
+        }
+        else if (toSender.Count > 0)
+        {
+            WireMessage? message = Filter(towardSender, toSender.Dequeue());
+            if (message != null) foreach (WireMessage next in sender.Handle(message, now)) toReceiver.Enqueue(next);
+        }
+        else
+        {
+            if (reinject?.Invoke() is WireMessage late) { toReceiver.Enqueue(late); continue; }
+            now += 1000;
+            var resent = sender.Poll(now);
+            if (resent.Any(m => m.Type == MessageType.TransferChunk)) retransmits++;
+            foreach (WireMessage next in resent) toReceiver.Enqueue(next);
+        }
+    }
+    return new TransferSim(sender, receiver, receivers, maxInFlight, retransmits);
+}
+
+static WireMessage? Filter(Func<WireMessage, WireMessage?>? filter, WireMessage message) => filter == null ? message : filter(message);
+
 static void Assert(bool condition, string name)
 {
     if (!condition) throw new Exception("FAIL: " + name);
@@ -97,3 +237,5 @@ static async Task Expect<T>(Func<Task> action) where T : Exception
     try { await action(); } catch (T) { return; }
     throw new Exception("Expected " + typeof(T).Name);
 }
+
+sealed record TransferSim(TransferSender Sender, TransferReceiver? Receiver, int Receivers, int MaxInFlight, int Retransmits);
