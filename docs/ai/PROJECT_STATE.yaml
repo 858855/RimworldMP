@@ -16,12 +16,12 @@ target_rimworld_version:
   other_versions_verified: []
 current_phase: client_integration_verification
 git:
-  branch: main
-  base_branch: null
-  base_commit: null
+  branch: docs/continuation-prompt
+  base_branch: main
+  base_commit: bfc9fcd
   current_commit_ref: HEAD
-  pushed: true
-  merged: true
+  pushed: false
+  merged: false
   dependent_branches:
   - docs/project-governance
   - feat/network-protocol
@@ -102,4 +102,7 @@ documentation_refs:
   prompt_review: docs/reviews/2026-10-15-prompt-archive.md
   prompt_archive_verification: docs/verification/2026-10-15-prompt-archive.md
   runtime_retry: docs/verification/2026-10-15-rimworld-runtime-retry.md
+  continuation_prompt: docs/ai/CONTINUATION_PROMPT.md
+  continuation_review: docs/reviews/2026-10-15-continuation-prompt.md
+  continuation_verification: docs/verification/2026-10-15-continuation-prompt.md
 last_updated: '2026-10-15'

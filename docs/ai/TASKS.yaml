@@ -89,6 +89,25 @@ tasks:
   base_branch: test/rimworld-runtime
   evidence:
   - docs/verification/2026-10-15-prompt-archive.md
+- id: GOV-004
+  title: Aktuellen Stand und Fortsetzungsprompt veröffentlichen
+  goal: Nächste KI-Sitzung lädt die drei Initialprompts und setzt am belegten Hängepunkt fort.
+  priority: high
+  components:
+  - governance
+  depends_on:
+  - GOV-003
+  acceptance:
+  - Fortsetzungsprompt liest alle drei ursprünglichen Prompt-Texte vollständig
+  - Prompt und Projektstatus nennen den belegten RimWorld-UI-Blocker
+  - GitHub-Branch mit Prompt und Review-Unterlage hochgeladen
+  implementation: implemented
+  verification: tests_passed
+  integration: ready_for_human_review
+  branch: docs/continuation-prompt
+  base_branch: main
+  evidence:
+  - docs/verification/2026-10-15-continuation-prompt.md
 - id: NET-001
   title: Versioniertes TCP-Protokoll und Netzwerk-Core
   goal: Begrenztes Framing, Handshake, Heartbeats und Client-Verbindung implementieren.

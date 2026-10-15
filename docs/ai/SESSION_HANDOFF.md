@@ -1,7 +1,8 @@
 # Sitzungsübergabe
 
-- **Branch/Commit:** `main` und `origin/main` nach Prompt-Upload bei `eccfacb`; aktuellen Commit mit `git rev-parse HEAD` prüfen. `docs/prompt-archive` baute auf `test/rimworld-runtime`/`4eb647e` auf. Kein weiterer Merge/Push ohne neue ausdrückliche Freigabe.
-- **Letzte Arbeit:** `GOV-003`: drei ursprüngliche Benutzerprompts wortgetreu unter `docs/governance/history/` archiviert. Index, aktuelle Regelverweise und Prüfnachweis: `docs/governance/PROMPT_HISTORY.md`, `docs/verification/2026-10-15-prompt-archive.md`.
-- **Laufzeittest:** Grafischer RimWorld-Start mit isolierter Modliste nach 180 Sekunden beendet (Exit 124); Fenster/OpenGL vorhanden, aber kein belegtes Mod-Laden oder UI. `Version.txt` rev598, Runtime rev600. `docs/verification/2026-10-15-rimworld-runtime-retry.md`. Temporärer Test-Mod-Link entfernt.
-- **Offen:** `CLIENT-001` nur Build-verifiziert, `TEST-001` ohne Spiel-UI-/Zweiclient-Nachweis. Auth/TLS, 1.7 und Lizenzentscheidung `LIC-001` offen.
-- **Nächster Schritt:** RimWorld-Start bis zum Hauptmenü beobachten, Mod-Ladeeintrag und Einstellungen prüfen, dann zwei echte RimWorld-Clients gegen den Server testen. Siehe `docs/client.md`, `docs/testing.md`; normale Benutzer-Modliste nicht ungefragt ändern.
+- **Branch/Commit:** `docs/continuation-prompt`, Basis `main`/`bfc9fcd`; aktuellen Commit mit `git rev-parse HEAD` und Remote-Stand mit `git status --short --branch` prüfen. Der Branch ist nur nach ausdrücklicher Review-Freigabe in `main` integrierbar.
+- **Letzte Arbeit:** `GOV-004`: `docs/ai/CONTINUATION_PROMPT.md` angelegt. Er verlangt das vollständige Laden der drei ursprünglichen Prompts, anschließend Projektstatus und Git-Prüfung. Ziel ist eine Wiederaufnahme ohne Chatverlauf.
+- **Tatsächlicher Produktstand:** `0.1.0-dev`; TCP-Protokoll, Network Core, Lobby, Server und Mod-Code vorhanden. 13 TCP-Integrationstestgruppen und Client-Build belegt; RimWorld-UI und zwei echte Spielclients nicht verifiziert. Maßgeblich: `PROJECT_STATE.yaml`, `TASKS.yaml`, `docs/verification/2026-10-15-rimworld-runtime-retry.md`.
+- **Aktiver Hängepunkt:** Isolierter grafischer Spielstart endete nach 180 s (Exit 124) vor belegtem Mod-Laden. `Version.txt` rev598, Runtime rev600. Kein Test-Mod-Link verbleibt; Benutzer-Modliste wurde nicht verändert.
+- **Nächster Schritt:** Fortsetzungsprompt lesen, dann Start bis zum Hauptmenü und Mod-Ladevorgang mit isolierter Konfiguration untersuchen. Falls das Spiel nur mit Benutzerinteraktion zugänglich ist, manuellen UI-Test konkret anleiten und Status offen lassen. Keine Wiederholung desselben Timeouts ohne neue Hypothese.
+- **Offen:** `TEST-001`, `CLIENT-001`-Laufzeit, 1.7, Auth/TLS und Lizenz `LIC-001`. Kein Merge oder weiterer Push ohne konkrete Freigabe.

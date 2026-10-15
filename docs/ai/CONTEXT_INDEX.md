@@ -1,5 +1,7 @@
 # Kontextindex – drei Stufen
 
+**Fortsetzung nach dem Prompt-Archiv:** `docs/ai/CONTINUATION_PROMPT.md` verlangt auf ausdrücklichen Benutzerwunsch einmalig das vollständige Laden aller drei Initialprompts. Danach gelten wieder die folgenden Kontextstufen.
+
 **Stufe 1, jeder Sitzungsstart:** `AGENTS.md`, `docs/ai/PROJECT_STATE.yaml`, `TASKS.yaml`, `SESSION_HANDOFF.md`, `git status`/Branch. `PROJECT_STATE.yaml` ist die maßgebliche Ist-Zustandsquelle; `TASKS.yaml` die Aufgabenquelle.
 
 **Stufe 2, aktuelle Aufgabe:**
