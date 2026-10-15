@@ -2,8 +2,8 @@ schema_version: 2
 project:
   name: RimWorld Multiplayer Foundation
   repository_path: /mnt/Arbeit/Git Projekte/RimworldMP
-  goal: 'Version 0.1: echte Client-Server-Verbindung, autoritative Lobbys und RimWorld-Client-Mod;
-    kein Gameplay-Sync.'
+  goal: 'Version 0.1: echte Client-Server-Verbindung, autoritative Lobbys und RimWorld-Client-Mod; kein
+    Gameplay-Sync.'
 product_version: 0.1.0-dev
 target_rimworld_version:
   primary: 1.6.4871 rev598
@@ -11,7 +11,7 @@ target_rimworld_version:
   runtime: Unity/Mono
   game_runtime_tested: false
   other_versions_verified: []
-current_phase: dedicated_server_and_lobby
+current_phase: rimworld_client
 git:
   branch: feat/dedicated-server
   base_branch: feat/network-protocol
@@ -40,13 +40,13 @@ components:
     verification: tests_passed
     integration: not_submitted
   lobby_core:
-    implementation: in_progress
+    implementation: implemented
     verification: tests_passed
-    integration: not_submitted
+    integration: ready_for_human_review
   dedicated_server:
-    implementation: planned
-    verification: not_tested
-    integration: not_submitted
+    implementation: implemented
+    verification: tests_passed
+    integration: ready_for_human_review
   rimworld_adapter:
     implementation: planned
     verification: not_tested
@@ -56,19 +56,22 @@ verified_capabilities:
 - Drei XML-Beispiele syntaktisch geprüft; kein RimWorld-Laufzeitnachweis.
 - Lokale RimWorld-Version und Steam-Build aus Installationsdateien gelesen.
 - 'Wire-Version 1: 5 automatisierte Protokoll-Testgruppen bestanden (Frame/Payload).'
-- 'TCP-Loopback: Handshake, paralleles Senden, Ablehnung und Timeout mit Network.Tests
-  bestanden.'
-- LobbyRegistry-Regeltest und LobbyPayloads-Roundtrip bestanden; noch ohne TCP-Server.
+- 'TCP-Loopback: Handshake, paralleles Senden, Ablehnung und Timeout mit Network.Tests bestanden.'
+- Dedicated Server Release-Build ohne Warnungen.
+- 'Zwei echte TCP-Clients: Handshake, Lobby, Ready, Host-Rechte, Disconnect, Heartbeat und Shutdown in
+  Integration.Tests bestanden.'
 known_issues:
-- Bisher kein produktiver Multiplayer-Code und keine C#-Builds.
+- RimWorld-Client noch nicht implementiert oder im Spiel geprüft.
+- Server hat keine Authentifizierung oder TLS; nur kontrolliertes LAN/Testnetz.
 blockers:
-- RimWorld-API-Signaturen und Mod-Laufzeit noch nicht geprüft.
-- 1.7-Multiplayer wegen Prepatcher und fehlenden Tests ungeklärt.
+- RimWorld-1.6-Mod-API-Signaturen und Laufzeit noch nicht geprüft.
+- 1.7-Unterstützung ungeklärt.
 active_tasks:
-- SERVER-001
-- LOBBY-001
-next_action: ServerHost mit TCP-Listener, Sessionverwaltung und LobbyRegistry verbinden;
-  zwei echte Clients testen.
+- NET-001
+- CLIENT-001
+- TEST-001
+next_action: RimWorld-1.6-Adapter und Client-Nachrichtenpumpe gegen lokale Assemblies implementieren und
+  bauen.
 documentation_refs:
   tasks: docs/ai/TASKS.yaml
   handoff: docs/ai/SESSION_HANDOFF.md
@@ -80,4 +83,5 @@ documentation_refs:
   protocol_verification: docs/verification/2026-10-15-protocol.md
   network_verification: docs/verification/2026-10-15-network.md
   lobby_verification: docs/verification/2026-10-15-lobby-core.md
+  server_verification: docs/verification/2026-10-15-dedicated-server.md
 last_updated: '2026-10-15'

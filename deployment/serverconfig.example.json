@@ -1,0 +1,9 @@
+{
+  "BindAddress": "127.0.0.1",
+  "Port": 28491,
+  "MaxClients": 32,
+  "MaxPlayersPerLobby": 8,
+  "HeartbeatIntervalSeconds": 5,
+  "ClientTimeoutSeconds": 15,
+  "LogLevel": "Information"
+}

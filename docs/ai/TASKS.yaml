@@ -103,12 +103,13 @@ tasks:
   - Server startet ohne RimWorld
   - Ungültige Konfiguration abgelehnt
   - Shutdown schließt Verbindungen
-  implementation: in_progress
-  verification: not_tested
-  integration: not_submitted
+  implementation: implemented
+  verification: tests_passed
+  integration: ready_for_human_review
   branch: feat/dedicated-server
   base_branch: feat/network-protocol
-  evidence: []
+  evidence:
+  - docs/verification/2026-10-15-dedicated-server.md
 - id: LOBBY-001
   title: Mehrere Lobbys und Ready-Status
   goal: Server entscheidet über Mitgliedschaft, Host und Bereitschaft.
@@ -123,13 +124,14 @@ tasks:
   - Host-Rechte geprüft
   - Disconnect entfernt Spieler
   - Doppelte Mitgliedschaft verhindert
-  implementation: in_progress
+  implementation: implemented
   verification: tests_passed
-  integration: not_submitted
+  integration: ready_for_human_review
   branch: feat/dedicated-server
   base_branch: feat/network-protocol
   evidence:
   - docs/verification/2026-10-15-lobby-core.md
+  - docs/verification/2026-10-15-dedicated-server.md
 - id: CLIENT-001
   title: RimWorld-1.6-Mod mit Verbindung und Lobby-UI
   goal: Tatsächliche Mod-Assembly und bedienbare Oberfläche erstellen.
@@ -149,7 +151,7 @@ tasks:
   verification: not_tested
   integration: not_submitted
   branch: feat/rimworld-client
-  base_branch: feat/lobby-management
+  base_branch: feat/dedicated-server
   evidence: []
 - id: TEST-001
   title: Zwei-Client-Integration und RimWorld-Laufzeit
@@ -167,12 +169,13 @@ tasks:
   - Lobby und Ready synchron
   - Disconnect/Reconnect geprüft
   - RimWorld lädt Mod
-  implementation: planned
-  verification: not_tested
+  implementation: in_progress
+  verification: tests_passed
   integration: not_submitted
-  branch: test/lobby-integration
-  base_branch: feat/rimworld-client
-  evidence: []
+  branch: feat/dedicated-server
+  base_branch: feat/network-protocol
+  evidence:
+  - docs/verification/2026-10-15-dedicated-server.md
 - id: LIC-001
   title: Lizenz für neue Projektdateien festlegen
   goal: Rechte für spätere Veröffentlichung eindeutig dokumentieren.
@@ -188,5 +191,4 @@ tasks:
   integration: not_submitted
   branch: null
   evidence: []
-  blocker: Lizenzwunsch des Rechteinhabers noch nicht festgelegt; technische Arbeit
-    kann fortgesetzt werden.
+  blocker: Lizenzwunsch des Rechteinhabers noch nicht festgelegt; technische Arbeit kann fortgesetzt werden.

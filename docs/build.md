@@ -1,11 +1,13 @@
 # Build-Umgebung
 
-Lokales .NET-SDK `10.0.402` liegt unter `/home/fabiok/.local/share/dotnet-rimworldmp` (ohne Systeminstallation). Der Protokollkern zielt auf `netstandard2.0`; der paketfreie Test-Runner auf `net10.0`.
+Lokales .NET-SDK `10.0.402`: `/home/fabiok/.local/share/dotnet-rimworldmp/dotnet`. Protocol, Network und Lobby zielen auf `netstandard2.0`; Server und Test-Runner auf `net10.0`. Binäre Artefakte landen in ignorierten `bin/`, `obj/` und `dist/`.
 
 ```bash
+DOTNET_BIN=/home/fabiok/.local/share/dotnet-rimworldmp/dotnet bash scripts/build-server.sh
 /home/fabiok/.local/share/dotnet-rimworldmp/dotnet run --project tests/Protocol.Tests/Protocol.Tests.csproj -c Release
 /home/fabiok/.local/share/dotnet-rimworldmp/dotnet run --project tests/Network.Tests/Network.Tests.csproj -c Release
 /home/fabiok/.local/share/dotnet-rimworldmp/dotnet run --project tests/Lobby.Tests/Lobby.Tests.csproj -c Release
+/home/fabiok/.local/share/dotnet-rimworldmp/dotnet run --project tests/Integration.Tests/Integration.Tests.csproj -c Release
 ```
 
-Am 2026-10-15 bestanden fünf Protokoll- und drei TCP-Loopback-Testgruppen. Binäre Artefakte landen in ignorierten `bin/`/`obj/`-Verzeichnissen. RimWorld-Client-Code wurde noch nicht gebaut. Lokal installiert: RimWorld `1.6.4871 rev598`, Steam-Build `23969874`, `Assembly-CSharp.dll` unter `RimWorldLinux_Data/Managed`. Proprietäre Assemblies bleiben außerhalb von Git.
+RimWorld `1.6.4871 rev598` ist lokal installiert. Seine proprietären Assemblies werden nicht ins Git-Repository kopiert. Der Client-Mod-Build und Spielstart stehen noch aus.

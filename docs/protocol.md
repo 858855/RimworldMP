@@ -1,16 +1,16 @@
 # Protokoll 0.1 – Wire-Version 1
 
-**Implementierungsstand:** Framing und Nutzdaten-Helfer auf `feat/network-protocol`; Server- und Lobby-Semantik folgen auf abhängigen Branches. Kein Gameplay-Sync.
+**Implementierungsstand:** Framing und Nutzdaten-Helfer auf `feat/network-protocol`; Server- und Lobby-Semantik sind auf `feat/dedicated-server` implementiert und per TCP getestet. Kein Gameplay-Sync.
 
 ## Frame
 
 Alle Ganzzahlen sind Big Endian. Vier Bytes geben die Body-Länge an (`6..65536`). Der Body enthält `version:u8` (=1), `type:u8`, `requestId:u32` und danach `payload`. TCP-Lesevorgänge dürfen Frames beliebig fragmentieren oder zusammenfassen. Ein einzelner Request erhält eine vom Client gewählte ID; Push-Nachrichten verwenden ID 0. Unbekannte Versionen und Typen werden abgelehnt.
 
-Strings sind `length:u16` plus strikt gültige UTF-8-Bytes. Allgemeine Strings: höchstens 256 Bytes. Namen werden zusätzlich fachlich auf 1–40 Zeichen und Steuerzeichen geprüft. GUIDs sind 16 Bytes in kanonischer Netzwerkreihenfolge. Counts sind `u16`; Payloads müssen vollständig gelesen werden, zusätzliche Bytes sind Fehler.
+Strings sind `length:u16` plus strikt gültige UTF-8-Bytes. Allgemeine Strings: höchstens 256 Bytes. Namen werden zusätzlich fachlich auf 1–40 Zeichen und Steuerzeichen geprüft. GUIDs sind 16 Bytes in kanonischer Netzwerkreihenfolge. Listen- und Spieler-Counts sind `u8`; Payloads müssen vollständig gelesen werden, zusätzliche Bytes sind Fehler.
 
 ## Nachrichtentypen
 
-| Code | Typ | Richtung | Nutzdaten (geplant) |
+| Code | Typ | Richtung | Nutzdaten |
 |---|---|---|---|
 | 1 | Hello | C→S | Spielername |
 | 2 | HandshakeAccepted | S→C | Session-ID, Heartbeat-Sekunden |
@@ -19,15 +19,15 @@ Strings sind `length:u16` plus strikt gültige UTF-8-Bytes. Allgemeine Strings: 
 | 6/7 | LobbyListRequest/Response | C→S/S→C | leer / Liste von Lobby-Kurzständen |
 | 8 | CreateLobby | C→S | Name, Kapazität |
 | 9 | JoinLobby | C→S | Lobby-ID |
-| 10 | LeaveLobby | C→S | leer |
+| 10 | LeaveLobby | beide | Anfrage leer; Antwort leer, auch für Host-Schließen |
 | 11 | LobbyStateUpdate | S→C | vollständiger Lobbyzustand |
 | 12/13 | PlayerJoined/PlayerLeft | S→C | Spieler-ID |
 | 14 | PlayerReadyChanged | C→S und S→C | Anfrage: bool; Meldung: Spieler-ID, bool |
-| 15 | Disconnect | beide | Grund |
+| 15 | Disconnect | C→S | leer; die Verbindung wird geschlossen |
 | 16 | Error | S→C | Fehlercode, Text |
 | 17 | CloseLobby | C→S | leer; nur Host |
 
-Listen- und Zustandsupdates sind in `LobbyPayloads.cs` kodiert: Liste mit `count:u8`, je Lobby GUID, Name, Hostname, Spielerzahl und Kapazität; Snapshot mit GUID, Name, Host-GUID, Revision `u64`, Kapazität und Spielerarray (GUID, Name, Ready). Der TCP-Server nutzt diese Payloads noch nicht; Wire-Kompatibilität wird erst nach Integrationstests zugesagt. Fehlercodes: `1=InvalidMessage`, `2=VersionMismatch`, `3=Unauthorized`, `4=NotFound`, `5=Capacity`, `6=InvalidState`, `7=ServerBusy`.
+Listen- und Zustandsupdates sind in `LobbyPayloads.cs` kodiert: Liste mit `count:u8`, je Lobby GUID, Name, Hostname, Spielerzahl und Kapazität; Snapshot mit GUID, Name, Host-GUID, Revision `u64`, Kapazität und Spielerarray (GUID, Name, Ready). Der TCP-Server verwendet diese Payloads; zwei unabhängige TCP-Testclients bestanden die Integrationstests. RimWorld-Client-Kompatibilität ist noch offen. Fehlercodes: `1=InvalidMessage`, `2=VersionMismatch`, `3=Unauthorized`, `4=NotFound`, `5=Capacity`, `6=InvalidState`, `7=ServerBusy`.
 
 ## Übergänge und Grenzen
 

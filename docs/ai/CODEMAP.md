@@ -15,5 +15,7 @@
 | `scripts/validate_structure.py`, `verify_knowledge_archive.py` | Archiv-XML und ZIP prüfen | drei XML-Dateien, 49 Archiveinträge | ausgeführt |
 | `examples/` | Illustrative RimWorld-/MP-Muster | kein produktiver API-Nachweis | unkompiliert |
 | `src/Multiplayer.Foundation.Lobby/LobbyRegistry.cs` | Autoritativer In-Memory-Zustand, Rechte und Revisionen | `tests/Lobby.Tests/Program.cs` | Domänenkern getestet, TCP ausstehend |
-| `src/Multiplayer.Foundation.Server/` | Headless-Host | `tests/Integration.Tests/` | geplant |
+| `src/Multiplayer.Foundation.Server/FoundationServer.cs` | TCP-Listener, Sitzungen, Nachrichtenrouting, Broadcast und Heartbeat | `tests/Integration.Tests/Program.cs` | zehn Gruppen bestanden |
+| `src/Multiplayer.Foundation.Server/ServerConfig.cs`, `Program.cs` | Konfiguration und Serverstart | Integrationstests/Build | implementiert |
+| `tests/Integration.Tests/Program.cs` | Reale Zwei-Client-TCP-Lobby und Fehlerfälle | `dotnet run --project ...` | bestanden |
 | `src/Multiplayer.Foundation.RimWorld/`, `mod/` | Game-Adapter und UI | Game-Start | geplant |

@@ -1,0 +1,14 @@
+[Unit]
+Description=RimWorld Multiplayer Foundation lobby server
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/rimworldmp
+ExecStart=/usr/bin/dotnet /opt/rimworldmp/Multiplayer.Foundation.Server.dll /opt/rimworldmp/serverconfig.json
+Restart=on-failure
+User=rimworldmp
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

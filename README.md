@@ -1,6 +1,6 @@
 # RimWorld Multiplayer Foundation
 
-**Projektziel:** Version 0.1 soll einen echten RimWorld-1.6-Client mit Lobby-Oberfläche, eine getrennte TCP-Netzwerkbibliothek und einen Linux-Dedicated-Server verbinden. Gameplay-Synchronisation gehört zu späteren Versionen. **Aktueller Stand:** Wissensbasis und Governance sind vorhanden; das versionierte Protokoll ist implementiert und getestet. Server, Lobby und RimWorld-Client fehlen noch. Maßgeblich ist `docs/ai/PROJECT_STATE.yaml`.
+**Projektziel:** Version 0.1 soll einen echten RimWorld-1.6-Client mit Lobby-Oberfläche, eine getrennte TCP-Netzwerkbibliothek und einen Linux-Dedicated-Server verbinden. Gameplay-Synchronisation gehört zu späteren Versionen. **Aktueller Stand:** Wissensbasis und Governance sind vorhanden; das versionierte Protokoll ist implementiert und getestet. Der headless Dedicated Server und die Lobby sind mit zwei TCP-Testclients geprüft; der RimWorld-Client fehlt noch. Maßgeblich ist `docs/ai/PROJECT_STATE.yaml`.
 
 Einstieg: `docs/SPEC.md`, `docs/ai/CONTEXT_INDEX.md`, `docs/ai/TASKS.yaml`. Build- und Teststand: `docs/build.md`, `docs/testing.md`. Die folgende ursprüngliche Forschungs-README bleibt als Herkunft und technische Referenz erhalten.
 

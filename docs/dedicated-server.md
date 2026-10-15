@@ -1,3 +1,22 @@
 # Dedicated Server 0.1
 
-**Stand:** Geplant; noch kein ausführbarer Server. Ziel ist ein RimWorld-unabhängiger Linux-Prozess mit standardmäßig lokaler Bind-Adresse, begrenzten Clients, Konfiguration, Lobbys und sauberem Shutdown. Ohne Authentifizierung und TLS nur für kontrollierte LAN-/Testumgebungen. Keine Systemdienste werden automatisch installiert.
+Der eigenständige .NET-10-Prozess bindet standardmäßig nur an `127.0.0.1:28491`. Er akzeptiert mehrere TCP-Clients, prüft den Handshake, verwaltet Sitzungen und autoritative Lobbys, verteilt Snapshots, sendet Heartbeats und entfernt getrennte Clients. Details zum Nachrichtenformat: `docs/protocol.md`.
+
+## Lokal bauen und starten
+
+```bash
+DOTNET_BIN=/home/fabiok/.local/share/dotnet-rimworldmp/dotnet bash scripts/build-server.sh
+DOTNET_BIN=/home/fabiok/.local/share/dotnet-rimworldmp/dotnet bash scripts/start-server.sh
+```
+
+`build-server.sh` veröffentlicht nach `dist/server/` und kopiert `deployment/serverconfig.example.json` als lokale `dist/server/serverconfig.json`. `start-server.sh` liest diese lokale Datei; ein alternativer Konfigurationspfad ist sein erstes Argument. Strg+C beendet Listener und Sitzungen. Der Standardport ist TCP 28491. Für LAN-Tests kann `BindAddress` gezielt auf eine lokale Netzadresse gesetzt werden. Der Server bietet noch keine Authentifizierung oder TLS und ist nicht für öffentliche Internetserver freigegeben.
+
+`deployment/rimworldmp.service.example` ist ein manuell anzupassendes systemd-Beispiel; es wird nicht installiert oder aktiviert. Für diese Datei müssen Binary und Konfiguration nach `/opt/rimworldmp` kopiert und ein eingeschränkter Benutzer angelegt werden.
+
+## Konfiguration
+
+`BindAddress`, `Port`, `MaxClients`, `MaxPlayersPerLobby`, `HeartbeatIntervalSeconds`, `ClientTimeoutSeconds` und `LogLevel` werden beim Start validiert. `LogLevel` wird aktuell nur validiert; strukturierte Logfilterung ist noch offen. Räume und Sitzungen liegen nur im Speicher. Ein Serverneustart verwirft Lobbys.
+
+## Nachweis und Grenzen
+
+`tests/Integration.Tests/Program.cs` prüft zwei echte TCP-Clients, Lobbyaktionen, Host-Rechte, Disconnect, Heartbeat, fehlerhaftes Framing und Shutdown. Ergebnis: `docs/verification/2026-10-15-dedicated-server.md`. Ein RimWorld-Spielclient wurde noch nicht verbunden.
