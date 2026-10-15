@@ -1,9 +1,9 @@
 # Sitzungsübergabe
 
-- **Bereich:** `TEST-002`, Verbindung von zwei unabhängigen Client-Prozessen mit eigenständigem Lobby-Server.
-- **Branch:** `test/multi-player-process`, Basis `main` bei `9d96665`; letzten Commit mit `git log -1 --oneline` prüfen. Kein Push oder Merge für diesen Branch.
-- **Arbeitsstand:** Mehrprozess-Test implementiert. Sieben Schritte mit .NET 10 auf Linux bestanden; Beleg: `docs/verification/2026-10-15-multi-process-lobby.md`.
-- **Offen:** Server-Heartbeat bei verzögerten Pong-Antworten prüfen und robust machen; danach Serverprozess-Shutdown separat nachweisen. RimWorld-UI-Laufzeit und zwei Spielclients bleiben ungeprüft.
-- **Probleme:** Lokales `Version.txt` meldet rev598, gestartete Runtime rev600; Spielstart erreichte bisher keinen belegten Mod-Ladeeintrag. Server hat keine Authentifizierung/TLS.
-- **Nächster Schritt:** Auf abhängigem Branch `fix/server-heartbeat` gezielten Verzögerungstest für Pong ergänzen, Fehler beheben und alle relevanten Server-/Integrationstests ausführen.
-- **Dateien/Befehle:** `src/Multiplayer.Foundation.Server/FoundationServer.cs`, `tests/Integration.Tests/Program.cs`, `tests/ProcessIntegration.Tests/Program.cs`; `dotnet run --project tests/ProcessIntegration.Tests/ProcessIntegration.Tests.csproj -c Release --nologo`.
+- **Bereich:** `TEST-002` Mehrprozess-Verbindung und `SERVER-002` dedizierter Server bei Heartbeat-Verzug und SIGTERM.
+- **Branch:** `fix/server-heartbeat`, Basis `test/multi-player-process` bei `4a6b129`, dessen Basis `main` bei `9d96665` liegt. Aktuellen Commit per `git log -1 --oneline` prüfen; beide Arbeitsbranches sind lokal, kein Push oder Merge.
+- **Arbeitsstand:** Zwei unabhängige Client-Prozesse und Serverprozess verbinden sich; Lobby, Ready und Disconnect geprüft. Verzögertes Pong wird angenommen, doppelte/ungesendete Werte abgewiesen. Linux-SIGTERM stoppt den Server trotz aktiver Verbindung; Client erkennt die Trennung.
+- **Prüfung:** 16 TCP-Integrationstestgruppen und acht Mehrprozess-Schritte mit .NET 10 auf Linux bestanden; Details unter `docs/verification/2026-10-15-multi-process-lobby.md` und `docs/verification/2026-10-15-server-heartbeat-shutdown.md`.
+- **Offen:** RimWorld-UI-Laufzeit und zwei echte Spielprozesse; 1.7; Authentifizierung/TLS. `Version.txt` rev598 vs. Runtime rev600; grafischer Start erreichte bisher keinen belegten Mod-Ladeeintrag.
+- **Nächster Schritt:** Mit bereinigter, isolierter Modliste den grafischen RimWorld-Start bis zum Hauptmenü und die Foundation-Mod-Einstellungen prüfen; danach zwei Spielclients mit dediziertem Server verbinden. Vorige 180-s-Wiederholung nicht ohne neue Diagnose wiederholen.
+- **Dateien/Befehle:** `src/Multiplayer.Foundation.Server/FoundationServer.cs`, `Program.cs`, `tests/Integration.Tests/Program.cs`, `tests/ProcessIntegration.Tests/Program.cs`; Testbefehle in den genannten Nachweisen.

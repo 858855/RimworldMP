@@ -79,9 +79,17 @@ static async Task RunTestAsync()
             "Disconnect did not update remaining client.");
         Console.WriteLine("PASS: disconnect removed player from remaining client");
 
+        if (!OperatingSystem.IsWindows())
+        {
+            Require(NativeSignals.Kill(server.Id, 15) == 0, "Could not send SIGTERM to test server.");
+            await server.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            Require(server.ExitCode == 0, "Server did not shut down cleanly after SIGTERM.");
+            await ExpectAsync(alice, "DISCONNECTED");
+            Console.WriteLine("PASS: SIGTERM stopped server and disconnected active client");
+        }
         await SendAsync(alice, "disconnect");
         await ExpectAsync(alice, "BYE");
-        Console.WriteLine("PASS: both clients disconnected cleanly");
+        Console.WriteLine("PASS: both client processes exited cleanly");
     }
     finally
     {
@@ -162,6 +170,7 @@ static async Task PumpAsync(LobbyClient client, CancellationToken token)
         }
     }
     catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+    if (!token.IsCancellationRequested) Console.WriteLine("EVENT DISCONNECTED");
 }
 
 static Process Start(string executable, params string[] arguments)
@@ -224,3 +233,9 @@ static async Task StopAsync(Process? process)
 }
 
 internal sealed record State(Guid LobbyId, ulong Revision, string Players, int Ready);
+
+internal static class NativeSignals
+{
+    [DllImport("libc", EntryPoint = "kill", SetLastError = true)]
+    internal static extern int Kill(int pid, int signal);
+}

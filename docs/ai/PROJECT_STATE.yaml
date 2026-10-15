@@ -14,11 +14,11 @@ target_rimworld_version:
   runtime: Unity/Mono
   game_runtime_tested: true
   other_versions_verified: []
-current_phase: multi_process_lobby_verified
+current_phase: dedicated_server_stability_verified
 git:
-  branch: test/multi-player-process
-  base_branch: main
-  base_commit: 9d96665
+  branch: fix/server-heartbeat
+  base_branch: test/multi-player-process
+  base_commit: 4a6b129
   current_commit_ref: HEAD
   pushed: false
   merged: false
@@ -27,6 +27,8 @@ git:
   - feat/network-protocol
   - feat/dedicated-server
   - feat/rimworld-client
+  - test/multi-player-process
+  - fix/server-heartbeat
 components:
   governance:
     implementation: implemented
@@ -72,6 +74,7 @@ verified_capabilities:
 - 'Erweiterter TCP-Test: Reconnect ohne Doppelmitgliedschaft, ungültige Wire-Version abgelehnt und Host-Rechte
   nach Disconnect übertragen; insgesamt 13 Integrationstestgruppen bestanden.'
 - 'Mehrprozess-Test: eigenständiger Server und zwei unabhängige Client-Prozesse, Lobby-Liste, Join, gleiche Snapshots, Ready und Disconnect bestanden.'
+- 'Server: verzögertes gültiges Pong akzeptiert, Duplikat und ungesendete Nonce abgelehnt; SIGTERM beendet den Linux-Prozess mit verbundenem Client geordnet.'
 known_issues:
 - 'RimWorld-UI im Spiel nicht verifiziert: -nographics verursacht Atlasfehler; grafischer Start
   kam auch im 180-s-Wiederholungsversuch nicht bis zu belegten Mod-Ladeeinträgen.'
@@ -82,7 +85,7 @@ blockers:
 - 1.7-Unterstützung ungeklärt.
 active_tasks:
 - TEST-001
-next_action: Server-Heartbeat bei verzögerten Pong-Antworten prüfen und korrigieren; anschließend den eigenständigen Serverprozess und Shutdown testen.
+next_action: RimWorld-Mod im grafischen Spielstart laden und die Lobby-UI mit zwei Spielclients gegen den dedizierten Server prüfen; bisheriger Laufzeitblocker bleibt offen.
 documentation_refs:
   tasks: docs/ai/TASKS.yaml
   handoff: docs/ai/SESSION_HANDOFF.md
@@ -99,6 +102,7 @@ documentation_refs:
   client_verification: docs/verification/2026-10-15-client.md
   extended_integration: docs/verification/2026-10-15-integration-extended.md
   process_integration: docs/verification/2026-10-15-multi-process-lobby.md
+  server_stability: docs/verification/2026-10-15-server-heartbeat-shutdown.md
   prompt_history: docs/governance/PROMPT_HISTORY.md
   prompt_review: docs/reviews/2026-10-15-prompt-archive.md
   prompt_archive_verification: docs/verification/2026-10-15-prompt-archive.md

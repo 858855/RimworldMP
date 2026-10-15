@@ -139,6 +139,37 @@ await Task.Delay(4200);
 Assert(timeoutServer.ConnectedClients == 0, "silent heartbeat timeout");
 Console.WriteLine("PASS: silent client removed after heartbeat timeout");
 
+// The first reply may arrive after the next scheduled ping and is still valid.
+var delayedConfig = new ServerConfig { Port = 0, HeartbeatIntervalSeconds = 1, ClientTimeoutSeconds = 4 };
+await using var delayedServer = new FoundationServer(delayedConfig);
+await delayedServer.StartAsync();
+using var delayed = (await HandshakeClient.ConnectAsync("127.0.0.1", delayedServer.BoundPort,
+    "Delayed", TimeSpan.FromSeconds(3))).Connection;
+using (var pingDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(4)))
+{
+    WireMessage first = await delayed.ReceiveAsync(pingDeadline.Token) ?? throw new Exception("First ping missing.");
+    WireMessage second = await delayed.ReceiveAsync(pingDeadline.Token) ?? throw new Exception("Second ping missing.");
+    Assert(first.Type == MessageType.Ping && second.Type == MessageType.Ping, "two scheduled pings");
+    Assert(LobbyPayloads.ReadPing(second.Payload) > LobbyPayloads.ReadPing(first.Payload), "ping nonce advances");
+    await delayed.SendAsync(new WireMessage(MessageType.Pong, first.RequestId, first.Payload));
+    await delayed.SendAsync(new WireMessage(MessageType.LobbyListRequest, 10, Array.Empty<byte>()));
+    await ReceiveType(delayed, MessageType.LobbyListResponse);
+    Assert(delayedServer.ConnectedClients == 1, "delayed valid pong kept session alive");
+    Console.WriteLine("PASS: delayed but outstanding pong accepted");
+
+    await delayed.SendAsync(new WireMessage(MessageType.Pong, first.RequestId, first.Payload));
+    await ReceiveType(delayed, MessageType.Error);
+    Console.WriteLine("PASS: duplicate pong rejected");
+}
+using (var future = (await HandshakeClient.ConnectAsync("127.0.0.1", delayedServer.BoundPort,
+    "Future", TimeSpan.FromSeconds(3))).Connection)
+{
+    await future.SendAsync(new WireMessage(MessageType.Pong, 0, LobbyPayloads.Ping(99)));
+    await ReceiveType(future, MessageType.Error);
+    Console.WriteLine("PASS: unsent pong rejected");
+}
+await delayedServer.StopAsync();
+
 static async Task<WireMessage> ReceiveType(NetworkConnection connection, MessageType wanted, CancellationToken token = default)
 {
     using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);

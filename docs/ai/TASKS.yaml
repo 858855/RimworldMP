@@ -268,3 +268,35 @@ tasks:
   base_branch: main
   evidence:
   - docs/verification/2026-10-15-multi-process-lobby.md
+- id: SERVER-002
+  title: Dedizierten Server bei verzögerten Heartbeats und Stoppsignal stabilisieren
+  goal: Gültige verspätete Pong-Antworten erhalten die Verbindung; SIGTERM beendet den Server geordnet.
+  description: Bestehende Serverimplementierung gezielt korrigieren und im Prozess nachweisen.
+  priority: high
+  components:
+  - dedicated_server
+  - network_core
+  depends_on:
+  - SERVER-001
+  - TEST-002
+  scope:
+  - src/Multiplayer.Foundation.Server/
+  - tests/Integration.Tests/
+  - tests/ProcessIntegration.Tests/
+  non_goals:
+  - Authentifizierung, TLS, öffentlicher Internetbetrieb, RimWorld-UI
+  acceptance:
+  - Pong auf einen noch ausstehenden älteren Ping wird angenommen
+  - Doppeltes oder ungesendetes Pong bleibt ungültig
+  - SIGTERM beendet den Serverprozess mit Exit 0
+  test_strategy: Gezielt reproduzierender TCP-Test, Mehrprozess-Test und Server-Build.
+  risks:
+  - Nebenläufige Lese- und Heartbeat-Schleifen
+  implementation: implemented
+  verification: tests_passed
+  integration: ready_for_human_review
+  branch: fix/server-heartbeat
+  base_branch: test/multi-player-process
+  base_commit: 4a6b129
+  evidence:
+  - docs/verification/2026-10-15-server-heartbeat-shutdown.md
