@@ -10,15 +10,17 @@ from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 ROOT = Path(__file__).resolve().parents[1]
 MOD = ROOT / "dist" / "RimWorldMultiplayerFoundation"
-DEFAULT_NAME = "RimWorldMultiplayerFoundation-0.1.0-dev-rw1.6.zip"
+DEFAULT_NAME = "RimWorldMultiplayerFoundation-0.1.0-dev-menu-chat-preview-rw1.6.zip"
 PREFIX = "RimWorldMultiplayerFoundation/"
 FILES = (
     "About/About.xml",
+    "Assemblies/0Harmony.dll",
     "Assemblies/Multiplayer.Foundation.Protocol.dll",
     "Assemblies/Multiplayer.Foundation.Network.dll",
     "Assemblies/Multiplayer.Foundation.Lobby.dll",
     "Assemblies/Multiplayer.Foundation.Hosting.dll",
     "Assemblies/Multiplayer.Foundation.RimWorld.dll",
+    "THIRD_PARTY_LICENSES/Harmony-MIT.txt",
 )
 INSTALL = ROOT / "mod" / "INSTALLATION.md"
 

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Multiplayer.Foundation.Protocol
 {
@@ -34,8 +35,45 @@ namespace Multiplayer.Foundation.Protocol
         public byte Capacity { get; }
     }
 
+    public sealed class LobbyChatView
+    {
+        public LobbyChatView(Guid lobbyId, Guid senderId, string senderName, string text)
+        { LobbyId = lobbyId; SenderId = senderId; SenderName = senderName; Text = text; }
+        public Guid LobbyId { get; }
+        public Guid SenderId { get; }
+        public string SenderName { get; }
+        public string Text { get; }
+    }
+
     public static class LobbyPayloads
     {
+        public const int MaximumChatBytes = 512;
+
+        public static byte[] ChatRequest(string text)
+        { ValidateChat(text); var writer = new PayloadWriter(); writer.WriteString(text, MaximumChatBytes); return writer.ToArray(); }
+        public static string ReadChatRequest(byte[] bytes)
+        { var reader = new PayloadReader(bytes); string text = reader.ReadString(MaximumChatBytes); reader.EnsureComplete(); ValidateChat(text); return text; }
+        public static byte[] ChatMessage(Guid lobbyId, Guid senderId, string senderName, string text)
+        {
+            ValidateChat(text);
+            var writer = new PayloadWriter(); writer.WriteGuid(lobbyId); writer.WriteGuid(senderId);
+            writer.WriteString(senderName, 160); writer.WriteString(text, MaximumChatBytes);
+            return writer.ToArray();
+        }
+        public static LobbyChatView ReadChatMessage(byte[] bytes)
+        {
+            var reader = new PayloadReader(bytes);
+            Guid lobbyId = reader.ReadGuid(); Guid senderId = reader.ReadGuid();
+            string senderName = reader.ReadString(160); string text = reader.ReadString(MaximumChatBytes);
+            reader.EnsureComplete(); ValidateChat(text);
+            return new LobbyChatView(lobbyId, senderId, senderName, text);
+        }
+        private static void ValidateChat(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text) || text.Any(char.IsControl))
+                throw new ProtocolException("Chat message must contain printable text.");
+        }
+
         public static byte[] String(string value, int maxBytes = 160)
         { var writer = new PayloadWriter(); writer.WriteString(value, maxBytes); return writer.ToArray(); }
         public static string ReadString(byte[] bytes, int maxBytes = 160)

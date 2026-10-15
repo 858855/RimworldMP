@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Hauptmenü und Lobby-Chat (Arbeitsbranch `feat/main-menu-chat`)
+
+- Der Multiplayer-Einstieg wird in RimWorlds eigene Hauptmenü-Liste direkt nach „Tutorial“ eingefügt. Der Benutzer bestätigte Position und Fensteröffnung im Spiel. Ein eigenes Verbindungsfenster zeigt Steam-Einladungen zuerst und darunter die manuelle IP-Verbindung; dessen übrige Bedienung ist noch ungeprüft.
+- In der Lobby ist rechts ein flüchtiger Chat vorgesehen. Der Server weist Namen und Sitzung zu und verteilt Nachrichten ausschließlich an Mitglieder derselben Lobby. Zwei TCP-Clients, Nichtmitgliedschaft, Lobby-Isolation und ungültiger Text wurden automatisiert geprüft. Die Chat-Bedienung in RimWorld ist noch offen.
+- Die Wire-Version wurde für den Chat auf 2 erhöht. Beide Spieler und ein optionaler Dedicated Server brauchen denselben neuen Build. Die manuell installierbare Vorschau enthält den gepinnten Harmony-Baustein samt MIT-Lizenz.
+
 ### Steam-Verbindung (lokal integrierte Vorschau)
 
 - Der Mod kann eine Steam-Freundeslobby anlegen und Einladungen im laufenden Spiel entgegennehmen. Die Netzwerkdaten sollen über Steam P2P zum bisherigen autoritativen Lobby-Kern gelangen; dafür ist keine Portfreigabe am Heimrouter vorgesehen. Mod-Build sowie Handshake und Lobby-Beitritt über einen eingespeisten Stream sind getestet. Der Benutzer meldet eine erfolgreiche Steam-Verbindung; Umfang und Umgebung des Tests sind noch nicht dokumentiert. Das reguläre ZIP enthält diese Änderung nicht, das gesonderte Vorschau-ZIP schon.

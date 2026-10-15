@@ -191,6 +191,20 @@ public sealed class FoundationServer : IAsyncDisposable
                         await target.Connection.SendAsync(new WireMessage(MessageType.LeaveLobby,
                             recipient == peer.Id ? message.RequestId : 0, Array.Empty<byte>()), token).ConfigureAwait(false);
                 break;
+            case MessageType.LobbyChatRequest:
+                string text = LobbyPayloads.ReadChatRequest(message.Payload);
+                var chat = lobbies.ChatRecipients(peer.Id);
+                byte[] chatPayload = LobbyPayloads.ChatMessage(chat.LobbyId, peer.Id, peer.Name, text);
+                foreach (Guid recipient in chat.Recipients)
+                    if (peers.TryGetValue(recipient, out Peer? chatTarget))
+                        try
+                        {
+                            await chatTarget.Connection.SendAsync(new WireMessage(MessageType.LobbyChatMessage,
+                                recipient == peer.Id ? message.RequestId : 0, chatPayload), token).ConfigureAwait(false);
+                        }
+                        catch (IOException) { chatTarget.Connection.Dispose(); }
+                        catch (ObjectDisposedException) { }
+                break;
             default: throw new ProtocolException("Message not valid in current state.");
         }
     }

@@ -17,7 +17,7 @@ DOTNET_BIN=/home/fabiok/.local/share/dotnet-rimworldmp/dotnet bash scripts/build
 /home/fabiok/.local/share/dotnet-rimworldmp/dotnet run --project tests/Client.Tests/Client.Tests.csproj -c Release
 ```
 
-Für andere Installationen `RIMWORLD_MANAGED` setzen. Das Paket liegt danach unter `dist/RimWorldMultiplayerFoundation/`.
+Für andere Installationen `RIMWORLD_MANAGED` setzen. Das Paket liegt danach unter `dist/RimWorldMultiplayerFoundation/`. Die Menü-/Chat-Vorschau referenziert `Lib.Harmony` 2.4.3; der Paketbau kopiert dessen `net472`-Assembly und MIT-Lizenz aus dem lokalen NuGet-Cache. RimWorld-Assemblies und Steamworks.NET werden nicht mitgeliefert.
 
 Die lokal in `main` integrierte Steam-Vorschau referenziert zusätzlich die Steamworks.NET-Assembly aus dem installierten RimWorld-1.6-`Managed`-Verzeichnis. Sie wird nur zum Kompilieren verwendet und nicht in das Mod-Paket kopiert. Ein Build belegt keine Steam-Laufzeitfunktion; siehe `docs/verification/2026-10-15-steam-transport.md`.
 
@@ -28,6 +28,6 @@ DOTNET_BIN=/home/fabiok/.local/share/dotnet-rimworldmp/dotnet bash scripts/build
 python3 scripts/package-mod.py
 ```
 
-Das zweite Kommando prüft `About.xml`, die fünf eigenen Assemblies und den Archivinhalt und erzeugt `releases/RimWorldMultiplayerFoundation-0.1.0-dev-rw1.6.zip`. Die [Installationsanleitung](../mod/INSTALLATION.md) liegt auch im ZIP. Entpacken direkt in `RimWorld/Mods/`; der Archivordner ist bereits `RimWorldMultiplayerFoundation/`. Das ZIP enthält keinen Server. Laufzeit und UI im Spiel sind weiterhin nicht verifiziert.
+Das zweite Kommando prüft `About.xml`, die fünf eigenen Assemblies, `0Harmony.dll`, Lizenz und Archivinhalt und erzeugt `releases/RimWorldMultiplayerFoundation-0.1.0-dev-menu-chat-preview-rw1.6.zip` mit neun Einträgen. Die [Installationsanleitung](../mod/INSTALLATION.md) liegt auch im ZIP. Entpacken direkt in `RimWorld/Mods/`; der Archivordner ist bereits `RimWorldMultiplayerFoundation/`. Das ZIP enthält keinen Server. Menüposition und Fensteröffnung wurden vom Benutzer im Spiel bestätigt; Steam-/IP-Bedienung und Chat bleiben zu prüfen.
 
-Für einen gesondert benannten Teststand kann `python3 scripts/package-mod.py RimWorldMultiplayerFoundation-0.1.0-dev-steam-preview-rw1.6.zip` verwendet werden. Dadurch wird das reguläre Release-ZIP nicht überschrieben. Die Steam-Vorschau ist erst nach einem erfolgreichen Mod-Build sinnvoll; zwei Steam-Konten müssen sie noch im Spiel prüfen.
+Für einen anders benannten Teststand kann der ZIP-Name als Argument übergeben werden. Beide Spieler und ein optionaler Dedicated Server müssen aus demselben Branch/Wire-Version 2 stammen; das ältere Steam-Vorschau-ZIP verwendet Wire-Version 1.

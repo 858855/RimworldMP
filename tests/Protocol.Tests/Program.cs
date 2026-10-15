@@ -25,7 +25,7 @@ await Run("invalid length and truncation", async () =>
 });
 await Run("unknown version and type", async () =>
 {
-    await Reject<ProtocolException>(new byte[] { 0, 0, 0, 6, 2, 1, 0, 0, 0, 0 });
+    await Reject<ProtocolException>(new byte[] { 0, 0, 0, 6, 1, 1, 0, 0, 0, 0 });
     await Reject<ProtocolException>(new byte[] { 0, 0, 0, 6, 1, 255, 0, 0, 0, 0 });
 });
 await Run("payload validation", () =>
@@ -50,6 +50,20 @@ await Run("outbound limit", async () =>
     await ThrowsAsync<ProtocolException>(() => FrameCodec.WriteAsync(stream,
         new WireMessage(MessageType.Hello, 1, new byte[FrameCodec.MaximumBodyLength])));
     Equal(0L, stream.Length);
+});
+await Run("lobby chat payload and limits", () =>
+{
+    Guid room = Guid.NewGuid(), sender = Guid.NewGuid();
+    byte[] request = LobbyPayloads.ChatRequest("Hallo Ä");
+    Equal("Hallo Ä", LobbyPayloads.ReadChatRequest(request));
+    LobbyChatView message = LobbyPayloads.ReadChatMessage(
+        LobbyPayloads.ChatMessage(room, sender, "Alice", "Hallo Ä"));
+    Equal(room, message.LobbyId); Equal(sender, message.SenderId);
+    Equal("Alice", message.SenderName); Equal("Hallo Ä", message.Text);
+    Throws<ProtocolException>(() => LobbyPayloads.ChatRequest("\n"));
+    Throws<ProtocolException>(() => LobbyPayloads.ChatRequest(new string('x', 513)));
+    Throws<ProtocolException>(() => LobbyPayloads.ReadChatRequest(new byte[] { 0, 1, 10 }));
+    return Task.CompletedTask;
 });
 Console.WriteLine($"PASS: {passed} protocol test groups");
 

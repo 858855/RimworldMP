@@ -1,21 +1,20 @@
 # RimWorld Multiplayer Foundation 0.1.0-dev installieren
 
-Dieses Testpaket ist für **RimWorld 1.6** gebaut. Die Mod-Oberfläche im laufenden Spiel ist noch nicht verifiziert. Es gibt in dieser Version Verbindung und Lobby, **kein gemeinsames Gameplay**.
+Diese Vorschau ist für **RimWorld 1.6** gebaut. Sie bietet Verbindung, Lobby und einen flüchtigen Lobby-Chat, aber **kein gemeinsames Gameplay**. Der Benutzer bestätigte den Hauptmenü-Knopf und die Fensteröffnung im Spiel; die Chat-Bedienung steht noch aus.
 
-1. RimWorld schließen.
-2. Dieses ZIP direkt in den Ordner `RimWorld/Mods/` entpacken. Danach muss `RimWorld/Mods/RimWorldMultiplayerFoundation/About/About.xml` vorhanden sein. Keinen zusätzlichen Zwischenordner anlegen.
-3. RimWorld starten und `RimWorld Multiplayer Foundation` im Mod-Menü aktivieren. Nach Aufforderung neu starten.
-4. Unter `Optionen → Mod-Einstellungen → Multiplayer Foundation` sind zwei Wege vorgesehen:
-   - **Ohne separaten Server:** Ein Spieler trägt bei **Host-IP** die eigene LAN-IP ein und klickt **Lobby direkt hosten**. Andere Spieler geben diese IP bei **Server** ein und klicken **Verbinden**, danach **Beitreten**. Standard-Host-IP `127.0.0.1` funktioniert nur auf demselben Rechner. Port ist standardmäßig TCP `28491`.
-   - **Mit dediziertem Server:** Den Server separat starten. Alle Spieler geben seine Adresse und den Port ein, verbinden sich; einer erstellt eine Lobby, die anderen treten bei.
-5. Zum Beenden einer selbst gehosteten Lobby **Trennen** wählen. Dadurch stoppt auch der integrierte Listener und alle Gäste verlieren die Verbindung.
+1. RimWorld schließen. Beide Spieler benötigen **dasselbe Vorschau-ZIP**; der dedizierte Server muss aus demselben Branch gebaut sein. Die Chat-Vorschau verwendet Wire-Version 2 und ist nicht mit älteren Version-1-Mods/Servern kombinierbar.
+2. ZIP direkt in `RimWorld/Mods/` entpacken. Danach muss `RimWorld/Mods/RimWorldMultiplayerFoundation/About/About.xml` vorhanden sein. Einen alten `RimWorldMultiplayerFoundation`-Ordner vorher sichern oder entfernen, damit keine alten DLLs verbleiben.
+3. RimWorld starten und den Mod im Mod-Menü aktivieren; nach Aufforderung neu starten.
+4. Im Hauptmenü **Multiplayer** wählen. Falls der neue Knopf im Spiel nicht erscheint, **Optionen → Mod-Einstellungen → Multiplayer Foundation → Multiplayer öffnen** verwenden und den Fehler melden.
 
-## Steam-Vorschau (nur im entsprechend benannten Test-ZIP)
+## Mit Steam-Freunden
 
-Die Vorschau `*-steam-preview-rw1.6.zip` ist ein noch nicht im Spiel verifizierter Arbeitsstand. Beide Spieler benötigen RimWorld 1.6 über Steam und die gleiche Vorschau-Modversion. Beide starten RimWorld, aktivieren die Mod und öffnen **Optionen → Mod-Einstellungen → Multiplayer Foundation**. Der Host klickt **Über Steam hosten** und danach **Steam-Freunde einladen**. Der Gast nimmt die Steam-Einladung bei laufendem Spiel an und klickt in den Mod-Einstellungen **Steam-Einladung annehmen**. Danach sollte der Beitritt zur Foundation-Lobby automatisch erfolgen. **Bereit** und **Trennen** können anschließend geprüft werden. Das Steam-Verfahren ist für getrennte Heimanschlüsse vorgesehen und braucht keinen eingehenden TCP-Port am Heimrouter. Ein Beitritt durch Kaltstart des Spiels via Einladung ist noch nicht implementiert.
+Der Host gibt seinen Namen, Lobbyname und Platzzahl ein und wählt **Steam-Lobby hosten**. In der Lobby klickt er **Steam-Freunde einladen**. Der Gast nimmt die Einladung im laufenden RimWorld an, öffnet **Multiplayer** und wählt **Einladung annehmen**. Danach sollte er automatisch in der Foundation-Lobby erscheinen. Im Lobbyfenster stehen Spieler links und Chat rechts. Steam benötigt keine Router-Portfreigabe. Der Benutzer hat eine Steam-Verbindung mit der vorherigen Vorschau sowie Menüposition und Fensteröffnung mit der aktuellen Vorschau gemeldet; Chat benötigt noch einen echten Spieltest.
 
-Wenn die Steam-Schaltfläche nicht erscheint, **Steam prüfen** anklicken und den angezeigten Status notieren. Für einen Fehlerbericht sind RimWorld-Version, Mod-ZIP-Name, Statusanzeige und Logs beider Spieler hilfreich. Der Steam-Pfad ist bislang nur gebaut und mit einem ersetzten Duplex-Stream getestet; eine funktionierende Steam-Verbindung ist noch nicht nachgewiesen. Das reguläre `0.1.0-dev-rw1.6.zip` enthält den Steam-Pfad nicht.
+## Per IP oder dediziertem Server
 
-Typische Mod-Pfade: unter Linux der `Mods`-Ordner der verwendeten Steam-RimWorld-Installation, unter Windows meist `C:\Program Files (x86)\Steam\steamapps\common\RimWorld\Mods`. Entscheidend ist der tatsächliche RimWorld-Installationsordner.
+Gäste geben unter **Per IP verbinden** die erreichbare IP/Hostadresse und den Port ein. Ein Spieler kann mit **Direkt hosten** den integrierten Lobby-Server starten; alternativ läuft der dedizierte Server separat. Standardport ist TCP `28491`. Verbindungen zwischen Heimanschlüssen brauchen bei direktem TCP-Hosting in der Regel eine Portweiterleitung am Router des Hosts. Beim **Trennen** des direkten Hosts stoppt der integrierte Server.
 
-Der dedizierte Server ist **nicht** in diesem ZIP enthalten. Für LAN-Verbindungen muss TCP-Port `28491` auf dem Hostrechner erreichbar sein. Weder integrierter noch dedizierter Host bieten derzeit Anmeldung oder Transportverschlüsselung; nur in einem kontrollierten Testnetz verwenden. RimWorld 1.7 und andere Mods sind nicht als kompatibel geprüft.
+Der dedizierte Server ist nicht im Mod-ZIP enthalten. `scripts/build-server.sh` und `docs/dedicated-server.md` beschreiben seinen Start. Direkter TCP-Betrieb bietet keine Anmeldung oder Transportverschlüsselung; nur in kontrollierten Testnetzen verwenden. RimWorld 1.7 und Kompatibilität mit anderen Mods sind nicht geprüft.
+
+Bei Fehlern sind RimWorld-Version, ZIP-Name, Statusanzeige und Logs beider Spieler hilfreich.

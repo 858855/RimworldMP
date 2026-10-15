@@ -18,6 +18,8 @@ namespace Multiplayer.Foundation.Protocol
         PlayerReadyChanged = 14,
         Disconnect = 15,
         Error = 16,
-        CloseLobby = 17
+        CloseLobby = 17,
+        LobbyChatRequest = 18,
+        LobbyChatMessage = 19
     }
 }

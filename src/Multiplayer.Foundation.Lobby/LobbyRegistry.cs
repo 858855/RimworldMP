@@ -44,6 +44,15 @@ namespace Multiplayer.Foundation.Lobby
                     .Select(r => new LobbySummary(r.Id, r.Name, members[r.Host].Name, (byte)r.Members.Count, r.Capacity)).ToArray();
         }
 
+        public (Guid LobbyId, IReadOnlyList<Guid> Recipients) ChatRecipients(Guid actor)
+        {
+            lock (gate)
+            {
+                Room room = GetCurrentRoom(GetMember(actor));
+                return (room.Id, room.Members.ToArray());
+            }
+        }
+
         public LobbyChange Create(Guid actor, string name, byte capacity)
         {
             ValidateName(name);

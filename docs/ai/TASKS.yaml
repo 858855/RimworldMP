@@ -421,3 +421,69 @@ tasks:
   - docs/verification/2026-10-15-steam-user-connection.md
   - docs/decisions/0010-steam-home-host.md
   - docs/reviews/2026-10-15-steam-transport-merge.md
+- id: UI-002
+  title: Hauptmenü-Knopf und nutzerfreundliches Verbindungsfenster
+  goal: Multiplayer aus dem Hauptmenü öffnen; Steam-Einladungen vor manueller IP-Verbindung zeigen.
+  description: Vorhandene FoundationMod-Logik in einer größeren, klar gegliederten UI verwenden.
+  priority: high
+  components:
+  - rimworld_adapter
+  depends_on:
+  - CLIENT-001
+  - STEAM-001
+  scope:
+  - src/Multiplayer.Foundation.RimWorld/
+  - docs/client.md
+  non_goals:
+  - Gameplay-Synchronisation und Steam-Einladung beim Kaltstart
+  acceptance:
+  - Hauptmenü zeigt nativen Multiplayer-Knopf
+  - Knopf öffnet Verbindungs-UI
+  - Steam steht vor IP/TCP und Statusmeldungen sind sichtbar
+  test_strategy: Assembly-API-Prüfung, Release-Build und grafischer RimWorld-Test wenn ausführbar.
+  risks:
+  - Menülayout ist von Bildschirmgröße und UI-Skalierung abhängig
+  implementation: implemented
+  verification: runtime_verified
+  integration: not_submitted
+  branch: feat/main-menu-chat
+  base_branch: main
+  base_commit: dfe9d23
+  evidence:
+  - docs/verification/2026-10-15-menu-chat.md
+  blocker: Steam-/IP-Bedienung und Fensterlayout im Spiel noch nicht vollständig geprüft; Menüpunkt und Fensteröffnung vom Benutzer bestätigt.
+- id: CHAT-001
+  title: Lobby-Chat für Steam, IP und Dedicated Server
+  goal: Nachrichten erscheinen rechts im Lobbyfenster bei allen Mitgliedern derselben Lobby.
+  description: Server validiert Chat-Anfragen und verteilt kurze Textmeldungen nur an berechtigte Lobbymitglieder.
+  priority: high
+  components:
+  - protocol
+  - dedicated_server
+  - rimworld_adapter
+  depends_on:
+  - LOBBY-001
+  - UI-002
+  scope:
+  - src/Multiplayer.Foundation.Protocol/
+  - src/Multiplayer.Foundation.Hosting/
+  - src/Multiplayer.Foundation.RimWorld/
+  - tests/Integration.Tests/
+  non_goals:
+  - Chat-Persistenz, globaler Chat und Moderation
+  acceptance:
+  - Zwei Lobbymitglieder erhalten denselben Text mit serverseitiger Identität
+  - Nichtmitglieder erhalten nichts und dürfen nichts senden
+  - Ungültige oder überlange Texte werden abgelehnt
+  test_strategy: Protokolltests, TCP-Integration, Mod-Build und grafischer Spieltest wenn ausführbar.
+  risks:
+  - Neue Wire-Typen erfordern denselben Mod-/Server-Build auf beiden Seiten
+  implementation: implemented
+  verification: tests_passed
+  integration: not_submitted
+  branch: feat/main-menu-chat
+  base_branch: main
+  base_commit: dfe9d23
+  evidence:
+  - docs/verification/2026-10-15-menu-chat.md
+  blocker: Chat-Anzeige und -Eingabe im laufenden RimWorld mit zwei Spielern noch nicht geprüft.

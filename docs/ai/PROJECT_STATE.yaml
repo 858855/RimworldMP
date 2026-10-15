@@ -9,19 +9,19 @@ target_rimworld_version:
   primary: 1.6.4871
   version_file: rev598
   runtime_reported: rev600
-  game_ui_verified: false
+  game_ui_verified: true
   steam_build_id: '23969874'
   runtime: Unity/Mono
   game_runtime_tested: true
   other_versions_verified: []
-current_phase: steam_home_to_home_development
+current_phase: main_menu_and_lobby_chat_preview
 git:
-  branch: main
-  base_branch: null
-  base_commit: null
+  branch: feat/main-menu-chat
+  base_branch: main
+  base_commit: dfe9d23
   current_commit_ref: HEAD
   pushed: false
-  merged: true
+  merged: false
   dependent_branches:
   - docs/project-governance
   - feat/network-protocol
@@ -42,7 +42,7 @@ components:
   protocol:
     implementation: implemented
     verification: tests_passed
-    integration: merged
+    integration: not_submitted
   network_core:
     implementation: implemented
     verification: tests_passed
@@ -50,19 +50,27 @@ components:
   lobby_core:
     implementation: implemented
     verification: tests_passed
-    integration: merged
+    integration: not_submitted
   dedicated_server:
     implementation: implemented
     verification: tests_passed
-    integration: merged
+    integration: not_submitted
   rimworld_adapter:
     implementation: implemented
     verification: build_passed
-    integration: merged
+    integration: not_submitted
   mod_package:
     implementation: implemented
     verification: tests_passed
-    integration: merged
+    integration: not_submitted
+  main_menu_ui:
+    implementation: implemented
+    verification: runtime_verified
+    integration: not_submitted
+  lobby_chat:
+    implementation: implemented
+    verification: tests_passed
+    integration: not_submitted
   listen_host:
     implementation: implemented
     verification: tests_passed
@@ -75,7 +83,7 @@ verified_capabilities:
 - 'Archiv: 49 Einträge gegen eingebettetes Manifest geprüft.'
 - Drei XML-Beispiele syntaktisch geprüft; kein RimWorld-Laufzeitnachweis.
 - Lokale RimWorld-Version und Steam-Build aus Installationsdateien gelesen.
-- 'Wire-Version 1: 5 automatisierte Protokoll-Testgruppen bestanden (Frame/Payload).'
+- 'Wire-Version 2: 6 automatisierte Protokoll-Testgruppen bestanden (Frame/Payload/Chat).'
 - 'TCP-Loopback: Handshake, paralleles Senden, Ablehnung und Timeout mit Network.Tests bestanden.'
 - Dedicated Server Release-Build ohne Warnungen.
 - 'Zwei echte TCP-Clients: Handshake, Lobby, Ready, Host-Rechte, Disconnect, Heartbeat und Shutdown in
@@ -93,21 +101,29 @@ verified_capabilities:
 - 'Stream-Anschluss: zusätzlicher Client über eingespeisten Duplex-Stream, Handshake und Lobby-Beitritt getestet; Steam-Netzwerk selbst nicht getestet.'
 - 'Steam-Adapter gegen lokal installierte RimWorld-1.6-Steamworks.NET-Assembly mit null Warnungen gebaut; kein Steam-Laufzeittest.'
 - 'Steam-Vorschau-ZIP: sieben Einträge und SHA-256 geprüft; Steam-Laufzeit durch Codex nicht nachgewiesen, Nutzerbericht separat erfasst.'
+- 'Lobby-Chat: zwei TCP-Clients empfangen dieselbe serverseitig zugeordnete Nachricht; Nichtmitglieder/andere Lobby isoliert, ungültiger Text abgelehnt.'
+- 'Menü-/Chat-Vorschau: RimWorld-1.6-Release-Build mit Harmony-Patch ohne Warnungen; neun ZIP-Einträge und lokale Installation bytegleich geprüft.'
 user_reported_capabilities:
 - 'Steam-Verbindung laut Benutzer am 2026-10-15 erfolgreich; Ablauf, Heimanschlüsse und weitere Lobbyfunktionen noch nicht dokumentiert. Siehe docs/verification/2026-10-15-steam-user-connection.md.'
+- 'Multiplayer-Knopf direkt unter Tutorial und Fensteröffnung vom Benutzer am 2026-10-15 im Spiel bestätigt; siehe docs/verification/2026-10-15-menu-chat.md.'
 known_issues:
 - 'RimWorld-UI durch Codex nicht verifiziert: -nographics verursacht Atlasfehler; grafischer Start
   kam auch im 180-s-Wiederholungsversuch nicht bis zu belegten Mod-Ladeeinträgen.'
 - 'Version.txt meldet rev598, die gestartete Spiel-Runtime rev600; exakte Laufzeitkompatibilität offen.'
+- 'Chat-UI, Steam-/IP-Bedienung und Enter-Shortcut im neuen Fenster noch nicht im Spiel geprüft.'
+- 'Wire-Version 2 ist nicht mit älteren Version-1-Mods/Servern kombinierbar; beide Spieler benötigen dieselbe Vorschau.'
 - Server und Client haben keine Authentifizierung/TLS; nur kontrolliertes LAN/Testnetz.
 blockers:
 - Vollständiger RimWorld-UI-Laufzeittest in dieser Umgebung offen.
 - 1.7-Unterstützung ungeklärt.
 - Umfang und Umgebung des gemeldeten Steam-Verbindungstests noch nicht dokumentiert.
+- Chat mit zwei RimWorld-Clients offen.
 active_tasks:
 - TEST-001
 - STEAM-001
-next_action: Umfang des erfolgreichen Steam-Verbindungstests dokumentieren; Lobby-Beitritt, Ready, Disconnect und Host-Wechsel mit zwei Konten prüfen, bevor die Vorschau als verifiziert gilt.
+- UI-002
+- CHAT-001
+next_action: Neues Fenster mit zwei Spielern über Steam sowie TCP testen; Chat, Ready und Disconnect im Spiel prüfen.
 documentation_refs:
   tasks: docs/ai/TASKS.yaml
   handoff: docs/ai/SESSION_HANDOFF.md
@@ -133,6 +149,9 @@ documentation_refs:
   steam_transport_verification: docs/verification/2026-10-15-steam-transport.md
   steam_user_connection: docs/verification/2026-10-15-steam-user-connection.md
   steam_user_connection_review: docs/reviews/2026-10-15-steam-connection-report.md
+  menu_chat_design: docs/decisions/0011-main-menu-and-lobby-chat.md
+  menu_chat_verification: docs/verification/2026-10-15-menu-chat.md
+  menu_chat_review: docs/reviews/2026-10-15-menu-chat-preview.md
   steam_transport_review: docs/reviews/2026-10-15-steam-transport-merge.md
   prompt_history: docs/governance/PROMPT_HISTORY.md
   prompt_review: docs/reviews/2026-10-15-prompt-archive.md

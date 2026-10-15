@@ -2,6 +2,8 @@
 
 Nach Änderungstyp testen. Ausgeführte Nachweise liegen unter `docs/verification/`.
 
+**Menü-/Chat-Vorschau auf `feat/main-menu-chat`:** Wire-Version 2; sechs Protokollgruppen, 18 Serverintegrationsgruppen, fünf Hosting-, drei Client-, drei Netzwerk- und acht Mehrprozess-Schritte bestanden. RimWorld-Mod und Dedicated Server gebaut. Neun ZIP-Einträge mit Lizenz geprüft und bytegleich installiert. Der Benutzer bestätigte den Hauptmenü-Knopf direkt unter Tutorial und die Fensteröffnung; Chat mit zwei RimWorld-Spielclients ist noch offen. Siehe `docs/verification/2026-10-15-menu-chat.md`.
+
 - Archivmanifest: 49 Einträge geprüft; drei XML-Beispiele syntaktisch geprüft.
 - Governance-Validator bestanden.
 - Protokoll: fünf Gruppen bestanden. Netzwerk: drei reale TCP-Loopback-Gruppen bestanden. Lobby-Core-Regeltest bestanden.

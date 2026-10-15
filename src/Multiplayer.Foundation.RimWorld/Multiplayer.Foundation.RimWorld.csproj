@@ -7,6 +7,7 @@
     <AssemblyName>Multiplayer.Foundation.RimWorld</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Lib.Harmony" Version="2.4.3" />
     <ProjectReference Include="../Multiplayer.Foundation.Network/Multiplayer.Foundation.Network.csproj" />
     <ProjectReference Include="../Multiplayer.Foundation.Hosting/Multiplayer.Foundation.Hosting.csproj" />
     <Reference Include="Assembly-CSharp"><HintPath>$(RimWorldManaged)/Assembly-CSharp.dll</HintPath><Private>false</Private></Reference>

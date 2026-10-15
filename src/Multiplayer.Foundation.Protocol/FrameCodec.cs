@@ -7,7 +7,7 @@ namespace Multiplayer.Foundation.Protocol
 {
     public static class FrameCodec
     {
-        public const byte Version = 1;
+        public const byte Version = 2;
         public const int MinimumBodyLength = 6;
         public const int MaximumBodyLength = 65536;
 

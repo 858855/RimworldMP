@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using HarmonyLib;
 using Multiplayer.Foundation.Network;
 using Multiplayer.Foundation.Hosting;
 using Multiplayer.Foundation.Protocol;
@@ -30,74 +31,195 @@ namespace Multiplayer.Foundation.RimWorld
         private string lobbyCapacity = "4";
         private int listPage;
         private uint requestId = 2;
+        private readonly List<LobbyChatView> chatMessages = new List<LobbyChatView>();
+        private string chatInput = "";
+        private Vector2 chatScroll;
+        private Vector2 connectionScroll;
+        private readonly GameObject updateObject;
+        internal static FoundationMod? Instance { get; private set; }
+        private static bool menuPatched;
 
         public FoundationMod(ModContentPack content) : base(content)
         {
             settings = GetSettings<FoundationSettings>();
+            Instance = this;
             TryInitializeSteam();
+            updateObject = new GameObject("Multiplayer Foundation updates");
+            UnityEngine.Object.DontDestroyOnLoad(updateObject);
+            updateObject.AddComponent<FoundationUpdatePump>().Owner = this;
+            if (!menuPatched)
+            {
+                try
+                {
+                    new Harmony("rimworldmp.foundation.mainmenu").PatchAll(typeof(MainMenuOptionPatch).Assembly);
+                    menuPatched = true;
+                }
+                catch (Exception error) { Log.Error("Multiplayer main-menu entry failed: " + error); }
+            }
         }
 
         public override string SettingsCategory() => "Multiplayer Foundation";
 
         public override void DoSettingsWindowContents(Rect inRect)
         {
+            Widgets.Label(new Rect(inRect.x + 8f, inRect.y + 8f, inRect.width - 16f, 54f),
+                "Verbindung, Steam-Einladungen und Lobby befinden sich im Multiplayer-Fenster.");
+            if (Widgets.ButtonText(new Rect(inRect.x + 8f, inRect.y + 66f, 250f, 36f),
+                "Multiplayer öffnen")) OpenWindow();
+        }
+
+        internal void OpenWindow()
+        {
+            if (!Find.WindowStack.IsOpen<FoundationWindow>())
+                Find.WindowStack.Add(new FoundationWindow(this));
+        }
+
+        internal void TickNetwork() => UpdateNetwork();
+
+        internal void DrawWindow(Rect inRect)
+        {
             UpdateNetwork();
-            float x = inRect.x + 6f, y = inRect.y + 6f, width = inRect.width - 12f;
-            Widgets.Label(new Rect(x, y, width, 28f), "RimWorld Multiplayer Foundation 0.1 – Lobby, kein gemeinsames Spiel");
-            y += 36f;
+            float x = inRect.x + 8f, y = inRect.y + 6f, width = inRect.width - 16f;
+            Widgets.Label(new Rect(x, y, width, 30f), "Multiplayer Foundation 0.1");
+            y += 32f;
+            Widgets.Label(new Rect(x, y, width, 28f), "Verbinden und gemeinsam eine Lobby nutzen · gemeinsames Spiel folgt später");
+            y += 34f;
+            float statusY = inRect.yMax - 48f;
             if (client == null)
             {
-                Widgets.Label(new Rect(x, y, 110f, 26f), "Server");
-                settings.ServerAddress = Widgets.TextField(new Rect(x + 110f, y, width - 110f, 26f), settings.ServerAddress);
-                y += 31f;
-                Widgets.Label(new Rect(x, y, 110f, 26f), "Port");
-                settings.Port = Widgets.TextField(new Rect(x + 110f, y, width - 110f, 26f), settings.Port);
-                y += 31f;
-                Widgets.Label(new Rect(x, y, 110f, 26f), "Spielername");
-                settings.PlayerName = Widgets.TextField(new Rect(x + 110f, y, width - 110f, 26f), settings.PlayerName);
-                y += 34f;
-                if (connecting == null && hosting == null && action == null &&
-                    Widgets.ButtonText(new Rect(x, y, 140f, 30f), "Verbinden")) Connect();
-                y += 42f;
-                Widgets.Label(new Rect(x, y, width, 28f), "Ohne separaten Server: Lobby auf diesem Rechner hosten");
-                y += 31f;
-                Widgets.Label(new Rect(x, y, 110f, 26f), "Host-IP");
-                settings.HostBindAddress = Widgets.TextField(new Rect(x + 110f, y, width - 110f, 26f), settings.HostBindAddress);
-                y += 31f;
-                Widgets.Label(new Rect(x, y, 110f, 26f), "Lobbyname");
-                lobbyName = Widgets.TextField(new Rect(x + 110f, y, width - 110f, 26f), lobbyName);
-                y += 31f;
-                Widgets.Label(new Rect(x, y, 110f, 26f), "Plätze");
-                lobbyCapacity = Widgets.TextField(new Rect(x + 110f, y, width - 110f, 26f), lobbyCapacity);
-                y += 34f;
-                if (connecting == null && hosting == null && action == null &&
-                    Widgets.ButtonText(new Rect(x, y, 240f, 30f), "Lobby direkt hosten")) HostLobby();
-                y += 39f;
-                if (steam == null && Widgets.ButtonText(new Rect(x, y, 240f, 30f), "Steam prüfen")) TryInitializeSteam();
-                if (steam != null && connecting == null && hosting == null && action == null &&
-                    Widgets.ButtonText(new Rect(x, y, 240f, 30f), "Über Steam hosten")) HostSteamLobby();
-                y += 38f;
-                if (steam != null && pendingInvite.IsValid() && connecting == null && hosting == null &&
-                    Widgets.ButtonText(new Rect(x, y, 240f, 30f), "Steam-Einladung annehmen")) JoinSteamInvite();
+                Rect viewport = new Rect(x, y, width, statusY - y - 8f);
+                Widgets.BeginScrollView(viewport, ref connectionScroll, new Rect(0f, 0f, width - 18f, 510f));
+                float contentY = 0f, contentWidth = width - 18f;
+                Widgets.Label(new Rect(0f, contentY, 110f, 26f), "Spielername");
+                settings.PlayerName = Widgets.TextField(new Rect(112f, contentY, contentWidth - 112f, 26f), settings.PlayerName);
+                contentY += 40f;
+                DrawSteamSection(0f, ref contentY, contentWidth);
+                contentY += 12f;
+                DrawIpSection(0f, ref contentY, contentWidth);
+                Widgets.EndScrollView();
             }
             else
             {
-                if (Widgets.ButtonText(new Rect(x, y, 140f, 30f), "Trennen")) Disconnect();
-                y += 38f;
-                if (steam?.IsHosting == true)
-                {
-                    if (Widgets.ButtonText(new Rect(x, y, 220f, 30f), "Steam-Freunde einladen"))
-                    {
-                        try { steam.OpenInviteDialog(); }
-                        catch (Exception error) { status = "Steam-Einladung fehlgeschlagen: " + error.Message; }
-                    }
-                    y += 37f;
-                }
-                if (lobby == null) DrawBrowser(x, ref y, width);
-                else DrawLobby(x, ref y, width);
+                DrawConnected(x, ref y, width, statusY);
             }
-            y += 39f;
-            Widgets.Label(new Rect(x, y, width, 48f), "Status: " + status);
+            Widgets.DrawMenuSection(new Rect(x, statusY, width, 42f));
+            Widgets.Label(new Rect(x + 10f, statusY + 7f, width - 20f, 30f), "Status: " + status);
+        }
+
+        private void DrawSteamSection(float x, ref float y, float width)
+        {
+            Widgets.DrawMenuSection(new Rect(x, y, width, 190f));
+            float inner = x + 12f, innerWidth = width - 24f, line = y + 8f;
+            Widgets.Label(new Rect(inner, line, innerWidth, 28f), "1 · Mit Steam-Freunden spielen");
+            line += 29f;
+            Widgets.Label(new Rect(inner, line, innerWidth, 29f),
+                "Hoste eine Lobby und lade Freunde ein – ohne IP-Adresse oder Portfreigabe.");
+            line += 33f;
+            Widgets.Label(new Rect(inner, line, 100f, 26f), "Lobbyname");
+            float nameWidth = Mathf.Max(150f, innerWidth - 250f);
+            lobbyName = Widgets.TextField(new Rect(inner + 103f, line, nameWidth, 26f), lobbyName);
+            Widgets.Label(new Rect(inner + 115f + nameWidth, line, 48f, 26f), "Plätze");
+            lobbyCapacity = Widgets.TextField(new Rect(inner + 168f + nameWidth, line, 65f, 26f), lobbyCapacity);
+            line += 34f;
+            bool idle = connecting == null && hosting == null && action == null;
+            if (steam == null)
+            {
+                Widgets.Label(new Rect(inner, line, innerWidth - 145f, 34f), "Steam gerade nicht verfügbar.");
+                if (Widgets.ButtonText(new Rect(inner + innerWidth - 135f, line, 135f, 30f), "Steam prüfen")) TryInitializeSteam();
+            }
+            else
+            {
+                if (idle && Widgets.ButtonText(new Rect(inner, line, 220f, 32f), "Steam-Lobby hosten")) HostSteamLobby();
+                if (pendingInvite.IsValid() && idle &&
+                    Widgets.ButtonText(new Rect(inner + 230f, line, 235f, 32f), "Einladung annehmen")) JoinSteamInvite();
+                else if (!pendingInvite.IsValid())
+                    Widgets.Label(new Rect(inner + 230f, line + 4f, innerWidth - 230f, 30f), "Warte auf Einladung eines Freundes");
+            }
+            y += 190f;
+        }
+
+        private void DrawIpSection(float x, ref float y, float width)
+        {
+            Widgets.DrawMenuSection(new Rect(x, y, width, 214f));
+            float inner = x + 12f, innerWidth = width - 24f, line = y + 8f;
+            Widgets.Label(new Rect(inner, line, innerWidth, 28f), "2 · Per IP verbinden oder direkt hosten");
+            line += 32f;
+            Widgets.Label(new Rect(inner, line, 105f, 26f), "Server-IP");
+            float addressWidth = Mathf.Max(170f, innerWidth - 220f);
+            settings.ServerAddress = Widgets.TextField(new Rect(inner + 105f, line, addressWidth, 26f), settings.ServerAddress);
+            Widgets.Label(new Rect(inner + 115f + addressWidth, line, 38f, 26f), "Port");
+            settings.Port = Widgets.TextField(new Rect(inner + 158f + addressWidth, line, 60f, 26f), settings.Port);
+            line += 34f;
+            Widgets.Label(new Rect(inner, line, 105f, 26f), "Host-Bind-IP");
+            settings.HostBindAddress = Widgets.TextField(new Rect(inner + 105f, line, addressWidth, 26f), settings.HostBindAddress);
+            line += 37f;
+            bool idle = connecting == null && hosting == null && action == null;
+            if (idle && Widgets.ButtonText(new Rect(inner, line, 220f, 32f), "Per IP verbinden")) Connect();
+            if (idle && Widgets.ButtonText(new Rect(inner + 230f, line, 220f, 32f), "Direkt hosten")) HostLobby();
+            line += 40f;
+            Widgets.Label(new Rect(inner, line, innerWidth, 43f),
+                "Für eine externe IP-Verbindung muss der Host TCP-Port " + settings.Port +
+                " am Router freigeben. Steam benötigt das nicht.");
+            y += 214f;
+        }
+
+        private void DrawConnected(float x, ref float y, float width, float statusY)
+        {
+            if (steam?.IsHosting == true && Widgets.ButtonText(new Rect(x, y, 225f, 32f), "Steam-Freunde einladen"))
+            {
+                try { steam.OpenInviteDialog(); }
+                catch (Exception error) { status = "Steam-Einladung fehlgeschlagen: " + error.Message; }
+            }
+            if (Widgets.ButtonText(new Rect(x + width - 145f, y, 145f, 32f), "Trennen")) Disconnect();
+            y += 44f;
+            float leftWidth = Mathf.Max(290f, width * 0.58f);
+            float rightX = x + leftWidth + 12f;
+            float rightWidth = width - leftWidth - 12f;
+            float panelHeight = Mathf.Max(180f, statusY - y - 8f);
+            Widgets.DrawMenuSection(new Rect(x, y, leftWidth, panelHeight));
+            float leftY = y + 12f;
+            if (lobby == null) DrawBrowser(x + 12f, ref leftY, leftWidth - 24f);
+            else DrawLobby(x + 12f, ref leftY, leftWidth - 24f);
+            DrawChat(new Rect(rightX, y, rightWidth, panelHeight));
+        }
+
+        private void DrawChat(Rect panel)
+        {
+            Widgets.DrawMenuSection(panel);
+            Widgets.Label(new Rect(panel.x + 12f, panel.y + 10f, panel.width - 24f, 30f), "Lobby-Chat");
+            Rect viewport = new Rect(panel.x + 12f, panel.y + 46f, panel.width - 24f, panel.height - 105f);
+            if (lobby == null)
+            {
+                Widgets.Label(viewport, "Tritt einer Lobby bei, um mit den Spielern zu schreiben.");
+                return;
+            }
+            float textWidth = viewport.width - 22f;
+            float contentHeight = 0f;
+            foreach (LobbyChatView entry in chatMessages)
+                contentHeight += Text.CalcHeight(entry.SenderName + ": " + entry.Text, textWidth) + 8f;
+            Widgets.BeginScrollView(viewport, ref chatScroll,
+                new Rect(0f, 0f, textWidth, Mathf.Max(viewport.height, contentHeight)));
+            float line = 0f;
+            foreach (LobbyChatView entry in chatMessages)
+            {
+                string label = entry.SenderName + ": " + entry.Text;
+                float lineHeight = Text.CalcHeight(label, textWidth) + 8f;
+                Widgets.Label(new Rect(0f, line, textWidth, lineHeight), label);
+                line += lineHeight;
+            }
+            Widgets.EndScrollView();
+            float inputY = panel.yMax - 47f;
+            GUI.SetNextControlName("FoundationChatInput");
+            chatInput = Widgets.TextField(new Rect(panel.x + 12f, inputY, panel.width - 110f, 29f), chatInput);
+            bool sendByButton = Widgets.ButtonText(new Rect(panel.xMax - 90f, inputY, 78f, 29f), "Senden");
+            bool sendByEnter = Event.current.type == EventType.KeyDown &&
+                Event.current.keyCode == KeyCode.Return && GUI.GetNameOfFocusedControl() == "FoundationChatInput";
+            if (sendByButton || sendByEnter)
+            {
+                if (sendByEnter) Event.current.Use();
+                try { if (Send(MessageType.LobbyChatRequest, LobbyPayloads.ChatRequest(chatInput.Trim()))) chatInput = ""; }
+                catch (Exception error) { status = "Chat: " + error.Message; }
+            }
         }
 
         private void Connect()
@@ -165,7 +287,7 @@ namespace Multiplayer.Foundation.RimWorld
         {
             if (client == null) return;
             LobbyClient old = client;
-            client = null; lobby = null; available = Array.Empty<LobbySummary>();
+            client = null; lobby = null; available = Array.Empty<LobbySummary>(); chatMessages.Clear();
             steam?.Leave();
             autoJoinSteamLobby = false;
             if (hosted != null)
@@ -230,22 +352,25 @@ namespace Multiplayer.Foundation.RimWorld
             }
             y += 8f;
             bool myReady = lobby.Players.FirstOrDefault(p => p.Id == client.SessionId)?.Ready ?? false;
-            if (Widgets.ButtonText(new Rect(x, y, 140f, 30f), myReady ? "Nicht bereit" : "Bereit"))
+            if (Widgets.ButtonText(new Rect(x, y, 125f, 30f), myReady ? "Nicht bereit" : "Bereit"))
                 Send(MessageType.PlayerReadyChanged, LobbyPayloads.Bool(!myReady));
-            if (Widgets.ButtonText(new Rect(x + 150f, y, 140f, 30f), "Verlassen"))
+            if (Widgets.ButtonText(new Rect(x + 135f, y, 125f, 30f), "Verlassen"))
                 Send(MessageType.LeaveLobby, Array.Empty<byte>());
-            if (lobby.HostId == client.SessionId &&
-                Widgets.ButtonText(new Rect(x + 300f, y, 140f, 30f), "Lobby schließen"))
-                Send(MessageType.CloseLobby, Array.Empty<byte>());
+            if (lobby.HostId == client.SessionId)
+            {
+                if (width < 410f) y += 36f;
+                if (Widgets.ButtonText(new Rect(x + (width < 410f ? 0f : 270f), y, 135f, 30f), "Lobby schließen"))
+                    Send(MessageType.CloseLobby, Array.Empty<byte>());
+            }
             y += 36f;
             Widgets.Label(new Rect(x, y, width, 25f), "Spielstart nicht verfügbar (Version 0.1)");
         }
 
-        private void Send(MessageType type, byte[] payload)
+        private bool Send(MessageType type, byte[] payload)
         {
-            if (client == null || action != null) return;
-            try { action = client.SendAsync(type, requestId++, payload); }
-            catch (Exception error) { status = "Senden fehlgeschlagen: " + error.Message; }
+            if (client == null || action != null) return false;
+            try { action = client.SendAsync(type, requestId++, payload); return true; }
+            catch (Exception error) { status = "Senden fehlgeschlagen: " + error.Message; return false; }
         }
 
         private void UpdateNetwork()
@@ -299,11 +424,23 @@ namespace Multiplayer.Foundation.RimWorld
                         case MessageType.LobbyStateUpdate:
                             LobbyView received = LobbyPayloads.ReadState(message.Payload);
                             if (lobby == null || lobby.Id != received.Id || received.Revision >= lobby.Revision)
+                            {
+                                if (lobby == null || lobby.Id != received.Id) chatMessages.Clear();
                                 lobby = received;
+                            }
                             break;
                         case MessageType.LeaveLobby:
-                            lobby = null; status = "Lobby verlassen";
+                            lobby = null; chatMessages.Clear(); status = "Lobby verlassen";
                             Send(MessageType.LobbyListRequest, Array.Empty<byte>()); break;
+                        case MessageType.LobbyChatMessage:
+                            LobbyChatView chat = LobbyPayloads.ReadChatMessage(message.Payload);
+                            if (lobby != null && chat.LobbyId == lobby.Id)
+                            {
+                                chatMessages.Add(chat);
+                                if (chatMessages.Count > 50) chatMessages.RemoveAt(0);
+                                chatScroll.y = float.MaxValue;
+                            }
+                            break;
                         case MessageType.Error:
                             var reader = new PayloadReader(message.Payload);
                             byte code = reader.ReadByte(); string reason = reader.ReadString(); reader.EnsureComplete();
@@ -312,11 +449,14 @@ namespace Multiplayer.Foundation.RimWorld
                 }
             }
             catch (ProtocolException error)
-            { status = "Ungültige Serverdaten: " + error.Message; Disconnect(); return; }
+            {
+                string failure = "Ungültige Serverdaten: " + error.Message;
+                Disconnect(); status = failure; return;
+            }
             if (!client.IsConnected)
             {
                 status = "Verbindung unterbrochen: " + (client.LastError ?? "Unbekannt");
-                client.Dispose(); client = null; lobby = null;
+                client.Dispose(); client = null; lobby = null; chatMessages.Clear();
                 if (hosted != null)
                 {
                     ListenHost running = hosted;

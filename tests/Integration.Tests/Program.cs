@@ -86,7 +86,7 @@ Console.WriteLine("PASS: malformed frame isolated from later clients");
 using (var wrongVersion = new TcpClient())
 {
     await wrongVersion.ConnectAsync("127.0.0.1", port);
-    await wrongVersion.GetStream().WriteAsync(new byte[] { 0, 0, 0, 6, 2, 1, 0, 0, 0, 1 });
+    await wrongVersion.GetStream().WriteAsync(new byte[] { 0, 0, 0, 6, 1, 1, 0, 0, 0, 1 });
     using var rejectedTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
     byte[] response = new byte[1];
     int count = await wrongVersion.GetStream().ReadAsync(response, rejectedTimeout.Token);
@@ -169,6 +169,51 @@ using (var future = (await HandshakeClient.ConnectAsync("127.0.0.1", delayedServ
     Console.WriteLine("PASS: unsent pong rejected");
 }
 await delayedServer.StopAsync();
+
+var chatConfig = new ServerConfig { Port = 0, HeartbeatIntervalSeconds = 10, ClientTimeoutSeconds = 30 };
+await using var chatServer = new FoundationServer(chatConfig);
+await chatServer.StartAsync();
+using var chatAlice = (await HandshakeClient.ConnectAsync("127.0.0.1", chatServer.BoundPort,
+    "Alice", TimeSpan.FromSeconds(3))).Connection;
+using var chatBob = (await HandshakeClient.ConnectAsync("127.0.0.1", chatServer.BoundPort,
+    "Bob", TimeSpan.FromSeconds(3))).Connection;
+using var chatCharlie = (await HandshakeClient.ConnectAsync("127.0.0.1", chatServer.BoundPort,
+    "Charlie", TimeSpan.FromSeconds(3))).Connection;
+await chatAlice.SendAsync(new WireMessage(MessageType.CreateLobby, 2, LobbyPayloads.Create("A", 2)));
+LobbyView firstRoom = LobbyPayloads.ReadState((await ReceiveType(chatAlice, MessageType.LobbyStateUpdate)).Payload);
+await chatBob.SendAsync(new WireMessage(MessageType.JoinLobby, 2, LobbyPayloads.GuidValue(firstRoom.Id)));
+await ReceiveType(chatBob, MessageType.LobbyStateUpdate);
+await ReceiveType(chatAlice, MessageType.LobbyStateUpdate);
+await chatCharlie.SendAsync(new WireMessage(MessageType.LobbyChatRequest, 2, LobbyPayloads.ChatRequest("Ohne Lobby")));
+Assert((await ReceiveType(chatCharlie, MessageType.Error)).RequestId == 2, "nonmember chat rejected");
+await chatCharlie.SendAsync(new WireMessage(MessageType.CreateLobby, 2, LobbyPayloads.Create("B", 2)));
+await ReceiveType(chatCharlie, MessageType.LobbyStateUpdate);
+await chatBob.SendAsync(new WireMessage(MessageType.LobbyChatRequest, 3, LobbyPayloads.ChatRequest("Hallo Alice")));
+WireMessage sent = await ReceiveType(chatBob, MessageType.LobbyChatMessage);
+WireMessage received = await ReceiveType(chatAlice, MessageType.LobbyChatMessage);
+LobbyChatView fromBob = LobbyPayloads.ReadChatMessage(received.Payload);
+Assert(sent.RequestId == 3 && received.RequestId == 0 &&
+    fromBob.LobbyId == firstRoom.Id && fromBob.SenderName == "Bob" &&
+    fromBob.Text == "Hallo Alice" && sent.Payload.SequenceEqual(received.Payload),
+    "chat delivered to both members with server identity");
+using (var quiet = new CancellationTokenSource(TimeSpan.FromMilliseconds(250)))
+{
+    try { await chatCharlie.ReceiveAsync(quiet.Token); throw new Exception("Cross-lobby chat leaked."); }
+    catch (OperationCanceledException) when (quiet.IsCancellationRequested) { }
+}
+await chatCharlie.SendAsync(new WireMessage(MessageType.LobbyChatRequest, 3, LobbyPayloads.ChatRequest("Andere Lobby")));
+Assert(LobbyPayloads.ReadChatMessage((await ReceiveType(chatCharlie, MessageType.LobbyChatMessage)).Payload).Text ==
+    "Andere Lobby", "second lobby chat");
+using (var quiet = new CancellationTokenSource(TimeSpan.FromMilliseconds(250)))
+{
+    try { await chatAlice.ReceiveAsync(quiet.Token); throw new Exception("Cross-lobby chat leaked."); }
+    catch (OperationCanceledException) when (quiet.IsCancellationRequested) { }
+}
+Console.WriteLine("PASS: server-authoritative lobby chat and lobby isolation");
+await chatBob.SendAsync(new WireMessage(MessageType.LobbyChatRequest, 4, LobbyPayloads.String("\n")));
+Assert((await ReceiveType(chatBob, MessageType.Error)).RequestId == 4, "invalid chat rejected");
+Console.WriteLine("PASS: invalid chat rejected");
+await chatServer.StopAsync();
 
 static async Task<WireMessage> ReceiveType(NetworkConnection connection, MessageType wanted, CancellationToken token = default)
 {
