@@ -70,8 +70,22 @@ namespace Multiplayer.Foundation.Protocol
             return new ModManifest(game, mods);
         }
 
-        /// <summary>SHA-256 over the canonical serialization; equal hashes mean equal manifests.</summary>
-        public byte[] Hash() { byte[] data = Serialize(); return TransferPayloads.Hash(data, 0, data.Length); }
+        /// <summary>
+        /// Lobby checksum: SHA-256 over the mods only (package ID, version and content hash, in load order).
+        /// The game version is not part of it; it is shown as information (owner decision, 2026-10-15).
+        /// </summary>
+        public byte[] Hash()
+        {
+            var writer = new PayloadWriter();
+            writer.WriteUInt16((ushort)Mods.Count);
+            foreach (ModEntry mod in Mods)
+            {
+                writer.WriteString(mod.PackageId, 160); writer.WriteString(Truncate(mod.Version, 64), 64);
+                TransferPayloads.WriteHash(writer, mod.ContentHash);
+            }
+            byte[] data = writer.ToArray();
+            return TransferPayloads.Hash(data, 0, data.Length);
+        }
 
         public ModManifestSummary Summary() => new ModManifestSummary(Hash(), GameVersion, (ushort)Mods.Count);
 
@@ -134,7 +148,8 @@ namespace Multiplayer.Foundation.Protocol
         public int FirstOrderDifference { get; private set; } = -1;
         public IReadOnlyList<string> LocalSharedOrder { get; private set; } = Array.Empty<string>();
         public IReadOnlyList<string> HostSharedOrder { get; private set; } = Array.Empty<string>();
-        public bool IsMatch => !GameVersionDiffers && MissingLocally.Count == 0 && ExtraLocally.Count == 0 &&
+        /// <summary>True when the mods match; a different game version alone does not count.</summary>
+        public bool IsMatch => MissingLocally.Count == 0 && ExtraLocally.Count == 0 &&
             Changed.Count == 0 && FirstOrderDifference < 0;
 
         public static ModManifestDiff Compare(ModManifest local, ModManifest host)

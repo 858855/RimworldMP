@@ -24,6 +24,10 @@ Die Testprojekte zielen auf `net10.0`; auf diesem Rechner ist nur .NET 8 install
 | Installation | Alte Installation nach `RimWorld/ModBackups/RimWorldMultiplayerFoundation-2026-10-15-before-0.2-preview` kopiert, neue nach `RimWorld/Mods/RimWorldMultiplayerFoundation` | Dateien und SHA-256 geprüft |
 | Spielstart (Rauchtest) | `RimWorldWin64.exe -screen-fullscreen 0 -screen-width 1280 -screen-height 720`, aktive Mods: Core, 5 DLCs, Foundation | Hauptmenü geladen; `Player.log`: „Multiplayer Foundation: 7 Mods geprüft, Prüfsumme 3df9“, keine Fehler oder Exceptions; Spiel danach regulär geschlossen |
 
+## Nachtrag: Prüfsumme ohne Spielversion
+
+Auf Wunsch des Benutzers hängt die Lobby-Prüfsumme nur noch von den Mods ab (Package-ID, Version, Inhalts-Hash in Ladereihenfolge), nicht von Spielversion oder Anzeigenamen. Protocol.Tests prüft das neu: anderer Spielbuild und andere Anzeigenamen ergeben dieselbe Prüfsumme, der Bericht meldet die Spielversion nur als Hinweis. Alle sechs Testprojekte im .NET-8-Harness erneut bestanden; Mod neu gebaut (0 Warnungen) und über die installierte Vorschau kopiert.
+
 ## Einordnung nach AGENTS.md Regel 25
 
 - `BUILD_ERFOLGREICH` für den Mod gegen die lokale 1.6-Installation.

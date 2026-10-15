@@ -28,7 +28,7 @@ Strings sind `length:u16` plus strikt gültige UTF-8-Bytes. Allgemeine Strings: 
 | 17 | CloseLobby | C→S | leer; nur Host |
 | 18 | LobbyChatRequest | C→S | Text, höchstens 512 UTF-8-Bytes |
 | 19 | LobbyChatMessage | S→C | Lobby-ID, Sender-Session-ID, serverseitiger Spielername, Text |
-| 20 | ModManifestSummary | C→S | Manifest-SHA-256 (32 Bytes), Spielversion, Mod-Anzahl `u16` |
+| 20 | ModManifestSummary | C→S | Mod-Prüfsumme SHA-256 (32 Bytes), Spielversion (nur Hinweis), Mod-Anzahl `u16` |
 | 21 | ModManifestRequest | C→S, S→C | Anfrage: Session-ID des Hosts; an den Host weitergeleitet: Session-ID des Anfragenden |
 | 22 | TransferBegin | C→S→C | Transfer-ID, Art (`1` Manifest, `2` Welt, `3` Spielstand), Sender (vom Server gesetzt), Ziel (leer = alle anderen), Größe `u64`, SHA-256 |
 | 23 | TransferChunk | C→S→C | Transfer-ID, Index `u32`, danach bis zu 60 KiB Rohdaten |
@@ -51,7 +51,7 @@ Der Spielerschlüssel (ID-001) ist die dauerhafte Identität eines Spielers übe
 
 ## Mod-Manifest (MOD-001)
 
-Jeder Client bildet beim Spielstart im Hintergrund ein Manifest: Spielversion mit Revision und alle aktiven Mods **in Ladereihenfolge** (Package-ID, Name, Version aus `About.xml`, Inhalts-SHA-256 über `About/About.xml` sowie `Assemblies/**/*.dll`, `Defs/**/*.xml` und `Patches/**/*.xml` der Ladeordner; Texturen und Sounds zählen nicht). An den Server geht nur die Zusammenfassung (`ModManifestSummary`). Der Server vergleicht den Hash jedes Mitglieds mit dem des **aktuellen** Hosts, setzt den Mod-Status im Snapshot und lehnt `PlayerReadyChanged(true)` bei „Prüfung läuft“ oder „abweichend“ mit Code 8 ab. Wechselt die Host-Rolle, wird neu verglichen und die Bereitschaft abweichender Mitglieder zurückgesetzt. Für den Unterschiedsbericht fragt ein Mitglied mit `ModManifestRequest` die volle Liste des Hosts an; der Host antwortet mit einer Chunk-Übertragung der Art `1`. Der Server liest Mod-Listen nie selbst.
+Jeder Client bildet beim Spielstart im Hintergrund ein Manifest: Spielversion mit Revision und alle aktiven Mods **in Ladereihenfolge** (Package-ID, Name, Version aus `About.xml`, Inhalts-SHA-256 über `About/About.xml` sowie `Assemblies/**/*.dll`, `Defs/**/*.xml` und `Patches/**/*.xml` der Ladeordner; Texturen und Sounds zählen nicht). Die **Prüfsumme** ist ein SHA-256 nur über die Mods in Ladereihenfolge (Package-ID, Version, Inhalts-Hash); Spielversion und Anzeigenamen zählen nicht (Entscheidung des Projektinhabers, 2026-10-15). Die Spielversion wird nur als Hinweis mitgeschickt und angezeigt. An den Server geht nur die Zusammenfassung (`ModManifestSummary`). Der Server vergleicht den Hash jedes Mitglieds mit dem des **aktuellen** Hosts, setzt den Mod-Status im Snapshot und lehnt `PlayerReadyChanged(true)` bei „Prüfung läuft“ oder „abweichend“ mit Code 8 ab. Wechselt die Host-Rolle, wird neu verglichen und die Bereitschaft abweichender Mitglieder zurückgesetzt. Für den Unterschiedsbericht fragt ein Mitglied mit `ModManifestRequest` die volle Liste des Hosts an; der Host antwortet mit einer Chunk-Übertragung der Art `1`. Der Server liest Mod-Listen nie selbst.
 
 ## Chunk-Übertragung (XFER-001)
 

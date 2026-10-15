@@ -525,7 +525,8 @@ namespace Multiplayer.Foundation.RimWorld
             if (host == null) return "";
             string hint = " · " + host.ModCount + " Mods";
             if (manifestSummary == null) return hint;
-            return hint + (host.SameAs(manifestSummary) ? " · passt" : " · abweichend");
+            return hint + (host.SameAs(manifestSummary) ? " · passt" : " · abweichend") +
+                (host.GameVersion != manifestSummary.GameVersion ? " (andere Spielversion)" : "");
         }
 
         // Fire-and-forget sends (acks, mod-list requests) that must not wait for the single UI action slot.

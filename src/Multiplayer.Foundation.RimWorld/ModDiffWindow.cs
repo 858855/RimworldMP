@@ -28,15 +28,15 @@ namespace Multiplayer.Foundation.RimWorld
         private void Build(ModManifestDiff diff, string hostName)
         {
             lines.Add(("Mod-Unterschiede zu " + hostName, true));
-            if (diff.IsMatch)
-            {
-                lines.Add(("Keine Unterschiede gefunden. Möglicherweise hat sich die Mod-Liste seit der Prüfung geändert.", false));
-                return;
-            }
             if (diff.GameVersionDiffers)
             {
-                lines.Add(("Spielversion", true));
+                lines.Add(("Spielversion (nur Hinweis, zählt nicht zur Prüfsumme)", true));
                 lines.Add(("  Du: " + diff.LocalGameVersion + "   Host: " + diff.HostGameVersion, false));
+            }
+            if (diff.IsMatch)
+            {
+                lines.Add(("Keine Mod-Unterschiede gefunden. Möglicherweise hat sich die Mod-Liste seit der Prüfung geändert.", false));
+                return;
             }
             Section("Fehlt bei dir", diff.MissingLocally.Select(m => m.Label + Version(m)));
             Section("Zusätzlich bei dir", diff.ExtraLocally.Select(m => m.Label + Version(m)));

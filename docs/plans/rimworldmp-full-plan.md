@@ -175,11 +175,11 @@ Every peer must have the same game build, DLCs and mods **in the same order**. O
 
 | Field | Candidate source [U] | Must match |
 |---|---|---|
-| Game version with rev | the runtime version string, e.g. `1.6.4871 rev600` | exact |
+| Game version with rev | the runtime version string, e.g. `1.6.4871 rev600` | **information only** (owner decision 2026-10-15): shown, not part of the checksum |
 | Multiplayer mod version | this mod's assembly version | exact |
 | Active mods **in load order**: package id (lower-case), name, `About.xml` version | the active mods list. Core and DLCs are entries in it | same ids, same order |
 | Content hash per mod | SHA-256 over the relative paths and bytes of `About/About.xml`, `Assemblies/**/*.dll`, `Defs/**/*.xml` and `Patches/**/*.xml` in the load folders actually used for 1.6. Textures and sounds are skipped | exact |
-| Manifest hash | SHA-256 over the canonical list | quick comparison |
+| Manifest hash (the lobby checksum) | SHA-256 over the mods only: package ID, version and content hash, in load order. Not the game version, not display names | quick comparison |
 
 **Flow**
 1. **Lobby list:** shows the host's `game version · N Mods · a3f9…` and the viewer's own hash, so a mismatch is visible before joining.
@@ -188,7 +188,7 @@ Every peer must have the same game build, DLCs and mods **in the same order**. O
 4. **On mismatch:**
    - The player's line shows `– Mods abweichend` in red.
    - **Bereit** is disabled, and the server rejects Ready with the code "Mods stimmen nicht mit dem Host überein".
-   - **"Unterschiede anzeigen"** fetches the host's list (`ModManifestRequest`) and shows a report with these sections: *Fehlt bei dir* (with Workshop links), *Zusätzlich bei dir*, *Falsche Reihenfolge* (side by side from the first difference), *Andere Version/Inhalt*, *Spielversion*.
+   - **"Unterschiede anzeigen"** fetches the host's list (`ModManifestRequest`) and shows a report with these sections: *Fehlt bei dir* (with Workshop links), *Zusätzlich bei dir*, *Falsche Reihenfolge* (side by side from the first difference), *Andere Version/Inhalt*, and the game version as a note only.
    - The player can stay in the lobby and chat. Fixing mods needs a restart.
 5. **Start re-check:** the server checks again on Start.
 
@@ -633,7 +633,7 @@ How to read the columns:
 | P-1 | Deterministic lockstep with the server as sequencer and clock | Host-simulated state replication |
 | P-2 | The lobby host is the snapshot provider and admin; the server never runs RimWorld | Headless RimWorld on the server |
 | P-3 | Host generates the world and the game; clients receive saves | Each client generates from the seed |
-| P-4 | Strict manifest: game build, mods, order and content hash must all match | Allowlist for client-only mods (Q7) |
+| P-4 | Strict mod manifest: mods, order and content hash must match. The game version is shown but does not block (owner decision 2026-10-15) | Allowlist for client-only mods (Q7) |
 | P-5 | Persistent PlayerKey (SteamID, or a stored GUID) | Session ID only |
 | P-6 | Re-seed Rand per tick and per command | One continuous Rand stream |
 | P-7 | Permission checks inside deterministic command execution, issuer stamped by the server | Validate on the server (needs game state) |

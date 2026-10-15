@@ -137,6 +137,12 @@ await Run("mod manifest, diff report and content hash", () =>
     var order = ModManifestDiff.Compare(reordered, host);
     Equal(false, order.IsMatch); Equal(1, order.FirstOrderDifference);
     Equal(false, reordered.Hash().SequenceEqual(host.Hash()));
+    var otherBuild = new ModManifest("1.6.4871 rev600", host.Mods);
+    Equal(true, otherBuild.Hash().SequenceEqual(host.Hash())); // checksum covers mods only, not the game version
+    var buildOnly = ModManifestDiff.Compare(otherBuild, host);
+    Equal(true, buildOnly.IsMatch); Equal(true, buildOnly.GameVersionDiffers);
+    var renamed = new ModManifest(host.GameVersion, host.Mods.Select(m => new ModEntry(m.PackageId, "Anderer Name", m.Version, m.ContentHash)).ToArray());
+    Equal(true, renamed.Hash().SequenceEqual(host.Hash())); // display names do not count either
     var changed = new ModManifest("1.6.4871 rev600", new[] { core, new ModEntry("brrainz.harmony", "Harmony", "2.4", h(9)), ui, new ModEntry("extra.mod", "Extra", "", h(5)) });
     var diff = ModManifestDiff.Compare(changed, host);
     Equal(true, diff.GameVersionDiffers); Equal("big.mod", diff.MissingLocally.Single().PackageId);
