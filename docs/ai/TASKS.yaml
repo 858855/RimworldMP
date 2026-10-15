@@ -568,11 +568,13 @@ tasks:
   - 'Welt ohne Karte speichern, laden und auf der Startortseite anzeigen ist nachgewiesen oder widerlegt'
   - 'Größe von Welt- und Spielstand gemessen'
   - 'Threads und Jobs im 1.6-Tickpfad aufgelistet'
-  implementation: planned
+  implementation: in_progress
   verification: not_tested
   integration: not_submitted
-  branch: null
-  evidence: []
+  branch: feat/lobby-hardening
+  evidence:
+  - references/verified-apis.md
+  blocker: 'Metadatenteil erledigt (125 Symbole gegen 1.6.4871 rev590 Windows). Offen: Welt ohne Karte speichern/laden, Größen messen, Tickpfad-Threads – braucht laufendes Spiel.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: ID-001
   title: 'Persistente Spieleridentität (PlayerKey)'
