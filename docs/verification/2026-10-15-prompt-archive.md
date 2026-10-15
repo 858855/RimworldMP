@@ -6,3 +6,5 @@
 - **Prüfung:** Auswahl anhand eindeutiger Textanfänge und eindeutiger Trefferzahl (`assert`), UTF-8-SHA-256 bei der Extraktion berechnet. Ein einfacher Scan auf typische Zugangsdaten-Präfixe/Private-Key-Marker war negativ; er ersetzt keine umfassende Geheimnisprüfung.
 - **Konsistenz:** `python3 scripts/validate_project_state.py` → Exit 0, Pflichtdateien/Status/Referenzen gültig; `git diff --check` → Exit 0. Hashes, Zeichenzahlen und vollständige Textgleichheit wurden vor Commit unabhängig erneut geprüft. `git -c core.whitespace=-blank-at-eol diff --cached --check` → Exit 0; die originale Markdown-Formatierung mit absichtlichen Zeilenend-Leerzeichen bleibt erhalten.
 - **Geltung:** Die historischen Texte werden für Audit und Nachvollziehbarkeit veröffentlicht. Aktuelle Arbeitsregeln sind `AGENTS.md` und die Governance-2.0-Dateien; dies wird im Index und Kontextindex erklärt.
+
+- **GitHub-Nachweis:** `git push origin main` → Exit 0, `f86ab83..eccfacb`; erneuter `git fetch origin` → Exit 0; `git rev-parse HEAD origin/main` gab zweimal `eccfacb4eb85593cffc66dd248f909ec2d3a570b` aus.
