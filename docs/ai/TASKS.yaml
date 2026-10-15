@@ -663,11 +663,12 @@ tasks:
   - '50-MB-Nutzlast über TCP und Steam P2P mit gleichem SHA-256'
   - 'Gegendruck hält die Steam-Empfangsqueue unter 1 MiB'
   - 'Wiederaufnahme nach verlorenem Ack getestet'
-  implementation: planned
-  verification: not_tested
+  implementation: implemented
+  verification: tests_passed
   integration: not_submitted
-  branch: null
+  branch: feat/lobby-hardening
   evidence: []
+  blocker: 'TCP-Relay mit 50 MB, Fensterbegrenzung und Abbruch automatisiert geprüft (.NET-8-Harness). Steam-P2P-Lauf im Spiel offen. Wiederaufnahme nach Verbindungsabbruch nicht umgesetzt: Abbruch und Neustart der Übertragung.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: SETUP-001
   title: 'Host-Seiten-Hooks und Setup-Ansicht der Clients'

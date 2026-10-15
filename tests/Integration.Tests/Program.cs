@@ -238,6 +238,105 @@ using (var invalidKey = new TcpClient())
 Console.WriteLine("PASS: player key replaces older session and is required");
 await keyServer.StopAsync();
 
+// XFER-001: 50 MB relayed through the server between two real TCP clients, paced by acknowledgements.
+await using var xferServer = new FoundationServer(chatConfig);
+await xferServer.StartAsync();
+using var xSender = (await HandshakeClient.ConnectAsync("127.0.0.1", xferServer.BoundPort, "Sender", TimeSpan.FromSeconds(3))).Connection;
+using var xReceiver = (await HandshakeClient.ConnectAsync("127.0.0.1", xferServer.BoundPort, "Receiver", TimeSpan.FromSeconds(3))).Connection;
+using var xOutsider = (await HandshakeClient.ConnectAsync("127.0.0.1", xferServer.BoundPort, "Outsider", TimeSpan.FromSeconds(3))).Connection;
+await xSender.SendAsync(new WireMessage(MessageType.CreateLobby, 2, LobbyPayloads.Create("Xfer", 4)));
+LobbyView xRoom = LobbyPayloads.ReadState((await ReceiveType(xSender, MessageType.LobbyStateUpdate)).Payload);
+await xReceiver.SendAsync(new WireMessage(MessageType.JoinLobby, 2, LobbyPayloads.GuidValue(xRoom.Id)));
+await ReceiveType(xReceiver, MessageType.LobbyStateUpdate);
+await ReceiveType(xSender, MessageType.LobbyStateUpdate);
+byte[] big = new byte[50 * 1024 * 1024];
+new Random(7).NextBytes(big);
+var bigSource = new TransferSource(TransferKind.Game, Guid.Empty, big);
+var upload = new TransferUpload(bigSource, m => xSender.SendAsync(m));
+using var xferDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+Task senderAcks = PumpUploadAsync(xSender, upload, xferDeadline.Token);
+Task<byte[]> download = DownloadAsync(xReceiver, xferDeadline.Token);
+var watch = System.Diagnostics.Stopwatch.StartNew();
+await upload.RunAsync(TimeSpan.FromSeconds(20), xferDeadline.Token);
+byte[] arrived = await download;
+Assert(arrived.Length == big.Length && arrived.AsSpan().SequenceEqual(big), "50 MB transfer arrived intact");
+Console.WriteLine($"PASS: 50 MB chunked transfer relayed with matching SHA-256 ({watch.ElapsedMilliseconds} ms)");
+xferDeadline.Cancel();
+await senderAcks; // stop this pump before the next upload reads the same connection
+
+await xOutsider.SendAsync(new WireMessage(MessageType.CreateLobby, 2, LobbyPayloads.Create("Other", 2)));
+await ReceiveType(xOutsider, MessageType.LobbyStateUpdate);
+await xOutsider.SendAsync(new WireMessage(MessageType.TransferBegin, 3, TransferPayloads.Begin(
+    new TransferSource(TransferKind.ModManifest, xRoom.Players[0].Id, new byte[] { 1 }).Header)));
+Assert((await ReceiveType(xOutsider, MessageType.Error)).RequestId == 3, "transfer to another lobby rejected");
+Console.WriteLine("PASS: transfer to a member of another lobby rejected");
+
+using var xLeaver = (await HandshakeClient.ConnectAsync("127.0.0.1", xferServer.BoundPort, "Leaver", TimeSpan.FromSeconds(3))).Connection;
+await xLeaver.SendAsync(new WireMessage(MessageType.JoinLobby, 2, LobbyPayloads.GuidValue(xRoom.Id)));
+await ReceiveType(xLeaver, MessageType.LobbyStateUpdate);
+var abortSource = new TransferSource(TransferKind.World, Guid.Empty, new byte[TransferPayloads.ChunkBytes * 100]);
+var abortUpload = new TransferUpload(abortSource, m => xSender.SendAsync(m));
+using var abortDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+Task abortAcks = PumpUploadAsync(xSender, abortUpload, abortDeadline.Token);
+Task<byte[]> partial = DownloadAsync(xReceiver, abortDeadline.Token);
+Task abortRun = abortUpload.RunAsync(TimeSpan.FromSeconds(10), abortDeadline.Token);
+await ReceiveType(xLeaver, MessageType.TransferBegin);
+xLeaver.Dispose(); // one receiver drops mid-transfer
+try { await abortRun; throw new Exception("FAIL: transfer should abort when a receiver drops"); }
+catch (IOException) { }
+try { await partial; throw new Exception("FAIL: receiver should see the abort"); }
+catch (IOException) { }
+Console.WriteLine("PASS: receiver disconnect aborts the transfer for sender and other receivers");
+abortDeadline.Cancel();
+await abortAcks;
+await xferServer.StopAsync();
+
+// Routes acks and aborts for one upload; answers pings. Stops when the upload's token is cancelled.
+static async Task PumpUploadAsync(NetworkConnection connection, TransferUpload upload, CancellationToken token)
+{
+    while (!token.IsCancellationRequested)
+    {
+        WireMessage? packet;
+        try { packet = await connection.ReceiveAsync(token); }
+        catch (OperationCanceledException) { return; }
+        if (packet == null) return;
+        if (packet.Type == MessageType.TransferAck)
+        {
+            var ack = TransferPayloads.ReadAck(packet.Payload);
+            if (ack.TransferId == upload.Header.TransferId) upload.OnAck(ack.Receiver, ack.Received);
+        }
+        else if (packet.Type == MessageType.TransferAbort) upload.OnAbort(TransferPayloads.ReadAbort(packet.Payload).Reason);
+        else if (packet.Type == MessageType.Ping)
+            await connection.SendAsync(new WireMessage(MessageType.Pong, packet.RequestId, packet.Payload), token);
+    }
+}
+// Receives one transfer, acknowledging every 8 chunks, and returns the verified bytes.
+static async Task<byte[]> DownloadAsync(NetworkConnection connection, CancellationToken token)
+{
+    TransferAssembler? assembler = null;
+    while (true)
+    {
+        WireMessage packet = await connection.ReceiveAsync(token) ?? throw new IOException("closed");
+        switch (packet.Type)
+        {
+            case MessageType.TransferBegin:
+                assembler = new TransferAssembler(TransferPayloads.ReadBegin(packet.Payload)); break;
+            case MessageType.TransferChunk:
+                var chunk = TransferPayloads.ReadChunk(packet.Payload);
+                assembler!.Add(chunk.Index, chunk.Data);
+                if (assembler.IsComplete || assembler.Received % 8 == 0)
+                    await connection.SendAsync(new WireMessage(MessageType.TransferAck, 0,
+                        TransferPayloads.Ack(chunk.TransferId, Guid.Empty, assembler.Received)), token);
+                if (assembler.IsComplete) return assembler.Result;
+                break;
+            case MessageType.TransferAbort:
+                throw new IOException("aborted: " + TransferPayloads.ReadAbort(packet.Payload).Reason);
+            case MessageType.Ping:
+                await connection.SendAsync(new WireMessage(MessageType.Pong, packet.RequestId, packet.Payload), token); break;
+        }
+    }
+}
+
 static async Task<WireMessage> ReceiveType(NetworkConnection connection, MessageType wanted, CancellationToken token = default)
 {
     using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);

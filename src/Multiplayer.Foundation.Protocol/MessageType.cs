@@ -20,6 +20,15 @@ namespace Multiplayer.Foundation.Protocol
         Error = 16,
         CloseLobby = 17,
         LobbyChatRequest = 18,
-        LobbyChatMessage = 19
+        LobbyChatMessage = 19,
+        // Wire version 3
+        ModManifestSummary = 20,
+        ModManifestRequest = 21,
+        TransferBegin = 22,
+        TransferChunk = 23,
+        TransferAck = 24,
+        TransferAbort = 25,
+        StartSetupRequest = 26,
+        AbortSetupRequest = 27
     }
 }

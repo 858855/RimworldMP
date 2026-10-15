@@ -58,6 +58,24 @@ namespace Multiplayer.Foundation.Lobby
             }
         }
 
+        /// <summary>Receivers of a chunked transfer: one member of the actor's lobby, or all others when target is empty.</summary>
+        public IReadOnlyList<Guid> TransferRecipients(Guid actor, Guid target)
+        {
+            lock (gate)
+            {
+                Room room = GetCurrentRoom(GetMember(actor));
+                if (target == actor) throw new LobbyRuleException(6, "Cannot send a transfer to yourself.");
+                if (target != Guid.Empty)
+                {
+                    if (!room.Members.Contains(target)) throw new LobbyRuleException(4, "Receiver is not in this lobby.");
+                    return new[] { target };
+                }
+                Guid[] others = room.Members.Where(id => id != actor).ToArray();
+                if (others.Length == 0) throw new LobbyRuleException(6, "No other lobby members to receive the transfer.");
+                return others;
+            }
+        }
+
         public LobbyChange Create(Guid actor, string name, byte capacity)
         {
             ValidateName(name);

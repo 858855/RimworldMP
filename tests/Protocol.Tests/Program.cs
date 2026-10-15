@@ -82,6 +82,47 @@ await Run("player key and hello payload", () =>
     Equal((byte)3, FrameCodec.Version);
     return Task.CompletedTask;
 });
+await Run("transfer payloads, pacing window and assembly", () =>
+{
+    byte[] data = new byte[TransferPayloads.ChunkBytes * 40 + 123];
+    new Random(5).NextBytes(data);
+    var source = new TransferSource(TransferKind.World, Guid.Empty, data);
+    Equal(41u, source.Header.ChunkCount);
+    Equal(123, source.Header.ChunkLength(40));
+    TransferHeader echoed = TransferPayloads.ReadBegin(TransferPayloads.Begin(source.Header.WithSender(Guid.NewGuid())));
+    Equal(source.Header.TransferId, echoed.TransferId); Equal(source.Header.Size, echoed.Size);
+    Equal(true, echoed.Sha256.SequenceEqual(source.Header.Sha256));
+    Equal(false, source.TryTakeChunk(out _, out _)); // no receiver known yet
+    Guid a = Guid.NewGuid(), b = Guid.NewGuid();
+    source.Acknowledge(a, 0); source.Acknowledge(b, 0);
+    var assembler = new TransferAssembler(echoed);
+    int sent = 0;
+    while (source.TryTakeChunk(out uint index, out byte[] payload))
+    {
+        var chunk = TransferPayloads.ReadChunk(payload);
+        Equal(index, chunk.Index); assembler.Add(chunk.Index, chunk.Data); sent++;
+    }
+    Equal((int)TransferPayloads.Window, sent); // window limits chunks in flight
+    source.Acknowledge(a, 32);
+    Equal(false, source.TryTakeChunk(out _, out _)); // slowest receiver b still at 0
+    source.Acknowledge(b, 32);
+    while (source.TryTakeChunk(out uint index, out byte[] payload)) { var c = TransferPayloads.ReadChunk(payload); assembler.Add(c.Index, c.Data); }
+    Equal(true, assembler.IsComplete); Equal(true, assembler.Result.SequenceEqual(data));
+    Equal(false, source.IsComplete); source.Acknowledge(a, 41); source.Acknowledge(b, 41); Equal(true, source.IsComplete);
+    Throws<ProtocolException>(() => source.Acknowledge(a, 42));
+    var outOfOrder = new TransferAssembler(echoed);
+    Throws<ProtocolException>(() => outOfOrder.Add(1, new byte[TransferPayloads.ChunkBytes]));
+    Throws<ProtocolException>(() => outOfOrder.Add(0, new byte[10]));
+    byte[] small = { 1, 2, 3 };
+    var tampered = new TransferHeader(Guid.NewGuid(), TransferKind.ModManifest, Guid.Empty, Guid.Empty, 3, new byte[32]);
+    Throws<ProtocolException>(() => new TransferAssembler(tampered).Add(0, small));
+    Throws<ProtocolException>(() => new TransferHeader(Guid.NewGuid(), TransferKind.ModManifest, Guid.Empty, Guid.Empty,
+        TransferPayloads.MaximumSize(TransferKind.ModManifest) + 1, new byte[32]));
+    var ack = TransferPayloads.ReadAck(TransferPayloads.Ack(echoed.TransferId, a, 7));
+    Equal(a, ack.Receiver); Equal(7u, ack.Received);
+    Equal("Grund", TransferPayloads.ReadAbort(TransferPayloads.Abort(echoed.TransferId, "Grund")).Reason);
+    return Task.CompletedTask;
+});
 Console.WriteLine($"PASS: {passed} protocol test groups");
 
 async Task Run(string name, Func<Task> body)
