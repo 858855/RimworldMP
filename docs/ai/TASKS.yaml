@@ -408,8 +408,8 @@ tasks:
   - Zwei Steam-Konten auf getrennten Heimanschlüssen haben die Verbindung tatsächlich geprüft
   test_strategy: Transport-/Server-Tests, Mod-Release-Build und zwei echte Steam-Spielclients hinter getrennten Heimanschlüssen.
   risks:
-  - Steamworks-Laufzeit und Callback-Pump im RimWorld-Prozess ungeprüft
-  - Zwei Steam-Konten und zwei Heimanschlüsse für den Abschluss erforderlich
+  - Steam-Verbindung laut Nutzer erfolgreich; genauer Ablauf und Umgebung noch nicht dokumentiert
+  - Lobby-/Ready-/Disconnect- und Host-Wechsel-Test für den Abschluss noch nicht belegt
   implementation: in_progress
   verification: build_passed
   integration: merged
@@ -418,5 +418,6 @@ tasks:
   base_commit: 5b533cd
   evidence:
   - docs/verification/2026-10-15-steam-transport.md
+  - docs/verification/2026-10-15-steam-user-connection.md
   - docs/decisions/0010-steam-home-host.md
   - docs/reviews/2026-10-15-steam-transport-merge.md
