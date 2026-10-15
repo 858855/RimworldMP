@@ -1,7 +1,8 @@
 
 // Mirrors the limits of SteamPeerStream (src/Multiplayer.Foundation.RimWorld/SteamPeerStream.cs) without Steam:
 // one message per write, a bounded reliable send buffer, a pump that moves at most 8 messages per frame,
-// and a 1 MiB receive queue that kills the connection when it overflows. Real Steam stays untested here.
+// a 1 MiB receive queue that kills the connection when it overflows, and an orderly close that still
+// delivers queued messages (CloseConnection with linger), while an error drops them. Real Steam stays untested.
 sealed class SteamLikeLink : IDisposable
 {
     public const int SendBufferBytes = 512 * 1024;
@@ -46,6 +47,7 @@ sealed class SteamLikeLink : IDisposable
         private readonly Queue<byte[]> inTransit = new(), received = new();
         private readonly SemaphoreSlim available = new(0);
         private int inTransitBytes, queuedBytes;
+        private bool finishing;
         private byte[]? current;
         private int position;
         public bool Closed;
@@ -56,7 +58,7 @@ sealed class SteamLikeLink : IDisposable
         {
             lock (gate)
             {
-                if (Closed) throw new ObjectDisposedException("SteamLikeLink");
+                if (Closed || finishing) throw new ObjectDisposedException("SteamLikeLink");
                 if (inTransitBytes + count > SendBufferBytes)
                 {
                     Close("Steam send failed: k_EResultLimitExceeded");
@@ -82,6 +84,18 @@ sealed class SteamLikeLink : IDisposable
                     MaxQueued = Math.Max(MaxQueued, queuedBytes);
                     available.Release();
                 }
+                if (finishing && inTransit.Count == 0) Close(null);
+            }
+        }
+
+        /// <summary>Orderly close with linger: deliver what is already in transit, then end the stream.</summary>
+        public void Finish()
+        {
+            lock (gate)
+            {
+                if (Closed) return;
+                finishing = true;
+                if (inTransit.Count == 0) Close(null);
             }
         }
 
@@ -137,7 +151,7 @@ sealed class SteamLikeLink : IDisposable
         public override void Write(byte[] buffer, int offset, int count) => outgoing.Send(buffer, offset, count);
         protected override void Dispose(bool disposing)
         {
-            if (disposing) { incoming.Close(null); outgoing.Close(null); }
+            if (disposing) { incoming.Close(null); outgoing.Finish(); }
             base.Dispose(disposing);
         }
     }

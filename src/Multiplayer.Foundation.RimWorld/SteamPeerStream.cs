@@ -115,7 +115,11 @@ namespace Multiplayer.Foundation.RimWorld
             return Task.CompletedTask;
         }
 
-        internal void CloseWithError(string reason)
+        internal void CloseWithError(string reason) => Close(reason, false);
+
+        // Linger on an orderly close so Steam still delivers what was sent last, such as a HandshakeRejected
+        // with its reason. Without linger Steam drops unsent reliable data and the peer only sees the close.
+        private void Close(string reason, bool linger)
         {
             lock (gate)
             {
@@ -124,12 +128,12 @@ namespace Multiplayer.Foundation.RimWorld
                 connected.TrySetException(new IOException(reason));
                 available.Release();
             }
-            SteamNetworkingSockets.CloseConnection(handle, 0, reason, false);
+            SteamNetworkingSockets.CloseConnection(handle, 0, reason, linger);
         }
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing) CloseWithError("Steam connection closed.");
+            if (disposing) Close("Steam connection closed.", true);
             base.Dispose(disposing);
         }
 
