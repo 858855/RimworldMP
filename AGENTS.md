@@ -53,3 +53,5 @@ Nenne verwendete RimWorld-/MP-/SDK-Builds, Dateien, APIs mit Referenzen, Build-B
 33. Tests nach Risiko auswählen und Befehle, Ergebnisse, Exit-Codes und Grenzen in `docs/verification/` belegen. Build bedeutet nicht Laufzeitfunktion; Fehler mit Hypothese, gezielter Korrektur und Wiederholung untersuchen.
 34. Fachdocs, CODEMAP, Changelog, Review und Übergabe nach tatsächlichen Änderungen pflegen; Fakten, Pläne und Behauptungen trennen. Details: `docs/governance/WORKFLOW.md`, `REVIEW_POLICY.md`, `DOCUMENTATION_POLICY.md`.
 35. `HEAD` ist die dynamische Referenz auf den aktuellen Branch-Commit (`git rev-parse HEAD`); der Commit kann seinen eigenen Hash nicht enthalten. Bei Widerspruch Git, Code und Prüfbelege vor Dokumentationskorrektur untersuchen.
+
+36. Originale Überprompt/Masterprompts sind als historische Quellen unter `docs/governance/PROMPT_HISTORY.md` verzeichnet; im normalen Arbeitsstart nicht vollständig laden. Bei Regelkonflikten gelten die aktuellen Anweisungen und die Governance 2.0.

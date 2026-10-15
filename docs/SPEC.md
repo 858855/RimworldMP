@@ -6,4 +6,4 @@
 
 **Optional nach Nachweis:** Reconnect-Erleichterung und Modulregistrierung. Keine überflüssigen Abstraktionen vor einem realen Anwendungsfall.
 
-**Akzeptanz:** Server baut und startet unter Linux; zwei Clients führen echte TCP-Lobbyaktionen aus und sehen denselben Zustand; Fehlerfälle sind automatisiert geprüft; der Mod baut gegen den lokalen 1.6-Build und wird im Spiel getestet. Fehlende Game-Tests begrenzen die Verifikationsaussage. Ziel-Build: `1.6.4871 rev598` (Steam `23969874`). Andere Versionen sind nicht freigegeben.
+**Akzeptanz:** Server baut und startet unter Linux; zwei Clients führen echte TCP-Lobbyaktionen aus und sehen denselben Zustand; Fehlerfälle sind automatisiert geprüft; der Mod baut gegen den lokalen 1.6-Build und wird im Spiel getestet. Fehlende Game-Tests begrenzen die Verifikationsaussage. Ziel: lokaler RimWorld-1.6-Build `1.6.4871` (Steam `23969874`); `Version.txt` meldet rev598, der Spielprozess rev600. Die exakte Revision und andere Versionen sind nicht laufzeitverifiziert.

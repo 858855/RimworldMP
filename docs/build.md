@@ -10,7 +10,7 @@ DOTNET_BIN=/home/fabiok/.local/share/dotnet-rimworldmp/dotnet bash scripts/build
 /home/fabiok/.local/share/dotnet-rimworldmp/dotnet run --project tests/Integration.Tests/Integration.Tests.csproj -c Release
 ```
 
-RimWorld `1.6.4871 rev598` ist lokal installiert. Seine proprietären Assemblies werden nicht ins Git-Repository kopiert. Der Client-Mod baut mit `netstandard2.1`; der Spielstart bleibt offen.
+RimWorld `1.6.4871` ist lokal installiert (`Version.txt`: rev598; Spielprozess: rev600). Seine proprietären Assemblies werden nicht ins Git-Repository kopiert. Der Client-Mod baut mit `netstandard2.1`; der Spielstart bleibt offen.
 
 ```bash
 DOTNET_BIN=/home/fabiok/.local/share/dotnet-rimworldmp/dotnet bash scripts/build-mod.sh

@@ -6,10 +6,13 @@ project:
     Gameplay-Sync.'
 product_version: 0.1.0-dev
 target_rimworld_version:
-  primary: 1.6.4871 rev598
+  primary: 1.6.4871
+  version_file: rev598
+  runtime_reported: rev600
+  game_ui_verified: false
   steam_build_id: '23969874'
   runtime: Unity/Mono
-  game_runtime_tested: false
+  game_runtime_tested: true
   other_versions_verified: []
 current_phase: client_integration_verification
 git:
@@ -69,16 +72,17 @@ verified_capabilities:
 - 'Erweiterter TCP-Test: Reconnect ohne Doppelmitgliedschaft, ungültige Wire-Version abgelehnt und Host-Rechte
   nach Disconnect übertragen; insgesamt 13 Integrationstestgruppen bestanden.'
 known_issues:
-- 'RimWorld-UI im Spiel nicht verifiziert: -nographics verursacht Spiel-Atlasfehler; grafischer Start
-  kam binnen 60 s nicht über Unity-Initialisierung.'
+- 'RimWorld-UI im Spiel nicht verifiziert: -nographics verursacht Atlasfehler; grafischer Start
+  kam auch im 180-s-Wiederholungsversuch nicht bis zu belegten Mod-Ladeeinträgen.'
+- 'Version.txt meldet rev598, die gestartete Spiel-Runtime rev600; exakte Laufzeitkompatibilität offen.'
 - Server und Client haben keine Authentifizierung/TLS; nur kontrolliertes LAN/Testnetz.
 blockers:
 - Vollständiger RimWorld-UI-Laufzeittest in dieser Umgebung offen.
 - 1.7-Unterstützung ungeklärt.
 active_tasks:
 - TEST-001
-next_action: Mod in RimWorld 1.6 mit isolierter Modliste grafisch laden, Mod-Einstellungen öffnen und
-  Lobby-Aktionen gegen den Server prüfen.
+next_action: Grafischen RimWorld-Start bis zum Hauptmenü und Mod-Ladeeintrag beobachten; danach Mod-Einstellungen
+  und Lobby-Aktionen gegen den Server prüfen.
 documentation_refs:
   tasks: docs/ai/TASKS.yaml
   handoff: docs/ai/SESSION_HANDOFF.md
@@ -94,4 +98,8 @@ documentation_refs:
   server_verification: docs/verification/2026-10-15-dedicated-server.md
   client_verification: docs/verification/2026-10-15-client.md
   extended_integration: docs/verification/2026-10-15-integration-extended.md
+  prompt_history: docs/governance/PROMPT_HISTORY.md
+  prompt_review: docs/reviews/2026-10-15-prompt-archive.md
+  prompt_archive_verification: docs/verification/2026-10-15-prompt-archive.md
+  runtime_retry: docs/verification/2026-10-15-rimworld-runtime-retry.md
 last_updated: '2026-10-15'

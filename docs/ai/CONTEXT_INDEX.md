@@ -6,7 +6,7 @@
 
 | Aufgabe | Zusätzlich lesen |
 |---|---|
-| Governance/Review | `docs/governance/`, `docs/verification/RECOVERY_REPORT.md` |
+| Governance/Review | `docs/governance/WORKFLOW.md`, `REVIEW_POLICY.md`, `DOCUMENTATION_POLICY.md`, bei Regelherkunft `PROMPT_HISTORY.md`; `docs/verification/RECOVERY_REPORT.md` |
 | Protokoll/Netzwerk | `docs/protocol.md`, `docs/ai/ARCHITECTURE.md`, `src/Multiplayer.Foundation.Protocol/`, `src/Multiplayer.Foundation.Network/`, zugehörige Tests |
 | Server/Lobby | `docs/dedicated-server.md`, `docs/protocol.md`, `src/Multiplayer.Foundation.Server/`, `src/Multiplayer.Foundation.Lobby/`, Integrationstests |
 | RimWorld-Client | `docs/client.md`, `docs/build.md`, `references/verified-apis.md`, `src/Multiplayer.Foundation.RimWorld/`, `src/Multiplayer.Foundation.Network/LobbyClient.cs`, `tests/Client.Tests/`, Mod-XML, `docs/verification/2026-10-15-client.md` |
@@ -14,3 +14,5 @@
 | Verifikation/Deployment | `docs/testing.md`, `docs/build.md`, `docs/verification/`, `deployment/` |
 
 **Stufe 3, nur bei neuer/unbekannter API oder Versionsfrage:** `research/`, `codex/`, `references/` anhand des Fachthemas. Archivbeispiele unter `examples/` sind keine produktiven Komponenten. `VALIDATION.md` beschreibt ihre ursprüngliche Prüfung.
+
+Die vollständigen historischen Prompts unter `docs/governance/history/` nur für Regel-Audits laden. Für normale Folgeaufträge sind `AGENTS.md` und die aktuellen Governance-Dateien maßgeblich.

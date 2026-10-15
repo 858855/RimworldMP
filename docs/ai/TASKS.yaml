@@ -70,6 +70,25 @@ tasks:
   branch: docs/project-governance
   evidence:
   - docs/verification/2026-10-15-governance-v2.md
+- id: GOV-003
+  title: Ursprüngliche KI-Prompts wortgetreu archivieren
+  goal: Überprompt und beide Masterprompts auf GitHub nachvollziehbar erhalten.
+  priority: high
+  components:
+  - governance
+  depends_on:
+  - GOV-002
+  acceptance:
+  - Drei vollständige Originaltexte mit Prüfsummen archiviert
+  - Geltende Regeln und historische Quellen eindeutig getrennt
+  - KI-Kontextindex verweist nur bei Regel-Audits auf Volltexte
+  implementation: implemented
+  verification: tests_passed
+  integration: merged
+  branch: docs/prompt-archive
+  base_branch: test/rimworld-runtime
+  evidence:
+  - docs/verification/2026-10-15-prompt-archive.md
 - id: NET-001
   title: Versioniertes TCP-Protokoll und Netzwerk-Core
   goal: Begrenztes Framing, Handshake, Heartbeats und Client-Verbindung implementieren.
@@ -181,6 +200,7 @@ tasks:
   - docs/verification/2026-10-15-dedicated-server.md
   - docs/verification/2026-10-15-client.md
   - docs/verification/2026-10-15-integration-extended.md
+  - docs/verification/2026-10-15-rimworld-runtime-retry.md
 - id: LIC-001
   title: Lizenz für neue Projektdateien festlegen
   goal: Rechte für spätere Veröffentlichung eindeutig dokumentieren.

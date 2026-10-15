@@ -16,3 +16,7 @@
 ## Erhalten und offen
 
 `research/`, `references/`, `codex/`, `examples/`, Archiv, historische Prüfberichte und ADR 0001 bleiben erhalten. Alte Statusdateien wurden aktualisiert, historische Nachweise nicht umgeschrieben. Lizenzentscheidung, .NET-Buildumgebung, RimWorld-API-/UI-Laufzeittest und 1.7-Kompatibilität sind offen. Kein Merge oder Push erfolgt.
+
+## Historische Prompt-Quellen
+
+Am 2026-10-15 wurden die drei ursprünglichen Benutzerprompts wortgetreu unter `docs/governance/history/` archiviert und in `docs/governance/PROMPT_HISTORY.md` mit Prüfsummen verzeichnet. Die aktiven Regeln bleiben kompakt in `AGENTS.md` und den Governance-Dateien; der historische Text ist kein zusätzlicher Pflichtkontext.
