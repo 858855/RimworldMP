@@ -1,47 +1,50 @@
-schema_version: 1
-as_of: "2026-10-14"
-project_name: RimworldMP
-project_goal: >-
-  Nachprüfbare Wissensbasis und spätere Entwicklung eines RimWorld-Mods mit
-  deterministisch abgesicherten Multiplayer-Funktionen.
-phase: research_and_project_governance
-version: null
-current_branch: docs/project-governance
-last_relevant_commit: HEAD
-base_commit: 0909d11
-commit_reference_note: "HEAD ist der aktuelle Commit des genannten Branches; git rev-parse HEAD liefert den Hash."
-target:
-  selected_for_next_mp_work: RimWorld 1.6
-  local_game_version: "1.6.4871 rev598"
-  local_steam_build_id: "23969874"
-  evidence: "/mnt/Spiele_1/SteamLibrary/steamapps/common/RimWorld/Version.txt und steamapps/appmanifest_294100.acf, gelesen am 2026-10-14"
-  multiplayer_version: null
-  runtime_tested: false
-implemented_components:
-  - "Forschungsdokumentation aus RimWorld-Codex-Knowledge.zip"
-  - "Unkompilierte Beispiele unter examples/"
-  - "Projektgedächtnis unter docs/ai/"
-verified_functions:
-  - "Archiv-MANIFEST: python3 scripts/verify_knowledge_archive.py erfolgreich"
-  - "Drei XML-Beispiele: python3 scripts/validate_structure.py erfolgreich"
-known_errors: []
-blocking_issues:
-  - "Kein produktiver Mod oder Multiplayer-Featurecode vorhanden."
-  - "Keine C#-Builds, RimWorld-Laufzeittests oder Zwei-Client-Multiplayer-Tests ausgeführt."
-  - "1.7-Multiplayer ist laut Forschungsstand wegen Prepatcher ungeklärt; keine Freigabe."
-open_tasks:
-  - SRC-001
-  - FEATURE-001
-  - TEST-001
-next_recommended_step: >-
-  Menschliche Prüfung von DOC-001, dann erstes konkretes Feature und Ziel-Build
-  festlegen; vor Codearbeit API-Quellen auf feste Commits und lokale Assemblies prüfen.
-references:
+schema_version: 2
+project:
+  name: RimWorld Multiplayer Foundation
+  repository_path: /mnt/Arbeit/Git Projekte/RimworldMP
+  goal: "Version 0.1: echte Client-Server-Verbindung, autoritative Lobbys und RimWorld-Client-Mod; kein Gameplay-Sync."
+product_version: 0.1.0-dev
+target_rimworld_version:
+  primary: "1.6.4871 rev598"
+  steam_build_id: "23969874"
+  runtime: Unity/Mono
+  game_runtime_tested: false
+  other_versions_verified: []
+current_phase: governance_v2_and_protocol_preparation
+git:
+  branch: docs/project-governance
+  base_branch: main
+  base_commit: 0909d11
+  current_commit_ref: HEAD
+  pushed: false
+  merged: false
+  dependent_branches: []
+components:
+  governance: {implementation: implemented, verification: tests_passed, integration: ready_for_human_review}
+  knowledge_base: {implementation: implemented, verification: tests_passed, integration: ready_for_human_review}
+  protocol: {implementation: planned, verification: not_tested, integration: not_submitted}
+  network_core: {implementation: planned, verification: not_tested, integration: not_submitted}
+  lobby_core: {implementation: planned, verification: not_tested, integration: not_submitted}
+  dedicated_server: {implementation: planned, verification: not_tested, integration: not_submitted}
+  rimworld_adapter: {implementation: planned, verification: not_tested, integration: not_submitted}
+verified_capabilities:
+  - "Archiv: 49 Einträge gegen eingebettetes Manifest geprüft."
+  - "Drei XML-Beispiele syntaktisch geprüft; kein RimWorld-Laufzeitnachweis."
+  - "Lokale RimWorld-Version und Steam-Build aus Installationsdateien gelesen."
+known_issues:
+  - "Bisher kein produktiver Multiplayer-Code und keine C#-Builds."
+blockers:
+  - "Lokales .NET-SDK/Mono für Builds noch nicht verfügbar."
+  - "RimWorld-API-Signaturen und Mod-Laufzeit noch nicht geprüft."
+  - "1.7-Multiplayer wegen Prepatcher und fehlenden Tests ungeklärt."
+active_tasks: [GOV-002]
+next_action: "Governance 2.0 validieren und committen; danach Protokoll-Branch von diesem Branch ableiten."
+documentation_refs:
   tasks: docs/ai/TASKS.yaml
   handoff: docs/ai/SESSION_HANDOFF.md
-  context_index: docs/ai/CONTEXT_INDEX.md
+  context: docs/ai/CONTEXT_INDEX.md
+  recovery: docs/verification/RECOVERY_REPORT.md
+  spec: docs/SPEC.md
   architecture: docs/ai/ARCHITECTURE.md
-  codemap: docs/ai/CODEMAP.md
-  decision: docs/decisions/0001-research-before-mod-code.md
-  verification: docs/verification/2026-10-14-project-baseline.md
-  review: docs/reviews/2026-10-14-project-governance.md
+  review: docs/reviews/2026-10-15-governance-v2.md
+last_updated: "2026-10-15"

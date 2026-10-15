@@ -1,16 +1,17 @@
-# Architekturstand
+# Architektur – Stand und Grenzen
 
-## Tatsächlicher Zustand
+## Tatsächlich vorhanden
 
-Das Repository enthält eine RimWorld-Wissensbasis, Recherche, Workflows, Referenzen und **nicht kompilierten Beispielcode**. Es enthält noch keinen produktiven Mod, keine Netzwerkimplementierung und keine getestete Runtime-Komponente. Der Dateiplan steht in `CODEMAP.md`.
+Das Repository enthält versionierte Forschung, Governance und nicht kompilierte Beispiele. Produktiver Code unter `src/` und ein lauffähiger Mod unter `mod/` sind noch nicht vorhanden. `docs/verification/RECOVERY_REPORT.md` belegt den Ausgangsstand.
 
-## Vorgaben für spätere Implementierung
+## Ziel für 0.1 (geplant)
 
-- Ziel für unmittelbare Multiplayer-Arbeit ist der lokal vorhandene 1.6-Zweig (`1.6.4871 rev598`); 1.7/Waylith bleibt ein separater experimenteller Pfad ohne MP-Zusage.
-- Bevorzugte Reihenfolge: Vanilla XML/Defs, dann Components, erst danach begründete Harmony-Patches.
-- Vorgesehene Schichten: `Defs -> Domänenmodell -> deterministische Simulation -> Save`; `UI -> validierter Befehl -> Simulation`.
-- Simulationszustand wird game-/map-/thing-gebunden persistiert; synchronisierte Aktionen mutieren ihn im autorisierten Tick-/Command-Kontext.
-- Build-Ziele und Referenzen müssen nach Version getrennt bleiben: 1.6 `net472`, 1.7 `net10.0`.
-- API-Signaturen, MP-Synchronisation und Kompatibilität werden für das **konkrete** Feature gegen feste Quellen und lokale Assemblies geprüft.
+`RimWorld UI -> Network Core -> Protocol/TCP -> Dedicated Server -> Lobby Core`. Der Server ist autoritativ für Sitzungen und Lobbys. Die UI empfängt Zustandsnachrichten; sie verändert keinen RimWorld-Spielzustand. Der Server simuliert keine Spielwelt. Protokoll und Netzwerkbibliothek enthalten keine Verse-, Unity- oder Waylith-Abhängigkeit.
 
-Diese Leitlinien sind noch keine implementierte Architektur. Begründungen und Beispielstruktur stehen in `codex/architecture-guidelines.md`; die derzeitige Entscheidung in `docs/decisions/0001-research-before-mod-code.md`.
+- **Protocol:** feste Version, Längenbegrenzung, Nachrichtentypen, Fehlercodes.
+- **Network Core:** asynchrone Verbindung, Framing, Handshake, Heartbeat, Timeout und sauberes Schließen.
+- **Lobby Core:** geprüfte Mitgliedschaft, Host-Rechte, Ready-Status und konsistente Zustandsupdates.
+- **Dedicated Server:** Konfiguration, TCP-Listener, Sitzungen, Logging und Shutdown ohne Game-Runtime.
+- **RimWorld Adapter:** lokal installierter 1.6-Build; nur UI und Netzwerkadapter. 1.7 ist nicht verifiziert.
+
+**Sicherheitsgrenze:** Der LAN-Testserver erhält zunächst keine öffentliche Authentifizierung oder Transportverschlüsselung; keine Internet-Sicherheitszusage. Datenfelder und Framegröße werden begrenzt. Architekturentscheidungen stehen unter `docs/decisions/`.

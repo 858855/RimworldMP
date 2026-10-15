@@ -1,3 +1,11 @@
+# RimWorld Multiplayer Foundation
+
+**Projektziel:** Version 0.1 soll einen echten RimWorld-1.6-Client mit Lobby-Oberfläche, eine getrennte TCP-Netzwerkbibliothek und einen Linux-Dedicated-Server verbinden. Gameplay-Synchronisation gehört zu späteren Versionen. **Aktueller Stand:** Wissensbasis und Governance sind vorhanden; produktiver Multiplayer-Code ist noch nicht implementiert. Maßgeblich ist `docs/ai/PROJECT_STATE.yaml`.
+
+Einstieg: `docs/SPEC.md`, `docs/ai/CONTEXT_INDEX.md`, `docs/ai/TASKS.yaml`. Build- und Teststand: `docs/build.md`, `docs/testing.md`. Die folgende ursprüngliche Forschungs-README bleibt als Herkunft und technische Referenz erhalten.
+
+---
+
 # RimWorld Codex Knowledge Base — Forschungsstand 2026-10-14
 
 **Zweck:** Nachprüfbare Arbeitsgrundlage für Codex zur späteren Entwicklung, Portierung, Optimierung und Multiplayer-Absicherung von RimWorld-Mods. **Dies ist noch kein veröffentlichungsfertiger Mod.**

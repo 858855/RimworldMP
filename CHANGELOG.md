@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Governance 2.0
+
+- Nach dem Abbruch den Git- und Dateistand erfasst und im Recovery-Bericht festgehalten.
+- Projektziel 0.1, getrennte Statusdimensionen, automatische lokale Commits und verpflichtende menschliche Merge-Freigabe dokumentiert.
+- Governance-, Spezifikations- und Prüfstruktur ergänzt; noch kein produktiver Multiplayer-Code.
+
 ### Dokumentation
 
 - Vom Benutzer bereitgestellte RimWorld-Wissensbasis aus dem geprüften Archiv im Repository zugänglich gemacht.

@@ -1,0 +1,23 @@
+# Generated build and local tooling
+**/bin/
+**/obj/
+**/TestResults/
+dist/
+*.log
+*.tmp
+*.user
+.vs/
+.idea/
+.vscode/
+__pycache__/
+*.pyc
+# Local credentials and configuration
+.env
+.env.*
+serverconfig.json
+# Proprietary RimWorld and engine binaries must stay outside Git
+**/Assembly-CSharp.dll
+**/UnityEngine*.dll
+**/Waylith.dll
+**/RimWorld.dll
+**/Managed/

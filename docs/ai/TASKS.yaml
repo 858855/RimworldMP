@@ -1,61 +1,120 @@
-schema_version: 1
-status_schema:
-  open: "Noch nicht begonnen."
-  in_progress: "Aktive Arbeit auf einem Arbeitsbranch."
-  blocked: "Abhängigkeit oder nachweisbares Hindernis verhindert Abschluss."
-  ready_for_human_review: "Umsetzung und verfügbare Prüfungen fertig; Merge-Freigabe ausstehend."
-  done: "Abgeschlossen; bei Merge-Aufgaben nach menschlich freigegebenem Merge."
+schema_version: 2
+status_models:
+  implementation: [not_started, planned, in_progress, implemented, blocked]
+  verification: [not_tested, build_passed, tests_passed, tests_failed, runtime_verified, blocked]
+  integration: [not_submitted, ready_for_human_review, changes_requested, approved, merged]
 tasks:
   - id: DOC-001
-    title: "Projektgedächtnis und vorhandene Wissensbasis in Git zugänglich machen"
-    status: ready_for_human_review
-    branch: docs/project-governance
+    title: Bestehende Wissensbasis und Projektgedächtnis sichern
+    goal: Archiv und erste Projektdokumentation zugänglich machen.
+    priority: high
+    components: [governance, knowledge_base]
     depends_on: []
-    acceptance_criteria:
-      - "Alle geforderten Projektgedächtnis-Dateien und Verzeichnisse sind vorhanden."
-      - "Vorhandene AGENTS.md und README.md bleiben inhaltlich erhalten."
-      - "Archivinhalt ist prüfbar, und keine Mod-Laufzeit wird behauptet."
-    verification:
-      - "python3 scripts/verify_knowledge_archive.py: 49 Archiveinträge bestanden"
-      - "python3 scripts/validate_structure.py: 3 XML-Dateien bestanden"
-      - "YAML- und Git-Prüfung: siehe docs/verification/2026-10-14-project-baseline.md"
-    review: docs/reviews/2026-10-14-project-governance.md
+    acceptance: ["Archiv geprüft", "Projektgedächtnis angelegt"]
+    implementation: implemented
+    verification: tests_passed
+    integration: ready_for_human_review
+    branch: docs/project-governance
+    evidence: [docs/verification/2026-10-14-project-baseline.md]
   - id: ENV-001
-    title: "Lokal installierte RimWorld-Version feststellen"
-    status: done
-    branch: docs/project-governance
+    title: Lokale RimWorld-Version erfassen
+    goal: Konkreten 1.6-Build für den Client festhalten.
+    priority: high
+    components: [rimworld_adapter]
     depends_on: []
-    acceptance_criteria:
-      - "Version mit Revision und Steam-Build-ID aus lokalen Dateien erfasst."
-    verification:
-      - "Version.txt: 1.6.4871 rev598"
-      - "appmanifest_294100.acf: buildid 23969874"
-      - "RimWorld-Laufzeit nicht getestet"
-  - id: SRC-001
-    title: "Verwendete API-Quellen für erste Implementierung pinnen und lokal prüfen"
-    status: open
-    branch: null
-    depends_on: [DOC-001, FEATURE-001]
-    acceptance_criteria:
-      - "Für benutzte externe APIs sind Commit-Hashes oder Paketversionen dokumentiert."
-      - "Signaturen sind gegen die passende lokale Assembly oder getaggte Quelle geprüft."
-    verification: []
-  - id: FEATURE-001
-    title: "Erstes konkretes Mod-Feature und Ziel-Build festlegen"
-    status: open
-    branch: null
+    acceptance: ["Version und Steam-Build aus lokalen Dateien ermittelt"]
+    implementation: implemented
+    verification: tests_passed
+    integration: not_submitted
+    branch: docs/project-governance
+    evidence: [docs/verification/RECOVERY_REPORT.md]
+  - id: GOV-002
+    title: Governance auf Version 2.0 migrieren
+    goal: Statusdimensionen, Review-Regeln und Konsistenzprüfung einführen.
+    priority: critical
+    components: [governance]
     depends_on: [DOC-001]
-    acceptance_criteria:
-      - "Umfang, 1.6-Build, SP/MP-Ziel und Akzeptanzkriterien sind dokumentiert."
-      - "Eine Designnotiz nach AGENTS.md liegt vor."
-    verification: []
+    acceptance: ["Recovery-Bericht vorhanden", "Drei Statusdimensionen validiert", "Governance-Dateien und Review-Bericht vorhanden"]
+    implementation: implemented
+    verification: tests_passed
+    integration: ready_for_human_review
+    branch: docs/project-governance
+    evidence: [docs/verification/2026-10-15-governance-v2.md]
+  - id: NET-001
+    title: Versioniertes TCP-Protokoll und Netzwerk-Core
+    goal: Begrenztes Framing, Handshake, Heartbeats und Client-Verbindung implementieren.
+    priority: critical
+    components: [protocol, network_core]
+    depends_on: [GOV-002]
+    acceptance: ["Fragmentierte Frames korrekt gelesen", "Versionskonflikt abgelehnt", "Nachrichtenlimit erzwungen", "Zwei TCP-Clients erreichbar"]
+    implementation: planned
+    verification: not_tested
+    integration: not_submitted
+    branch: feat/network-protocol
+    base_branch: docs/project-governance
+    evidence: []
+  - id: SERVER-001
+    title: Autoritativer Linux-Dedicated-Server
+    goal: Konfiguration, Sitzungen, Listener und geordneten Shutdown implementieren.
+    priority: high
+    components: [dedicated_server]
+    depends_on: [NET-001]
+    acceptance: ["Server startet ohne RimWorld", "Ungültige Konfiguration abgelehnt", "Shutdown schließt Verbindungen"]
+    implementation: planned
+    verification: not_tested
+    integration: not_submitted
+    branch: feat/dedicated-server
+    base_branch: feat/network-protocol
+    evidence: []
+  - id: LOBBY-001
+    title: Mehrere Lobbys und Ready-Status
+    goal: Server entscheidet über Mitgliedschaft, Host und Bereitschaft.
+    priority: high
+    components: [lobby_core, dedicated_server]
+    depends_on: [SERVER-001]
+    acceptance: ["Zwei Clients sehen denselben Zustand", "Host-Rechte geprüft", "Disconnect entfernt Spieler", "Doppelte Mitgliedschaft verhindert"]
+    implementation: planned
+    verification: not_tested
+    integration: not_submitted
+    branch: feat/lobby-management
+    base_branch: feat/dedicated-server
+    evidence: []
+  - id: CLIENT-001
+    title: RimWorld-1.6-Mod mit Verbindung und Lobby-UI
+    goal: Tatsächliche Mod-Assembly und bedienbare Oberfläche erstellen.
+    priority: high
+    components: [rimworld_adapter, network_core]
+    depends_on: [NET-001, LOBBY-001, ENV-001]
+    acceptance: ["Mod baut gegen lokalen 1.6-Build", "UI erreichbar", "Lobby-Aktionen am Server sichtbar"]
+    implementation: planned
+    verification: not_tested
+    integration: not_submitted
+    branch: feat/rimworld-client
+    base_branch: feat/lobby-management
+    evidence: []
   - id: TEST-001
-    title: "Laufzeit- und Zwei-Client-MP-Test des ersten MP-Features"
-    status: blocked
+    title: Zwei-Client-Integration und RimWorld-Laufzeit
+    goal: Netzwerk und UI mit zwei unabhängigen Clients nachweisen.
+    priority: high
+    components: [network_core, lobby_core, dedicated_server, rimworld_adapter]
+    depends_on: [CLIENT-001]
+    acceptance: ["Echte Verbindung", "Lobby und Ready synchron", "Disconnect/Reconnect geprüft", "RimWorld lädt Mod"]
+    implementation: planned
+    verification: not_tested
+    integration: not_submitted
+    branch: test/lobby-integration
+    base_branch: feat/rimworld-client
+    evidence: []
+  - id: LIC-001
+    title: Lizenz für neue Projektdateien festlegen
+    goal: Rechte für spätere Veröffentlichung eindeutig dokumentieren.
+    priority: medium
+    components: [governance]
+    depends_on: []
+    acceptance: ["Lizenzentscheidung dokumentiert", "LICENSE-Datei stimmt mit Entscheidung überein"]
+    implementation: blocked
+    verification: blocked
+    integration: not_submitted
     branch: null
-    depends_on: [FEATURE-001, SRC-001]
-    acceptance_criteria:
-      - "RimWorld-Start, Def-Laden, Save/Load und zwei echte Clients sind protokolliert."
-      - "Desync-Befund, Builds und Logs beider Clients sind dokumentiert."
-    verification: []
-    blocker: "Noch kein produktiver Mod oder konkretes MP-Feature vorhanden."
+    evidence: []
+    blocker: "Lizenzwunsch des Rechteinhabers noch nicht festgelegt; technische Arbeit kann fortgesetzt werden."
