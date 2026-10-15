@@ -411,10 +411,12 @@ tasks:
   - Steamworks-Laufzeit und Callback-Pump im RimWorld-Prozess ungeprüft
   - Zwei Steam-Konten und zwei Heimanschlüsse für den Abschluss erforderlich
   implementation: in_progress
-  verification: not_tested
+  verification: build_passed
   integration: not_submitted
   branch: feat/steam-friends-p2p
   base_branch: main
   base_commit: 5b533cd
+  evidence:
+  - docs/verification/2026-10-15-steam-transport.md
   evidence:
   - docs/decisions/0010-steam-home-host.md

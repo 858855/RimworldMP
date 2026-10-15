@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Steam-Verbindung (Arbeitsbranch)
+
+- Der Mod kann eine Steam-Freundeslobby anlegen und Einladungen im laufenden Spiel entgegennehmen. Die Netzwerkdaten sollen über Steam P2P zum bisherigen autoritativen Lobby-Kern gelangen; dafür ist keine Portfreigabe am Heimrouter vorgesehen. Mod-Build sowie Handshake und Lobby-Beitritt über einen eingespeisten Stream sind getestet. Der Betrieb mit zwei Steam-Konten und das RimWorld-Fenster selbst sind noch nicht geprüft; das bestehende ZIP enthält diese Änderung noch nicht.
+
 ### KI-Projektregeln
 
 - Ein Fortsetzungsprompt lädt die drei ursprünglichen Anweisungen und führt eine neue KI-Sitzung zum belegten Stand und offenen RimWorld-UI-Test.

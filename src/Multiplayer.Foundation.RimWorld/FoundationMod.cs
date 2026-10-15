@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Multiplayer.Foundation.Network;
 using Multiplayer.Foundation.Hosting;
 using Multiplayer.Foundation.Protocol;
+using Steamworks;
 using UnityEngine;
 using Verse;
 
@@ -17,6 +18,10 @@ namespace Multiplayer.Foundation.RimWorld
         private Task<LobbyClient>? connecting;
         private Task<ListenHost>? hosting;
         private ListenHost? hosted;
+        private SteamLobbyBridge? steam;
+        private CSteamID pendingInvite;
+        private bool steamHostStarting;
+        private bool autoJoinSteamLobby;
         private Task? action;
         private IReadOnlyList<LobbySummary> available = Array.Empty<LobbySummary>();
         private LobbyView? lobby;
@@ -27,7 +32,10 @@ namespace Multiplayer.Foundation.RimWorld
         private uint requestId = 2;
 
         public FoundationMod(ModContentPack content) : base(content)
-        { settings = GetSettings<FoundationSettings>(); }
+        {
+            settings = GetSettings<FoundationSettings>();
+            TryInitializeSteam();
+        }
 
         public override string SettingsCategory() => "Multiplayer Foundation";
 
@@ -64,11 +72,27 @@ namespace Multiplayer.Foundation.RimWorld
                 y += 34f;
                 if (connecting == null && hosting == null && action == null &&
                     Widgets.ButtonText(new Rect(x, y, 240f, 30f), "Lobby direkt hosten")) HostLobby();
+                y += 39f;
+                if (steam == null && Widgets.ButtonText(new Rect(x, y, 240f, 30f), "Steam prüfen")) TryInitializeSteam();
+                if (steam != null && connecting == null && hosting == null && action == null &&
+                    Widgets.ButtonText(new Rect(x, y, 240f, 30f), "Über Steam hosten")) HostSteamLobby();
+                y += 38f;
+                if (steam != null && pendingInvite.IsValid() && connecting == null && hosting == null &&
+                    Widgets.ButtonText(new Rect(x, y, 240f, 30f), "Steam-Einladung annehmen")) JoinSteamInvite();
             }
             else
             {
                 if (Widgets.ButtonText(new Rect(x, y, 140f, 30f), "Trennen")) Disconnect();
                 y += 38f;
+                if (steam?.IsHosting == true)
+                {
+                    if (Widgets.ButtonText(new Rect(x, y, 220f, 30f), "Steam-Freunde einladen"))
+                    {
+                        try { steam.OpenInviteDialog(); }
+                        catch (Exception error) { status = "Steam-Einladung fehlgeschlagen: " + error.Message; }
+                    }
+                    y += 37f;
+                }
                 if (lobby == null) DrawBrowser(x, ref y, width);
                 else DrawLobby(x, ref y, width);
             }
@@ -99,11 +123,51 @@ namespace Multiplayer.Foundation.RimWorld
                 settings.PlayerName.Trim(), name, capacity);
         }
 
+        private void HostSteamLobby()
+        {
+            if (steam == null) { status = "Steam ist nicht verfügbar"; return; }
+            if (!byte.TryParse(lobbyCapacity, out byte capacity) || capacity < 2 || capacity > 64)
+            { status = "Plätze müssen zwischen 2 und 64 liegen"; return; }
+            string name = lobbyName.Trim();
+            if (name.Length == 0 || name.Length > 40 || name.Any(char.IsControl))
+            { status = "Lobbyname muss 1–40 druckbare Zeichen haben"; return; }
+            status = "Steam-Lobby startet";
+            steamHostStarting = true;
+            hosting = StartSteamHostAsync(steam, settings.PlayerName.Trim(), name, capacity);
+        }
+
+        private static async Task<ListenHost> StartSteamHostAsync(SteamLobbyBridge bridge,
+            string playerName, string name, byte capacity)
+        {
+            ListenHost host = await ListenHost.StartAsync("127.0.0.1", 0, playerName, name, capacity);
+            try { await bridge.StartHostingAsync(host, name, capacity); return host; }
+            catch { await host.DisposeAsync(); throw; }
+        }
+
+        private void JoinSteamInvite()
+        {
+            if (steam == null || !pendingInvite.IsValid()) return;
+            CSteamID invited = pendingInvite;
+            pendingInvite = default;
+            status = "Steam-Verbindung wird aufgebaut";
+            autoJoinSteamLobby = true;
+            connecting = steam.JoinAsync(invited, settings.PlayerName.Trim());
+        }
+
+        private void TryInitializeSteam()
+        {
+            if (steam != null) return;
+            try { steam = new SteamLobbyBridge(id => { pendingInvite = id; status = "Steam-Einladung erhalten"; }); }
+            catch (Exception error) { status = "Steam nicht verfügbar: " + error.Message; }
+        }
+
         private void Disconnect()
         {
             if (client == null) return;
             LobbyClient old = client;
             client = null; lobby = null; available = Array.Empty<LobbySummary>();
+            steam?.Leave();
+            autoJoinSteamLobby = false;
             if (hosted != null)
             {
                 ListenHost running = hosted;
@@ -192,10 +256,12 @@ namespace Multiplayer.Foundation.RimWorld
                 {
                     hosted = hosting.GetAwaiter().GetResult();
                     client = hosted.Client;
-                    status = "Lobby gehostet auf " + hosted.BindAddress + ":" + hosted.Port;
+                    status = steamHostStarting ? "Steam-Lobby bereit – Freunde einladen" :
+                        "Lobby gehostet auf " + hosted.BindAddress + ":" + hosted.Port;
                 }
                 catch (Exception error) { status = "Host fehlgeschlagen: " + error.Message; }
                 hosting = null;
+                steamHostStarting = false;
             }
             if (connecting != null && connecting.IsCompleted)
             {
@@ -205,7 +271,8 @@ namespace Multiplayer.Foundation.RimWorld
                     status = "Verbunden";
                     action = client.SendAsync(MessageType.LobbyListRequest, requestId++, Array.Empty<byte>());
                 }
-                catch (Exception error) { status = "Verbindung fehlgeschlagen: " + error.Message; }
+                catch (Exception error)
+                { autoJoinSteamLobby = false; status = "Verbindung fehlgeschlagen: " + error.Message; }
                 connecting = null;
             }
             if (action != null && action.IsCompleted)
@@ -221,7 +288,14 @@ namespace Multiplayer.Foundation.RimWorld
                     switch (message.Type)
                     {
                         case MessageType.LobbyListResponse:
-                            available = LobbyPayloads.ReadList(message.Payload); listPage = 0; break;
+                            available = LobbyPayloads.ReadList(message.Payload); listPage = 0;
+                            if (autoJoinSteamLobby)
+                            {
+                                autoJoinSteamLobby = false;
+                                if (available.Count == 1)
+                                    Send(MessageType.JoinLobby, LobbyPayloads.GuidValue(available[0].Id));
+                            }
+                            break;
                         case MessageType.LobbyStateUpdate:
                             LobbyView received = LobbyPayloads.ReadState(message.Payload);
                             if (lobby == null || lobby.Id != received.Id || received.Revision >= lobby.Revision)
@@ -249,6 +323,7 @@ namespace Multiplayer.Foundation.RimWorld
                     hosted = null;
                     action = running.StopAsync();
                 }
+                steam?.Leave();
             }
         }
     }

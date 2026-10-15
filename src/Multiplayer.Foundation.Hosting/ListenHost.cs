@@ -24,6 +24,7 @@ namespace Multiplayer.Foundation.Hosting
         public LobbyClient Client { get; }
         public string BindAddress { get; }
         public int Port => server.BoundPort;
+        public bool AttachConnection(NetworkConnection connection) => server.AttachConnection(connection);
 
         public static async Task<ListenHost> StartAsync(string bindAddress, int port, string playerName,
             string lobbyName, byte capacity)

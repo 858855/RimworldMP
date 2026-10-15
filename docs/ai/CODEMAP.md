@@ -8,19 +8,20 @@
 | `src/Multiplayer.Foundation.Protocol/LobbyPayloads.cs` | Typisierte Lobby-Snapshots und Listen | `tests/Lobby.Tests/Program.cs` | Roundtrip getestet |
 | `src/Multiplayer.Foundation.Protocol/ProtocolException.cs` | Fehler für ungültige Frames und Payloads | Protokolltests | implementiert |
 | `tests/Protocol.Tests/Program.cs` | Ausführbare, paketfreie Protokoll-Testgruppen | `dotnet run --project ...` | fünf Gruppen bestanden |
-| `src/Multiplayer.Foundation.Network/NetworkConnection.cs` | TCP-Verbindung, serialisiertes Senden, ein Reader und Close | `tests/Network.Tests/Program.cs` | implementiert, Teiltests bestanden |
+| `src/Multiplayer.Foundation.Network/NetworkConnection.cs`, `HandshakeClient.cs` | TCP oder Duplex-Stream, serialisiertes Senden, ein Reader und Handshake | `tests/Network.Tests/Program.cs`, `tests/Hosting.Tests/Program.cs` | Stream-Anschluss und TCP-Regression getestet |
 | `src/Multiplayer.Foundation.Network/HandshakeClient.cs` | Hello/Accepted/Rejected und Deadline | `tests/Network.Tests/Program.cs` | implementiert, Teiltests bestanden |
 | `AGENTS.md`, `docs/governance/` | Verbindliche Regeln und Detailworkflow | `scripts/validate_project_state.py` | vorhanden |
 | `docs/ai/PROJECT_STATE.yaml`, `TASKS.yaml` | Ist-Zustand und Aufgaben | Dokumentationsvalidator | vorhanden |
 | `scripts/validate_structure.py`, `verify_knowledge_archive.py` | Archiv-XML und ZIP prüfen | drei XML-Dateien, 49 Archiveinträge | ausgeführt |
 | `examples/` | Illustrative RimWorld-/MP-Muster | kein produktiver API-Nachweis | unkompiliert |
 | `src/Multiplayer.Foundation.Lobby/LobbyRegistry.cs` | Autoritativer In-Memory-Zustand, Rechte und Revisionen | `tests/Lobby.Tests/Program.cs` | Domänenkern und TCP-Anbindung getestet |
-| `src/Multiplayer.Foundation.Hosting/FoundationServer.cs`, `HostConfig.cs` | Gemeinsamer TCP-Listener, Sitzungen, Nachrichtenrouting, Broadcast und Nonce-Heartbeat | `tests/Integration.Tests/Program.cs`, `Hosting.Tests` | 16 Server- und vier Host-Gruppen bestanden |
+| `src/Multiplayer.Foundation.Hosting/FoundationServer.cs`, `HostConfig.cs` | Gemeinsamer TCP-Listener sowie Aufnahme externer Streams; Sitzungen, Routing und Heartbeat | `tests/Integration.Tests/Program.cs`, `Hosting.Tests` | 16 Server- und fünf Host-Gruppen bestanden |
 | `src/Multiplayer.Foundation.Hosting/ListenHost.cs` | Integrierten Host starten, Host-Client verbinden und Lobby anlegen | `tests/Hosting.Tests/Program.cs` | vier Gruppen bestanden |
 | `src/Multiplayer.Foundation.Server/ServerConfig.cs`, `Program.cs` | JSON-Konfiguration, Serverstart und SIGTERM/Strg+C-Shutdown | Integrationstests/Mehrprozess-Test | getestet |
 | `tests/Integration.Tests/Program.cs` | Reale Zwei-Client-TCP-Lobby und Fehlerfälle | `dotnet run --project ...` | bestanden |
 | `src/Multiplayer.Foundation.Network/LobbyClient.cs` | Ein Reader, UI-Nachrichtenqueue, Ping/Pong und Disconnect | `tests/Client.Tests/Program.cs` | TCP-Test bestanden |
-| `src/Multiplayer.Foundation.RimWorld/FoundationMod.cs`, `FoundationSettings.cs` | Mod-Einstellungen, Verbindung und Lobby-UI | Release-Build; Game-Test offen | gebaut, Laufzeit offen |
+| `src/Multiplayer.Foundation.RimWorld/FoundationMod.cs`, `FoundationSettings.cs` | Mod-Einstellungen, TCP-/Steam-Verbindung und Lobby-UI | Release-Build; Game-Test offen | gebaut, Laufzeit offen |
+| `src/Multiplayer.Foundation.RimWorld/SteamLobbyBridge.cs`, `SteamPeerStream.cs` | Steam-Freundeslobby, P2P-Listener, Einladungen, Callback-Pump und begrenzte Frame-Queue | Release-Build; Zwei-Konten-Test offen | gebaut, Laufzeit offen |
 | `mod/About/About.xml`, `scripts/build-mod.sh` | Mod-Metadaten und Paketbau | XML/Paketprüfung | geprüft |
 | `tests/ProcessIntegration.Tests/Program.cs` | Server und zwei Client-Prozesse über echte TCP-Lobby steuern | `dotnet run --project ...` | acht Prozess-Testschritte bestanden |
 | `scripts/package-mod.py`, `mod/INSTALLATION.md` | Geprüftes Mod-ZIP aus Release-Build und manuelle Installation | ZIP-Extraktionsprüfung | sieben Einträge geprüft, Spiel-Laufzeit offen |

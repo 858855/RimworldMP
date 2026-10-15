@@ -28,8 +28,28 @@ Assert(hostReady.Revision == guestReady.Revision && hostReady.Players.Single(p =
     "ready synchronized");
 Console.WriteLine("PASS: direct-host Ready state synchronized");
 
+// Exercise the same generic stream entry points used by the Steam transport.
+var transport = new TcpListener(IPAddress.Loopback, 0);
+transport.Start();
+using var outbound = new TcpClient();
+await outbound.ConnectAsync(IPAddress.Loopback, ((IPEndPoint)transport.LocalEndpoint).Port);
+using TcpClient inbound = await transport.AcceptTcpClientAsync();
+Assert(host.AttachConnection(NetworkConnection.FromDuplexStream(inbound.GetStream())),
+    "host accepts a non-listener duplex transport");
+using LobbyClient streamGuest = await LobbyClient.ConnectOverStreamAsync(outbound.GetStream(),
+    "StreamGuest", TimeSpan.FromSeconds(4));
+await streamGuest.SendAsync(MessageType.LobbyListRequest, 5, Array.Empty<byte>());
+var streamRooms = LobbyPayloads.ReadList((await ReceiveAsync(streamGuest, MessageType.LobbyListResponse)).Payload);
+Assert(streamRooms.Count == 1 && streamRooms[0].Id == created.Id, "stream guest sees hosted room");
+await streamGuest.SendAsync(MessageType.JoinLobby, 6, LobbyPayloads.GuidValue(created.Id));
+LobbyView streamJoined = LobbyPayloads.ReadState((await ReceiveAsync(streamGuest, MessageType.LobbyStateUpdate)).Payload);
+Assert(streamJoined.Players.Count == 3, "stream guest joined alongside TCP guest");
+transport.Stop();
+Console.WriteLine("PASS: external duplex transport reused handshake and lobby routing");
+
 await host.StopAsync();
 await guest.Completion.WaitAsync(TimeSpan.FromSeconds(4));
+await streamGuest.Completion.WaitAsync(TimeSpan.FromSeconds(4));
 Assert(!guest.IsConnected, "guest disconnected when host stopped");
 var listener = new TcpListener(IPAddress.Loopback, port);
 listener.Start();

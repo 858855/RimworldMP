@@ -39,6 +39,15 @@ namespace Multiplayer.Foundation.Network
             return new LobbyClient(handshake);
         }
 
+        public static async Task<LobbyClient> ConnectOverStreamAsync(Stream stream, string playerName,
+            TimeSpan timeout, CancellationToken cancellationToken = default)
+        {
+            var connection = NetworkConnection.FromDuplexStream(stream);
+            HandshakeResult handshake = await HandshakeClient.ConnectAsync(connection, playerName, timeout,
+                cancellationToken).ConfigureAwait(false);
+            return new LobbyClient(handshake);
+        }
+
         public Task SendAsync(MessageType type, uint requestId, byte[] payload)
         {
             if (!IsConnected) throw new InvalidOperationException("Client is disconnected.");

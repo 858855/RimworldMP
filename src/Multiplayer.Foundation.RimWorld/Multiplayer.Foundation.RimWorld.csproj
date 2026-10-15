@@ -13,8 +13,10 @@
     <Reference Include="UnityEngine.CoreModule"><HintPath>$(RimWorldManaged)/UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.IMGUIModule"><HintPath>$(RimWorldManaged)/UnityEngine.IMGUIModule.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.TextRenderingModule"><HintPath>$(RimWorldManaged)/UnityEngine.TextRenderingModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="com.rlabrecque.steamworks.net"><HintPath>$(RimWorldManaged)/com.rlabrecque.steamworks.net.dll</HintPath><Private>false</Private></Reference>
   </ItemGroup>
   <Target Name="CheckRimWorldManaged" BeforeTargets="ResolveReferences">
     <Error Condition="!Exists('$(RimWorldManaged)/Assembly-CSharp.dll')" Text="Set RimWorldManaged to installed RimWorld 1.6 Managed directory." />
+    <Error Condition="!Exists('$(RimWorldManaged)/com.rlabrecque.steamworks.net.dll')" Text="Installed RimWorld Steamworks.NET assembly is required for the Steam transport." />
   </Target>
 </Project>

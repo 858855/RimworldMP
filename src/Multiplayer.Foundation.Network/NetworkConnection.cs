@@ -9,17 +9,26 @@ namespace Multiplayer.Foundation.Network
 {
     public sealed class NetworkConnection : IDisposable
     {
-        private readonly TcpClient client;
-        private readonly NetworkStream stream;
+        private readonly IDisposable owner;
+        private readonly Stream stream;
         private readonly SemaphoreSlim sendGate = new SemaphoreSlim(1, 1);
         private readonly SemaphoreSlim receiveGate = new SemaphoreSlim(1, 1);
         private int closed;
 
         private NetworkConnection(TcpClient client)
         {
-            this.client = client ?? throw new ArgumentNullException(nameof(client));
+            if (client == null) throw new ArgumentNullException(nameof(client));
             client.NoDelay = true;
+            owner = client;
             stream = client.GetStream();
+        }
+
+        private NetworkConnection(Stream stream)
+        {
+            this.stream = stream ?? throw new ArgumentNullException(nameof(stream));
+            if (!stream.CanRead || !stream.CanWrite)
+                throw new ArgumentException("A duplex stream is required.", nameof(stream));
+            owner = stream;
         }
 
         public bool IsClosed => Volatile.Read(ref closed) != 0;
@@ -29,6 +38,8 @@ namespace Multiplayer.Foundation.Network
             if (client == null) throw new ArgumentNullException(nameof(client));
             return new NetworkConnection(client);
         }
+
+        public static NetworkConnection FromDuplexStream(Stream stream) => new NetworkConnection(stream);
 
         public static async Task<NetworkConnection> ConnectAsync(string host, int port, TimeSpan timeout,
             CancellationToken cancellationToken = default)
@@ -90,7 +101,7 @@ namespace Multiplayer.Foundation.Network
         public void Dispose()
         {
             if (Interlocked.Exchange(ref closed, 1) == 0)
-                client.Close();
+                owner.Dispose();
         }
 
         private void ThrowIfClosed()

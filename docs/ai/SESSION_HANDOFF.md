@@ -1,9 +1,9 @@
 # Sitzungsübergabe
 
-- **Bereich:** Freigegebene Integration von `TEST-002`, `SERVER-002`, `PKG-001` und `HOST-001`.
-- **Branch:** `main`; Merge-Commit `e390514` integriert `release/mod-install-0.1-dev` und dessen abhängige Arbeiten. `origin/main` enthält den Merge.
-- **Stand:** Der Mod enthält Direkt-Hosting im Spielprozess und die Verbindung zum eigenständigen Dedicated Server. Das installierbare RimWorld-1.6-ZIP liegt unter `releases/` auf `main`.
-- **Prüfungen:** Dokumentationsvalidator, vier Hosting-Gruppen, 16 Server-Gruppen, acht Mehrprozess-Schritte und Mod-Release-Build ohne Warnungen vor dem Merge bestanden. Details: `docs/verification/2026-10-15-dual-mode-merge.md`.
-- **Offen:** Spiel-UI mit zwei laufenden RimWorld-Clients, LAN über zwei Rechner und RimWorld 1.7 nicht verifiziert. `Version.txt` rev598 gegenüber früherer Runtime rev600. Keine Authentifizierung/TLS.
-- **Nächster Schritt:** ZIP aus `releases/` auf zwei RimWorld-1.6-Installationen entpacken; Direkt-Hosting und Dedicated Server im Spiel und LAN prüfen. Ergebnisse in `TEST-001` dokumentieren.
-- **Dateien/Befehle:** `mod/INSTALLATION.md`, `src/Multiplayer.Foundation.Hosting/`, `src/Multiplayer.Foundation.RimWorld/FoundationMod.cs`, `DOTNET_BIN=/home/fabiok/.local/share/dotnet-rimworldmp/dotnet bash scripts/build-mod.sh`, Testbefehle im Merge-Nachweis.
+- **Bereich:** `STEAM-001` – Steam-Freundeslobby und P2P-Transport für zwei Heimanschlüsse.
+- **Branch:** `feat/steam-friends-p2p` auf `main` bei `5b533cd`. Letzter relevanter Commit ist dynamisch `HEAD`; `git log -1 --oneline` liefert die Kennung. Der Branch wurde nicht gepusht oder gemergt.
+- **Stand:** Der Mod referenziert die lokal installierte Steamworks.NET-Assembly, erstellt eine Steam-Freundeslobby, nimmt Einladungen im laufenden Spiel an und führt Foundation-Frames über einen begrenzten Steam-P2P-Stream. Derselbe autoritative Lobby-Kern nimmt die Verbindung an; im Steam-Modus lauscht TCP nur auf Loopback. Bestehender TCP-/Dedicated-Modus bleibt erhalten. Ein gesondertes Vorschau-ZIP liegt lokal unter `releases/`; das veröffentlichte ZIP auf `main` enthält diese Arbeit noch nicht.
+- **Prüfungen:** Drei Netzwerk-, fünf Hosting- und 16 Serverintegrationsgruppen bestanden; RimWorld-Mod Release-Build null Warnungen/Fehler. Ein zusätzlicher Client über einen eingespeisten Duplex-Stream führte Handshake und Lobby-Beitritt aus. Vorschau-ZIP mit sieben Einträgen und SHA-256 geprüft. Siehe `docs/verification/2026-10-15-steam-transport.md`.
+- **Offen:** Steam-API im laufenden RimWorld, Overlay und P2P/Relay mit zwei Steam-Konten auf getrennten Heimanschlüssen nicht getestet; Kaltstart per Einladung fehlt. Spiel-UI und RimWorld 1.7 bleiben offen. Direkt-TCP hat keine Authentifizierung/TLS.
+- **Nächster Schritt:** Mit zwei Steam-Konten im laufenden RimWorld Host, Einladung, Beitritt, Ready und Trennen über getrennte Heimanschlüsse prüfen; erkannte Fehler gezielt beheben, danach Test-ZIP und Integrationsreview vorbereiten.
+- **Dateien/Befehle:** `docs/decisions/0010-steam-home-host.md`, `docs/client.md`, `src/Multiplayer.Foundation.RimWorld/SteamLobbyBridge.cs`, `SteamPeerStream.cs`, `tests/Hosting.Tests/Program.cs`; Befehle im Prüfbericht.
