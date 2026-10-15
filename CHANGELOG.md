@@ -5,9 +5,10 @@
 ### Mod-Prüfung, Start-Knopf und Seitenspiegel (Arbeitsbranch `feat/mod-check-setup-ui`, Basis `feat/setup-rules`)
 
 - In der Lobby werden Mods, Ladereihenfolge und Mod-Inhalte mit dem Host verglichen; die Spielversion wird nur angezeigt. Abweichende Spieler sind rot markiert und können nicht bereit sein; ein Bericht zeigt die Unterschiede. Die Lobbyliste zeigt vorab, ob die Mods passen.
-- Der Host hat **Spiel starten**; daneben steht, was noch fehlt. Danach öffnet sich beim Host die normale Spieleinrichtung, und die Mitspieler sehen seine Auswahl live. Der letzte Start ist gesperrt, bis der gemeinsame Spielstart fertig ist.
+- Der Host hat **Spiel starten**; daneben steht, was noch fehlt. Danach öffnet sich beim Host die normale Spieleinrichtung, und die Mitspieler sehen seine Auswahl live. Der letzte Start geht erst, wenn alle fertig sind.
 - Debug-Option zum Testen: Der Host kann die Einrichtung auch allein starten (Kontrollkästchen „Debug: Spiel allein starten erlauben“).
 - In der Startortwahl sehen alle die Weltkarte und können je ein Fähnchen als Vorschlag setzen; nur der Host wählt den Startort.
+- Gemeinsamer Spielstart: Der Host startet das Spiel, speichert es und sendet den Spielstand an alle; Host und Gäste laden ihn und prüfen per Fingerabdruck, dass Ort, Figuren und Besitzer gleich sind. Danach bleibt das Spiel für alle pausiert, bis der Gleichlauf kommt.
 - In der Charakterwahl übernimmt jeder Spieler eine eigene Figur; er kann sie neu würfeln, mit einer zurückgelassenen tauschen und umbenennen und meldet sich fertig. Erst wenn alle fertig sind, geht es weiter. Die Startgruppe hat mindestens eine Figur je Spieler.
 - Der Host sendet die erzeugte Welt an alle Mitspieler; jeder lädt sie und bestätigt mit einem Fingerabdruck, dass er dieselbe Welt hat. Erst dann geht es zur Startortwahl. Ein Selbsttest (`-mpWorldSelfTest`) prüft Speichern und Laden ohne Mitspieler.
 

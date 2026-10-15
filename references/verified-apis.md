@@ -123,3 +123,18 @@ Wichtiger Unterschied: `Multiplayer.Client.Multiplayer` ist eine interne Clientk
 | `Verse.GenderUtility.GetLabel(Gender, bool animal)`; `RimWorld.Pawn_GeneTracker.XenotypeLabelCap`; `RimWorld.BackstoryDef.TitleCapFor(Gender)`; `RimWorld.Trait.LabelCap`; `Verse.Hediff.Visible`, `.LabelCap` | public | BESTÄTIGT (Metadaten), Karte im Selbsttest gefüllt |
 | `RimWorld.Scenario.PostIdeoChosen()`; `RimWorld.Faction.OfPlayer`; `Verse.Thing.thingIDNumber` | public | BESTÄTIGT (Metadaten), im Selbsttest genutzt |
 | Neue Startfiguren (`AddNewPawn`) brauchen einen Erzähler mit `def` | – | **Laufzeitbefund**: der `Game`-Konstruktor legt einen Erzähler ohne `def` an; ohne gesetzten Erzähler NullReferenceException |
+
+## SETUP-005: Spielstart, Spielstand, Pause (2026-10-15, gleiche Quelle)
+
+| Symbol | Signatur in 1.6.4871 | Status |
+|---|---|---|
+| `RimWorld.PageUtility.InitGameStart()` | public static | BESTÄTIGT (Metadaten); startet im Hauptmenü mit vorbereitetem `GameInitData` ein Spiel (**im Spiel geprüft**, Selbsttest) |
+| `RimWorld.Page.nextAct`; `Page_ConfigureStartingPawns()` | public | BESTÄTIGT (Metadaten) |
+| `Verse.GameDataSaveLoader.SaveGame(string)`, `.LoadGame(string)`; `Verse.GenFilePaths.FilePathForSavedGame(string)` | public static | BESTÄTIGT (Metadaten); **Laufzeitbefund**: `SaveGame` schreibt synchron (Datei direkt nach dem Aufruf da, 335–446 ms); `LoadGame` aus einem laufenden Spiel und aus dem Hauptmenü (je ~2,3 s) |
+| `Verse.GameComponent` (Unterklasse mit `(Game)`-Konstruktor), `.ExposeData()`; `Verse.Game.GetComponent<T>()` | public / nonpublic ctor | BESTÄTIGT (Metadaten); RimWorld legt die Komponente in neuen und geladenen Spielen an (Selbsttest) |
+| `Verse.Scribe_Values.Look`, `Verse.Scribe_Collections.Look(ref List<T>, string, LookMode, …)`; `Verse.Scribe.mode`; `Verse.LoadSaveMode` | public | BESTÄTIGT (Metadaten), Sitzung übersteht Speichern/Laden (Selbsttest) |
+| `Verse.TickManager.TickManagerUpdate()`, `.DoSingleTick()`, `.TogglePaused()`, `.CurTimeSpeed` (get/set), `.Paused`, `.TicksGame`; Feld `curTimeSpeed` (nonpublic, nur Selbsttest) | public | BESTÄTIGT (Metadaten); **Laufzeitbefund**: Rücksetzen auf Pause vor dem Update reicht nicht (Spiel läuft in ~20 % der Frames wieder an); `DoSingleTick`-Prefix hält die Ticks an |
+| `Verse.Find.Maps`; `Verse.Map.uniqueID`, `.Tile`, `.Size`, `.mapPawns`; `Verse.MapPawns.FreeColonists`; `PlanetTile.tileId`, `.Layer`; `PlanetLayer.LayerID` | public | BESTÄTIGT (Metadaten), Fingerabdruck im Selbsttest gleich |
+| `Verse.Window.forcePause`; `Verse.WindowStack.Windows`, `.IsOpen<T>()`; `Verse.GenScene.GoToMainMenu()`; `RimWorld.MessageTypeDefOf.NeutralEvent` | public | BESTÄTIGT (Metadaten) |
+| Hauptmenü ohne offenes Fenster | – | **Laufzeitbefund**: RimWorld verwirft dann `Current.Game` im nächsten Frame; mit offenem Fenster bleibt es (Selbsttest) |
+| Spielstart aus einer per `WorldCodec` geladenen Welt | – | **Laufzeitbefund**: doppelte Load-IDs (Precept, Gene, WorldObject), weil die Welt-Datei keine ID-Zähler trägt; Gäste starten deshalb nie ein Spiel aus ihrer Kopie |

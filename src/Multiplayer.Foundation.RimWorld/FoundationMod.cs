@@ -1149,8 +1149,8 @@ namespace Multiplayer.Foundation.RimWorld
                 sentGame = GameCodec.Gzip(raw);
                 resendGame = lobby.Players.Count > 1;
                 StartGameUpload(); // runs while the host reloads
-                // Everyone plays the loaded save, the host too: a freshly generated game and its loaded copy differ
-                // (tick, map tile; self-test 2026-10-15), and lockstep needs the same state everywhere.
+                // Everyone plays the loaded save, the host too: lockstep needs the same state everywhere, and only the
+                // loaded state is the same on every machine (the live game may hold more than the save, ADR 0023).
                 reloadFrom = Current.Game;
                 gameText = "Spielstand gesendet (" + (sentGame.Length / 1024) + " KiB); wird neu geladen …";
                 GameDataSaveLoader.LoadGame(gameFileName);

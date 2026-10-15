@@ -151,7 +151,8 @@ active_tasks:
 - SETUP-002
 - SETUP-003
 - SETUP-004
-next_action: 'Zwei-Spieler-Test von Seitenspiegel, Weltübertragung, Fähnchen und Figurenwahl (Prüfpunkte 1–8 in docs/reviews/2026-10-15-mod-check-setup-ui.md); danach SETUP-005 (gemeinsamer Spielstart).'
+- SETUP-005
+next_action: 'Zwei-Spieler-Test der ganzen Einrichtung bis zur Landung (Prüfpunkte 1–9 in docs/reviews/2026-10-15-mod-check-setup-ui.md); danach OWN-001 (Besitzanzeige) und SYNC-001 (Gleichlauf).'
 documentation_refs:
   tasks: docs/ai/TASKS.yaml
   handoff: docs/ai/SESSION_HANDOFF.md
@@ -203,4 +204,6 @@ documentation_refs:
   site_flags_decision: docs/decisions/0021-site-flags-on-the-map.md
   character_selection_decision: docs/decisions/0022-character-selection.md
   character_selection_verification: docs/verification/2026-10-15-character-selection.md
+  game_start_decision: docs/decisions/0023-shared-game-start.md
+  game_start_verification: docs/verification/2026-10-15-game-start.md
 last_updated: '2026-10-15'

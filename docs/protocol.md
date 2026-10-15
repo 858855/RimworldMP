@@ -43,6 +43,8 @@ Strings sind `length:u16` plus strikt gültige UTF-8-Bytes. Allgemeine Strings: 
 | 32 | WorldLoaded | C→S | Fingerabdruck der geladenen Welt (32 Byte); nur Gäste, nur in `WorldTransfer` |
 | 33 | PawnRoster | C→S→C | `count:u8` (≤ 24) Figurenkarten; nur Host, nur in `Characters` |
 | 34 | PawnRequest | C→S→C | Art `u8`, Figur `u32`, andere Figur `u32`, Text (≤ 64 Byte), optional `PlayerKey`; nur Gäste, nur in `Characters`, an den Host |
+| 35 | GameReady | C→S | Fingerabdruck des geladenen Startspiels (32 Byte); nur Host, nur in `Generating` |
+| 36 | GameLoaded | C→S | Fingerabdruck des geladenen Startspiels (32 Byte); nur Gäste, nur in `Generating` |
 
 Listen- und Zustandsupdates sind in `LobbyPayloads.cs` kodiert: Liste mit `count:u8`, je Lobby GUID, Name, Hostname, Spielerzahl und Kapazität; Snapshot mit GUID, Name, Host-GUID, Revision `u64`, Kapazität, Setup-Phase `u8`, optional gewähltes Feld und Spielerarray (Session-GUID, Name, Ready, PlayerKey, optional Fähnchen). Die Liste trägt je Lobby zusätzlich die Phase. Der TCP-Server verwendet diese Payloads; zwei unabhängige TCP-Testclients bestanden die Integrationstests. RimWorld-Client-Kompatibilität ist noch offen. Fehlercodes: `1=InvalidMessage`, `2=VersionMismatch`, `3=Unauthorized`, `4=NotFound`, `5=Capacity`, `6=InvalidState`, `7=ServerBusy`.
 
@@ -64,7 +66,7 @@ Die Session-ID wechselt mit jeder Verbindung; der `PlayerKey` bleibt. Gespeicher
 
 ## Spieleinrichtung
 
-Phasen: `0 Lobby`, `1 Scenario`, `2 Storyteller`, `3 WorldParams`, `4 WorldTransfer`, `5 SiteSelection`, `6 Ideology`, `7 Characters`, `8 Generating`. Der Server setzt die Regeln durch:
+Phasen: `0 Lobby`, `1 Scenario`, `2 Storyteller`, `3 WorldParams`, `4 WorldTransfer`, `5 SiteSelection`, `6 Ideology`, `7 Characters`, `8 Generating`, `9 Playing`. Der Server setzt die Regeln durch:
 - Start ab 2 Spielern, wenn alle bereit sind.
 - Nur der Host schaltet weiter, und nur zur nächsten Phase.
 - Außerhalb der Lobby sind Beitritte gesperrt.
@@ -90,3 +92,7 @@ In `WorldTransfer` trägt jeder Spieler im Lobbyzustand zusätzlich `WorldStatus
 ## Figurenwahl (SETUP-004, ADR 0022)
 
 Figuren gibt es nur im Spiel des Hosts. Eine Karte in `PawnRoster`: Thing-ID `u32`, Startgruppe `bool`, optional Besitzer (`PlayerKey`), fünf Texte (Name, Kurzname, Kurzbeschreibung, Kindheit, Erwachsenenleben, je ≤ 160 Byte), dann Listen mit `count:u8` (≤ 24): Merkmale, Fertigkeiten (Name, Stufe `u8` mit `255` = unfähig, Leidenschaft `u8`), Unfähigkeiten, Gesundheit. Der Server leitet die Liste an die Gäste weiter, bildet je Spieler einen SHA-256 über dessen Karten und löscht Fertig, wenn sich der Wert ändert oder der Spieler keine Figur der Startgruppe mehr hat. Fertig in `Characters` verlangt eine eigene Figur der Startgruppe (Code 6). `PawnRequest`-Arten: `1` übernehmen, `2` freigeben, `3` neu würfeln, `4` tauschen, `5` umbenennen. Der Server ersetzt den mitgeschickten `PlayerKey` durch den des Absenders und leitet an den Host; ob eine Anfrage erlaubt ist, entscheidet der Host.
+
+## Gemeinsamer Spielstart (SETUP-005, ADR 0023)
+
+In `Generating` startet der Host das vanilla-Spiel, speichert es, sendet den Spielstand als Chunk-Übertragung der Art `3` und lädt ihn selbst neu. Ab `Generating` meldet `WorldStatus` je Spieler den Spielstand (`1` lädt, `2` passt, `3` weicht ab). `GameLoaded` eines Gastes darf vor `GameReady` kommen und zählt, sobald der Host meldet. `SetupAdvance(Playing)` verlangt `GameReady` und „passt“ bei allen; Abweichung Code 8, fehlende Meldung Code 6. In `Playing` gibt es keinen weiteren Schritt (bis SYNC-001); Bereit ist nicht gültig, Beitritte bleiben gesperrt, `SetupAbort` des Hosts beendet die Sitzung.

@@ -848,11 +848,15 @@ tasks:
   - SETUP-004
   acceptance:
   - 'Beide Clients laden einen Spielstand mit gleichem SHA-256, Ort, Figuren und Besitzern'
-  implementation: planned
-  verification: not_tested
-  integration: not_submitted
-  branch: null
-  evidence: []
+  implementation: implemented
+  verification: tests_passed
+  integration: ready_for_human_review
+  branch: feat/mod-check-setup-ui
+  evidence:
+  - docs/decisions/0023-shared-game-start.md
+  - docs/verification/2026-10-15-game-start.md
+  - docs/reviews/2026-10-15-mod-check-setup-ui.md
+  blocker: 'Serverregeln getestet; Spielstart, Speichern, Laden als Host und Gast, Fingerabdruck und Pause im Selbsttest geprüft (ADR 0023). Offen: Ablauf mit Server und zwei echten Spielern (Prüfpunkt 9).'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: OWN-001
   title: 'Besitz-Komponente und Besitzeranzeige'
