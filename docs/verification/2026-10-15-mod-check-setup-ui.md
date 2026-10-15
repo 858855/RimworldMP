@@ -26,6 +26,10 @@ Wie in `docs/verification/2026-10-15-lobby-hardening.md`: Die Testprojekte ziele
 
 Lobby.Tests („solo start only with the debug option“) und Hosting.Tests („debug solo start over a listen host, refused without the option“) bestanden; alle sechs Testprojekte erneut grün. Mod ohne Warnungen gebaut, installiert; Rauchtest: Spiel lädt, „7 Mods geprüft, Prüfsumme 0b7d“ (die Prüfsumme enthält die geänderten Mod-DLLs), keine Fehler. Das Kontrollkästchen selbst wurde im Spiel nicht bedient.
 
+## Nutzerbericht: Allein-Start im Spiel
+
+Der Benutzer meldete am 2026-10-15 nach einem eigenen Test des installierten Builds `b0f4df8` mit der Debug-Option: „works“. Welche Seiten und Prüfpunkte (Seitenfolge, Feld mit Chat/Abbrechen, gesperrter letzter Start, „Zurück“) geprüft wurden, ist **nicht dokumentiert**. Der Seitenspiegel beim Gast bleibt ohne zweiten Spieler ungeprüft.
+
 ## Einordnung nach AGENTS.md Regel 25
 
 - `BUILD_ERFOLGREICH`; automatisierte Tests bestanden.

@@ -749,7 +749,7 @@ tasks:
   - docs/decisions/0019-setup-page-mirror.md
   - docs/verification/2026-10-15-mod-check-setup-ui.md
   - docs/reviews/2026-10-15-mod-check-setup-ui.md
-  blocker: 'Relay und Nutzdaten automatisiert geprüft, Mod gebaut und geladen. Abnahme (Auswahl erscheint live beim Client, inkl. Zurück) im Spiel mit zwei Spielern offen.'
+  blocker: 'Relay und Nutzdaten automatisiert geprüft; Benutzer meldet Allein-Test der Host-Seiten im Spiel erfolgreich (2026-10-15, ohne Detailprotokoll). Offen: Spiegel beim Gast mit zwei Spielern.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: SETUP-002
   title: 'Weltübertragung und Welt-Fingerprint'

@@ -112,6 +112,7 @@ verified_capabilities:
 - 'PlayerKey (ID-001): Hello trägt SteamID oder lokale GUID; über Steam-Nachbildung wird eine fremde SteamID abgelehnt, Doppelverbindung abgelehnt, Kennung binnen 1,5 s nach Trennen frei. Spielneustart nicht getestet. Siehe docs/verification/2026-10-15-player-key.md.'
 - 'Setup-Regeln serverseitig (ADR 0017): Phasen, Sperre, Fähnchen, Startort nur Host, alle fertig vor Weiter; im Lobby-Kern und Ende zu Ende über ListenHost mit Steam-ähnlichem Gast getestet. Spielseite fehlt. Siehe docs/verification/2026-10-15-setup-rules.md.'
 user_reported_capabilities:
+- 'Allein-Start (Debug-Option) mit den Einrichtungsseiten des Hosts laut Benutzer am 2026-10-15 im Spiel funktionsfähig („works“, Build b0f4df8); Spiegel beim Gast ungeprüft.'
 - 'Mod-Prüfung und Start-Knopf (Fassung feat/lobby-hardening) laut Benutzer am 2026-10-15 mit zwei Spielern funktionsfähig; die auf feat/setup-rules übertragene Fassung ist noch nicht mit zwei Spielern geprüft.'
 - 'Steam-Verbindung laut Benutzer am 2026-10-15 erfolgreich; Ablauf, Heimanschlüsse und weitere Lobbyfunktionen noch nicht dokumentiert. Siehe docs/verification/2026-10-15-steam-user-connection.md.'
 - 'Multiplayer-Knopf direkt unter Tutorial und Fensteröffnung vom Benutzer am 2026-10-15 im Spiel bestätigt; siehe docs/verification/2026-10-15-menu-chat.md.'
