@@ -20,7 +20,7 @@ git:
   base_branch: fix/server-heartbeat
   base_commit: 1192eb5
   current_commit_ref: HEAD
-  pushed: false
+  pushed: true
   merged: false
   dependent_branches:
   - docs/project-governance
@@ -91,8 +91,7 @@ blockers:
 - 1.7-Unterstützung ungeklärt.
 active_tasks:
 - TEST-001
-- PKG-001
-next_action: Installierbares ZIP auf den GitHub-Arbeitsbranch pushen und Download prüfen; danach RimWorld-UI mit zwei Spielclients gegen den dedizierten Server verifizieren.
+next_action: RimWorld-1.6-Mod aus dem GitHub-ZIP im grafischen Spielstart laden und die Lobby-UI mit zwei Spielclients gegen den dedizierten Server prüfen.
 documentation_refs:
   tasks: docs/ai/TASKS.yaml
   handoff: docs/ai/SESSION_HANDOFF.md
