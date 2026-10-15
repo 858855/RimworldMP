@@ -90,6 +90,44 @@ namespace Multiplayer.Foundation.Protocol
         }
     }
 
+    /// <summary>SETUP-002: has this member loaded the host's world, and does its fingerprint match?</summary>
+    public enum WorldStatus : byte
+    {
+        /// <summary>Outside the world-transfer phase.</summary>
+        None = 0,
+        Waiting = 1,
+        Match = 2,
+        Mismatch = 3
+    }
+
+    /// <summary>
+    /// Builds a SHA-256 over canonical values in a fixed order. Callers quantize floats themselves,
+    /// so values that survive a save/load round trip hash the same on every machine.
+    /// </summary>
+    public sealed class FingerprintBuilder
+    {
+        private readonly System.IO.MemoryStream data = new System.IO.MemoryStream();
+        private static readonly System.Text.UTF8Encoding Utf8 = new System.Text.UTF8Encoding(false);
+
+        public FingerprintBuilder Add(int value)
+        {
+            for (int shift = 24; shift >= 0; shift -= 8) data.WriteByte((byte)(value >> shift));
+            return this;
+        }
+        public FingerprintBuilder Add(string? value)
+        {
+            byte[] bytes = Utf8.GetBytes(value ?? "");
+            Add(bytes.Length); data.Write(bytes, 0, bytes.Length);
+            return this;
+        }
+        /// <summary>Adds a float rounded to the given number of decimals.</summary>
+        public FingerprintBuilder Add(float value, int decimals) => Add((int)Math.Round(value * Math.Pow(10, decimals)));
+        public byte[] Finish()
+        {
+            using (var sha = System.Security.Cryptography.SHA256.Create()) return sha.ComputeHash(data.ToArray());
+        }
+    }
+
     public static class SetupPayloads
     {
         public static SetupPhase ReadPhase(PayloadReader reader)
@@ -111,6 +149,17 @@ namespace Multiplayer.Foundation.Protocol
         { var writer = new PayloadWriter(); SiteTile.WriteOptional(writer, tile); return writer.ToArray(); }
         public static SiteTile? ReadFlag(byte[] bytes)
         { var reader = new PayloadReader(bytes); SiteTile? tile = SiteTile.ReadOptional(reader); reader.EnsureComplete(); return tile; }
+
+        public static byte[] Fingerprint(byte[] hash)
+        {
+            if (hash == null || hash.Length != 32) throw new ProtocolException("Fingerprint must have 32 bytes.");
+            return (byte[])hash.Clone();
+        }
+        public static byte[] ReadFingerprint(byte[] bytes)
+        {
+            if (bytes == null || bytes.Length != 32) throw new ProtocolException("Fingerprint must have 32 bytes.");
+            return (byte[])bytes.Clone();
+        }
 
         public static byte[] Site(SiteTile tile)
         { var writer = new PayloadWriter(); tile.Write(writer); return writer.ToArray(); }

@@ -65,7 +65,26 @@ Assert(setup.List().Single(r => r.Id == room).Phase == SetupPhase.Scenario, "lob
 Expect(6, () => setup.Ready(g1, true));                                               // ready not used here
 Expect(6, () => setup.SetSiteFlag(g1, new SiteTile(1, 0)));                           // flags only in site selection
 setup.AdvanceSetup(host, SetupPhase.Storyteller); setup.AdvanceSetup(host, SetupPhase.WorldParams);
-setup.AdvanceSetup(host, SetupPhase.WorldTransfer); setup.AdvanceSetup(host, SetupPhase.SiteSelection);
+setup.AdvanceSetup(host, SetupPhase.WorldTransfer);
+// SETUP-002: site selection waits until every guest loaded the host's world with the same fingerprint.
+byte[] world = Enumerable.Repeat((byte)9, 32).ToArray(), otherWorld = Enumerable.Repeat((byte)8, 32).ToArray();
+Expect(6, () => setup.AdvanceSetup(host, SetupPhase.SiteSelection));                   // world not sent yet
+Expect(3, () => setup.SetHostWorld(g1, world));                                       // only the host sends the world
+Expect(6, () => setup.ReportWorld(host, world));                                      // the host does not report
+Assert(setup.SetHostWorld(host, world).State!.Players.Count(p => p.WorldStatus == WorldStatus.Waiting) == 2, "guests wait");
+Expect(6, () => setup.AdvanceSetup(host, SetupPhase.SiteSelection));                   // guests have not loaded it
+setup.ReportWorld(g1, world);
+LobbyView worldState = setup.ReportWorld(g2, otherWorld).State!;
+Assert(worldState.Players.Single(p => p.Id == host).WorldStatus == WorldStatus.Match &&
+    worldState.Players.Single(p => p.Id == g1).WorldStatus == WorldStatus.Match &&
+    worldState.Players.Single(p => p.Id == g2).WorldStatus == WorldStatus.Mismatch, "world statuses");
+Expect(8, () => setup.AdvanceSetup(host, SetupPhase.SiteSelection));                   // fingerprint differs
+Assert(setup.SetHostWorld(host, otherWorld).State!.Players.Single(p => p.Id == g1).WorldStatus == WorldStatus.Waiting,
+    "a new host world resets earlier reports");
+setup.SetHostWorld(host, world); setup.ReportWorld(g1, world); setup.ReportWorld(g2, world);
+Assert(setup.AdvanceSetup(host, SetupPhase.SiteSelection).State!.Players.All(p => p.WorldStatus == WorldStatus.None),
+    "world status only shows during world transfer");
+Expect(6, () => setup.ReportWorld(g1, world));                                        // only during world transfer
 Expect(6, () => setup.AdvanceSetup(host, SetupPhase.Ideology));                       // only by choosing a site
 
 var a = new SiteTile(100, 0); var b = new SiteTile(200, 0); var c = new SiteTile(300, 1); var d = new SiteTile(400, 0);
@@ -105,8 +124,10 @@ Console.WriteLine("PASS: setup phases, lock, host-only steps, flags and host sit
 setup.Leave(late);
 foreach (Guid id in new[] { host, g1, g2 }) setup.Ready(id, true);
 setup.AdvanceSetup(host, SetupPhase.Scenario);
-foreach (SetupPhase next in new[] { SetupPhase.Storyteller, SetupPhase.WorldParams, SetupPhase.WorldTransfer, SetupPhase.SiteSelection })
+foreach (SetupPhase next in new[] { SetupPhase.Storyteller, SetupPhase.WorldParams, SetupPhase.WorldTransfer })
     setup.AdvanceSetup(host, next);
+setup.SetHostWorld(host, world); setup.ReportWorld(g1, world); setup.ReportWorld(g2, world);
+setup.AdvanceSetup(host, SetupPhase.SiteSelection);
 setup.DecideSite(host, chosen); setup.AdvanceSetup(host, SetupPhase.Characters);
 setup.Ready(host, true); setup.Ready(g1, true);
 setup.Leave(g2);

@@ -33,6 +33,9 @@ namespace Multiplayer.Foundation.Protocol
         ModManifestSummary = 28,
         ModManifestRequest = 29,
         // SETUP-001
-        SetupSettings = 30
+        SetupSettings = 30,
+        // SETUP-002
+        WorldReady = 31,
+        WorldLoaded = 32
     }
 }

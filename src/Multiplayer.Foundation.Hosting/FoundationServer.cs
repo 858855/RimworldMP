@@ -282,6 +282,14 @@ public sealed class FoundationServer : IAsyncDisposable
             case MessageType.SiteDecided:
                 await PublishAsync(lobbies.DecideSite(peer.Id, SetupPayloads.ReadSite(message.Payload)), null, token, message.RequestId).ConfigureAwait(false);
                 break;
+            case MessageType.WorldReady:
+                await PublishAsync(lobbies.SetHostWorld(peer.Id, SetupPayloads.ReadFingerprint(message.Payload)), null, token,
+                    message.RequestId).ConfigureAwait(false);
+                break;
+            case MessageType.WorldLoaded:
+                await PublishAsync(lobbies.ReportWorld(peer.Id, SetupPayloads.ReadFingerprint(message.Payload)), null, token,
+                    message.RequestId).ConfigureAwait(false);
+                break;
             case MessageType.SetupSettings:
                 SetupSettings.Read(message.Payload); // validate before relaying
                 foreach (Guid viewer in lobbies.SetupSettingsRecipients(peer.Id))

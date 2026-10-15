@@ -243,6 +243,22 @@ await Run("setup settings mirror payload", () =>
     Throws<ProtocolException>(() => SetupSettings.Read(new byte[] { 0, 0, 25 }));
     return Task.CompletedTask;
 });
+await Run("world fingerprint and world status", () =>
+{
+    byte[] a = new FingerprintBuilder().Add("Temperate forest").Add(3).Add(19.74f, 1).Finish();
+    byte[] b = new FingerprintBuilder().Add("Temperate forest").Add(3).Add(19.70f, 1).Finish();
+    byte[] c = new FingerprintBuilder().Add("Temperate forest").Add(3).Add(19.66f, 1).Finish();
+    Equal(32, a.Length); Equal(true, a.SequenceEqual(b)); Equal(true, a.SequenceEqual(c)); // rounding to one decimal
+    Equal(false, a.SequenceEqual(new FingerprintBuilder().Add("Temperate forest").Add(4).Add(19.7f, 1).Finish()));
+    Equal(false, new FingerprintBuilder().Add("ab").Add("c").Finish().SequenceEqual(new FingerprintBuilder().Add("a").Add("bc").Finish()));
+    Equal(true, SetupPayloads.ReadFingerprint(SetupPayloads.Fingerprint(a)).SequenceEqual(a));
+    Throws<ProtocolException>(() => SetupPayloads.ReadFingerprint(new byte[31]));
+    var view = new LobbyView(Guid.NewGuid(), "R", Guid.NewGuid(), 2, 4, new[]
+    { new PlayerView(Guid.NewGuid(), "A", false, PlayerKey.Local(Guid.NewGuid()), null, ModStatus.Match, WorldStatus.Mismatch) },
+        SetupPhase.WorldTransfer);
+    Equal(WorldStatus.Mismatch, LobbyPayloads.ReadState(LobbyPayloads.State(view)).Players[0].WorldStatus);
+    return Task.CompletedTask;
+});
 Console.WriteLine($"PASS: {passed} protocol test groups");
 
 async Task Run(string name, Func<Task> body)

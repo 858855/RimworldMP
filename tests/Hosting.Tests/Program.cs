@@ -273,8 +273,12 @@ await using (var setupHost = await ListenHost.StartAsync("127.0.0.1", 0, "Host",
     using (LobbyClient latecomer = await LobbyClient.ConnectAsync("127.0.0.1", setupHost.Port, "Late", TimeSpan.FromSeconds(4)))
         Assert(await ErrorCodeAsync(latecomer, MessageType.JoinLobby, 1, LobbyPayloads.GuidValue(setupRoom.Id)) == 6, "joining during setup refused");
 
-    foreach (SetupPhase next in new[] { SetupPhase.Storyteller, SetupPhase.WorldParams, SetupPhase.WorldTransfer, SetupPhase.SiteSelection })
+    foreach (SetupPhase next in new[] { SetupPhase.Storyteller, SetupPhase.WorldParams, SetupPhase.WorldTransfer })
         await StateAsync(hostClient, MessageType.SetupAdvance, ++request, SetupPayloads.Advance(next));
+    byte[] rulesWorld = Enumerable.Repeat((byte)5, 32).ToArray();
+    await StateAsync(hostClient, MessageType.WorldReady, ++request, SetupPayloads.Fingerprint(rulesWorld));
+    await StateAsync(setupGuest, MessageType.WorldLoaded, ++request, SetupPayloads.Fingerprint(rulesWorld));
+    await StateAsync(hostClient, MessageType.SetupAdvance, ++request, SetupPayloads.Advance(SetupPhase.SiteSelection));
     var suggestion = new SiteTile(4242, 0);
     LobbyView guestFlag = await StateAsync(setupGuest, MessageType.SiteFlag, ++request, SetupPayloads.Flag(suggestion));
     LobbyView hostSeesFlag = await LatestStateAsync(hostClient, guestFlag.Revision);
@@ -362,6 +366,44 @@ await using (var normalHost = await ListenHost.StartAsync("127.0.0.1", 0, "Solo"
         "without the option one player cannot start");
 }
 Console.WriteLine("PASS: debug solo start over a listen host, refused without the option");
+
+// SETUP-002 end to end over a Steam-like link: the host announces the fingerprint, sends the world bytes with the
+// chunk channel, the guest reports what it loaded; site selection opens only on a match.
+await using (var worldHost = await ListenHost.StartAsync("127.0.0.1", 0, "Host", "World Room", 4, PlayerKey.Steam(76561198000000090UL)))
+{
+    LobbyView worldRoom = LobbyPayloads.ReadState((await ReceiveAsync(worldHost.Client, MessageType.LobbyStateUpdate)).Payload);
+    using var worldLink = new SteamLikeLink();
+    PlayerKey worldGuestKey = PlayerKey.Steam(76561198000000091UL);
+    Assert(worldHost.AttachConnection(NetworkConnection.FromDuplexStream(worldLink.A), worldGuestKey), "world guest attached");
+    using LobbyClient worldGuest = await LobbyClient.ConnectOverStreamAsync(worldLink.B, "Guest", TimeSpan.FromSeconds(4),
+        CancellationToken.None, worldGuestKey);
+    LobbyClient worldHostClient = worldHost.Client;
+    uint w = 1000;
+    await StateAsync(worldGuest, MessageType.JoinLobby, ++w, LobbyPayloads.GuidValue(worldRoom.Id));
+    await StateAsync(worldHostClient, MessageType.PlayerReadyChanged, ++w, LobbyPayloads.Bool(true));
+    await StateAsync(worldGuest, MessageType.PlayerReadyChanged, ++w, LobbyPayloads.Bool(true));
+    foreach (SetupPhase next in new[] { SetupPhase.Scenario, SetupPhase.Storyteller, SetupPhase.WorldParams, SetupPhase.WorldTransfer })
+        await StateAsync(worldHostClient, MessageType.SetupAdvance, ++w, SetupPayloads.Advance(next));
+    byte[] worldBytes = new byte[3 * 1024 * 1024 + 17];
+    new Random(11).NextBytes(worldBytes);
+    byte[] worldPrint = new FingerprintBuilder().Add("world").Add(worldBytes.Length).Finish();
+    Assert(await ErrorCodeAsync(worldGuest, MessageType.WorldReady, ++w, SetupPayloads.Fingerprint(worldPrint)) == 3, "guest cannot announce a world");
+    LobbyView announced = await StateAsync(worldHostClient, MessageType.WorldReady, ++w, SetupPayloads.Fingerprint(worldPrint));
+    Assert(announced.Players.Single(p => p.Key == worldGuestKey).WorldStatus == WorldStatus.Waiting, "guest waits for the world");
+    Assert(await ErrorCodeAsync(worldHostClient, MessageType.SetupAdvance, ++w, SetupPayloads.Advance(SetupPhase.SiteSelection)) == 6,
+        "site selection waits for the guest");
+    byte[][] receivedWorld = await TransferAsync(worldHostClient, new[] { worldGuest }, Guid.Empty, worldBytes, true);
+    Assert(receivedWorld[0].AsSpan().SequenceEqual(worldBytes), "world bytes arrived intact");
+    byte[] wrongPrint = new FingerprintBuilder().Add("other").Finish();
+    await StateAsync(worldGuest, MessageType.WorldLoaded, ++w, SetupPayloads.Fingerprint(wrongPrint));
+    Assert(await ErrorCodeAsync(worldHostClient, MessageType.SetupAdvance, ++w, SetupPayloads.Advance(SetupPhase.SiteSelection)) == 8,
+        "a different fingerprint blocks site selection");
+    LobbyView matched = await StateAsync(worldGuest, MessageType.WorldLoaded, ++w, SetupPayloads.Fingerprint(worldPrint));
+    Assert(matched.Players.All(p => p.WorldStatus == WorldStatus.Match), "both match");
+    LobbyView siteSelection = await StateAsync(worldHostClient, MessageType.SetupAdvance, ++w, SetupPayloads.Advance(SetupPhase.SiteSelection));
+    Assert(siteSelection.Phase == SetupPhase.SiteSelection, "site selection opens once every fingerprint matches");
+}
+Console.WriteLine("PASS: world transfer and fingerprint check gate site selection (SETUP-002)");
 
 // Sends a request and returns the error code the server answers with.
 static async Task<byte> ErrorCodeAsync(LobbyClient client, MessageType type, uint requestId, byte[] payload)

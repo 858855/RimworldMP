@@ -7,8 +7,8 @@ namespace Multiplayer.Foundation.Protocol
     public sealed class PlayerView
     {
         public PlayerView(Guid id, string name, bool ready, PlayerKey key, SiteTile? flag = null,
-            ModStatus modStatus = ModStatus.Unchecked)
-        { Id = id; Name = name; Ready = ready; Key = key; Flag = flag; ModStatus = modStatus; }
+            ModStatus modStatus = ModStatus.Unchecked, WorldStatus worldStatus = WorldStatus.None)
+        { Id = id; Name = name; Ready = ready; Key = key; Flag = flag; ModStatus = modStatus; WorldStatus = worldStatus; }
         /// <summary>Session ID of this connection; changes on every reconnect.</summary>
         public Guid Id { get; }
         /// <summary>Persistent identity; use this for anything saved.</summary>
@@ -20,6 +20,8 @@ namespace Multiplayer.Foundation.Protocol
         public SiteTile? Flag { get; }
         /// <summary>This member's mods compared with the current host's (MOD-001).</summary>
         public ModStatus ModStatus { get; }
+        /// <summary>SETUP-002: host's world loaded with a matching fingerprint.</summary>
+        public WorldStatus WorldStatus { get; }
     }
 
     public sealed class LobbyView
@@ -134,6 +136,7 @@ namespace Multiplayer.Foundation.Protocol
             {
                 writer.WriteGuid(player.Id); writer.WriteString(player.Name, 160); writer.WriteBool(player.Ready);
                 player.Key.Write(writer); SiteTile.WriteOptional(writer, player.Flag); writer.WriteByte((byte)player.ModStatus);
+                writer.WriteByte((byte)player.WorldStatus);
             }
             return writer.ToArray();
         }
@@ -152,7 +155,9 @@ namespace Multiplayer.Foundation.Protocol
                 PlayerKey key = PlayerKey.Read(reader); SiteTile? flag = SiteTile.ReadOptional(reader);
                 var modStatus = (ModStatus)reader.ReadByte();
                 if (!Enum.IsDefined(typeof(ModStatus), modStatus)) throw new ProtocolException("Invalid mod status.");
-                players.Add(new PlayerView(playerId, playerName, ready, key, flag, modStatus));
+                var worldStatus = (WorldStatus)reader.ReadByte();
+                if (!Enum.IsDefined(typeof(WorldStatus), worldStatus)) throw new ProtocolException("Invalid world status.");
+                players.Add(new PlayerView(playerId, playerName, ready, key, flag, modStatus, worldStatus));
             }
             reader.EnsureComplete(); return new LobbyView(id, name, host, revision, capacity, players, phase, site);
         }

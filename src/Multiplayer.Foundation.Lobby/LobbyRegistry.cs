@@ -189,6 +189,14 @@ namespace Multiplayer.Foundation.Lobby
                             throw new LobbyRuleException(8, "Mods do not match for every player.");
                         RequireEveryoneReady(room, "Not every player is ready.");
                         break;
+                    case SetupPhase.WorldTransfer:
+                        // SETUP-002: every guest must have loaded the host's world with the same fingerprint.
+                        if (room.HostWorld == null) throw new LobbyRuleException(6, "The world has not been sent yet.");
+                        if (room.Members.Any(id => WorldStatusOf(room, members[id]) == WorldStatus.Mismatch))
+                            throw new LobbyRuleException(8, "The world differs for at least one player.");
+                        if (room.Members.Any(id => WorldStatusOf(room, members[id]) != WorldStatus.Match))
+                            throw new LobbyRuleException(6, "Not every player has loaded the world yet.");
+                        break;
                     case SetupPhase.SiteSelection:
                         throw new LobbyRuleException(6, "Choose the starting site to continue.");
                     case SetupPhase.Characters:
@@ -220,6 +228,34 @@ namespace Multiplayer.Foundation.Lobby
                 Member member = GetMember(actor); Room room = GetCurrentRoom(member);
                 if (room.Phase != SetupPhase.SiteSelection) throw new LobbyRuleException(6, "Flags are only placed during site selection.");
                 member.Flag = tile; room.Revision++;
+                return Change(room, actor);
+            }
+        }
+
+        /// <summary>SETUP-002: the host announces the fingerprint of the world it is about to send.</summary>
+        public LobbyChange SetHostWorld(Guid actor, byte[] fingerprint)
+        {
+            lock (gate)
+            {
+                Room room = GetHostedRoom(actor);
+                if (room.Phase != SetupPhase.WorldTransfer) throw new LobbyRuleException(6, "The world is sent during world transfer.");
+                room.HostWorld = fingerprint;
+                // A new world (host went back and generated again) invalidates every earlier report.
+                foreach (Guid id in room.Members) members[id].World = null;
+                room.Revision++;
+                return Change(room, actor);
+            }
+        }
+
+        /// <summary>SETUP-002: a guest reports the fingerprint of the world it loaded.</summary>
+        public LobbyChange ReportWorld(Guid actor, byte[] fingerprint)
+        {
+            lock (gate)
+            {
+                Member member = GetMember(actor); Room room = GetCurrentRoom(member);
+                if (room.Phase != SetupPhase.WorldTransfer) throw new LobbyRuleException(6, "The world is reported during world transfer.");
+                if (room.Host == actor) throw new LobbyRuleException(6, "The host announces its world with WorldReady.");
+                member.World = fingerprint; room.Revision++;
                 return Change(room, actor);
             }
         }
@@ -296,8 +332,16 @@ namespace Multiplayer.Foundation.Lobby
         }
         private void ResetSetup(Room room)
         {
-            room.Phase = SetupPhase.Lobby; room.Site = null;
-            foreach (Guid id in room.Members) { members[id].Ready = false; members[id].Flag = null; }
+            room.Phase = SetupPhase.Lobby; room.Site = null; room.HostWorld = null;
+            foreach (Guid id in room.Members) { members[id].Ready = false; members[id].Flag = null; members[id].World = null; }
+        }
+        private WorldStatus WorldStatusOf(Room room, Member member)
+        {
+            if (room.Phase != SetupPhase.WorldTransfer) return WorldStatus.None;
+            if (room.HostWorld == null) return WorldStatus.Waiting;
+            if (member.Id == room.Host) return WorldStatus.Match;
+            if (member.World == null) return WorldStatus.Waiting;
+            return member.World.SequenceEqual(room.HostWorld) ? WorldStatus.Match : WorldStatus.Mismatch;
         }
         private static void RequireFree(Member member)
         { if (member.Room != null) throw new LobbyRuleException(6, "Already in a lobby."); }
@@ -309,7 +353,7 @@ namespace Multiplayer.Foundation.Lobby
         private LobbyChange Change(Room room, Guid actor)
         {
             var players = room.Members.Select(id => new PlayerView(id, members[id].Name, members[id].Ready, members[id].Key,
-                members[id].Flag, StatusOf(room, members[id]))).ToArray();
+                members[id].Flag, StatusOf(room, members[id]), WorldStatusOf(room, members[id]))).ToArray();
             return new LobbyChange(new LobbyView(room.Id, room.Name, room.Host, room.Revision, room.Capacity, players,
                 room.Phase, room.Site), room.Members.ToArray(), actor);
         }
@@ -320,6 +364,7 @@ namespace Multiplayer.Foundation.Lobby
             public string Name { get; }
             public PlayerKey Key { get; }
             public ModManifestSummary? Mods { get; set; }
+            public byte[]? World { get; set; }
             public Guid? Room { get; set; }
             public bool Ready { get; set; }
             public SiteTile? Flag { get; set; }
@@ -334,6 +379,7 @@ namespace Multiplayer.Foundation.Lobby
             public ulong Revision { get; set; } = 1;
             public SetupPhase Phase { get; set; } = SetupPhase.Lobby;
             public SiteTile? Site { get; set; }
+            public byte[]? HostWorld { get; set; }
             public List<Guid> Members { get; } = new List<Guid>();
         }
     }
