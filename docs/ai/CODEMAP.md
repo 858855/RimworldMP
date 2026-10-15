@@ -1,15 +1,17 @@
 # Dateikarte
 
-| Pfad | Zweck und Einstieg | Schnittstellen / Tests | Stand |
+| Pfad | Aufgabe / Einstieg | Zugehörige Prüfung | Stand |
 |---|---|---|---|
+| `src/Multiplayer.Foundation.Protocol/FrameCodec.cs` | Versionierte TCP-Frames lesen/schreiben, Limit 64 KiB | `tests/Protocol.Tests/Program.cs` | implementiert, getestet |
+| `src/Multiplayer.Foundation.Protocol/PayloadCodec.cs` | Strikte binäre Feldkodierung, UTF-8 und GUID | `tests/Protocol.Tests/Program.cs` | implementiert, getestet |
+| `src/Multiplayer.Foundation.Protocol/MessageType.cs`, `WireMessage.cs` | Nachrichtentypen und Envelope | `tests/Protocol.Tests/Program.cs` | implementiert, getestet |
+| `src/Multiplayer.Foundation.Protocol/ProtocolException.cs` | Fehler für ungültige Frames und Payloads | Protokolltests | implementiert |
+| `tests/Protocol.Tests/Program.cs` | Ausführbare, paketfreie Protokoll-Testgruppen | `dotnet run --project ...` | fünf Gruppen bestanden |
 | `AGENTS.md`, `docs/governance/` | Verbindliche Regeln und Detailworkflow | `scripts/validate_project_state.py` | vorhanden |
-| `docs/ai/PROJECT_STATE.yaml` | Maßgeblicher technischer Ist-Zustand | YAML-Schema v2 | vorhanden |
-| `docs/ai/TASKS.yaml` | Aufgaben und drei Statusdimensionen | Validator prüft IDs/Abhängigkeiten | vorhanden |
-| `scripts/validate_structure.py` | Archiv-XML-Syntax prüfen | drei Beispiel-XML-Dateien | ausgeführt |
-| `scripts/verify_knowledge_archive.py` | Geliefertes ZIP gegen Manifest prüfen | Archiv, 49 Einträge | ausgeführt |
-| `examples/` | Illustrative RimWorld- und MP-Beispiele | keine produktive API | unkompiliert |
-| `src/Multiplayer.Foundation.Protocol/` | Framing und Nachrichten | `tests/Protocol.Tests/` | geplant |
-| `src/Multiplayer.Foundation.Network/` | TCP-Client und Verbindungszustand | `tests/Network.Tests/` | geplant |
-| `src/Multiplayer.Foundation.Lobby/` | Lobbyzustand | `tests/Lobby.Tests/` | geplant |
+| `docs/ai/PROJECT_STATE.yaml`, `TASKS.yaml` | Ist-Zustand und Aufgaben | Dokumentationsvalidator | vorhanden |
+| `scripts/validate_structure.py`, `verify_knowledge_archive.py` | Archiv-XML und ZIP prüfen | drei XML-Dateien, 49 Archiveinträge | ausgeführt |
+| `examples/` | Illustrative RimWorld-/MP-Muster | kein produktiver API-Nachweis | unkompiliert |
+| `src/Multiplayer.Foundation.Network/` | TCP-Client | `tests/Network.Tests/` | geplant |
+| `src/Multiplayer.Foundation.Lobby/` | Autoritativer Lobbyzustand | `tests/Lobby.Tests/` | geplant |
 | `src/Multiplayer.Foundation.Server/` | Headless-Host | `tests/Integration.Tests/` | geplant |
-| `src/Multiplayer.Foundation.RimWorld/`, `mod/` | Game-Adapter und UI | Game-Start und Integration | geplant |
+| `src/Multiplayer.Foundation.RimWorld/`, `mod/` | Game-Adapter und UI | Game-Start | geplant |

@@ -1,17 +1,11 @@
 # Architektur – Stand und Grenzen
 
-## Tatsächlich vorhanden
+## Implementiert
 
-Das Repository enthält versionierte Forschung, Governance und nicht kompilierte Beispiele. Produktiver Code unter `src/` und ein lauffähiger Mod unter `mod/` sind noch nicht vorhanden. `docs/verification/RECOVERY_REPORT.md` belegt den Ausgangsstand.
+`Multiplayer.Foundation.Protocol` ist eine `netstandard2.0`-Bibliothek ohne Verse-/Unity-/Waylith-Referenz. `FrameCodec` liest TCP-Byte-Streams bis zu einem kompletten, auf 64 KiB begrenzten Frame und schreibt Version, Typ, Request-ID und Payload. `PayloadWriter`/`PayloadReader` kodieren begrenzte Strings und primitive Werte. Fünf ausführbare Testgruppen prüfen Format und Fehlerfälle. Nachrichtenspezifische Lobby-Payloads und echte Verbindungen fehlen noch.
 
 ## Ziel für 0.1 (geplant)
 
-`RimWorld UI -> Network Core -> Protocol/TCP -> Dedicated Server -> Lobby Core`. Der Server ist autoritativ für Sitzungen und Lobbys. Die UI empfängt Zustandsnachrichten; sie verändert keinen RimWorld-Spielzustand. Der Server simuliert keine Spielwelt. Protokoll und Netzwerkbibliothek enthalten keine Verse-, Unity- oder Waylith-Abhängigkeit.
+`RimWorld UI -> Network Core -> Protocol/TCP -> Dedicated Server -> Lobby Core`. Der Server ist autoritativ für Sitzungen und Lobbys; er simuliert keine Spielwelt. Network, Lobby und Server bleiben von der Game-Runtime getrennt. Ziel-Adapter: lokal installiertes RimWorld `1.6.4871 rev598`.
 
-- **Protocol:** feste Version, Längenbegrenzung, Nachrichtentypen, Fehlercodes.
-- **Network Core:** asynchrone Verbindung, Framing, Handshake, Heartbeat, Timeout und sauberes Schließen.
-- **Lobby Core:** geprüfte Mitgliedschaft, Host-Rechte, Ready-Status und konsistente Zustandsupdates.
-- **Dedicated Server:** Konfiguration, TCP-Listener, Sitzungen, Logging und Shutdown ohne Game-Runtime.
-- **RimWorld Adapter:** lokal installierter 1.6-Build; nur UI und Netzwerkadapter. 1.7 ist nicht verifiziert.
-
-**Sicherheitsgrenze:** Der LAN-Testserver erhält zunächst keine öffentliche Authentifizierung oder Transportverschlüsselung; keine Internet-Sicherheitszusage. Datenfelder und Framegröße werden begrenzt. Architekturentscheidungen stehen unter `docs/decisions/`.
+**Sicherheitsgrenze:** Framing und UTF-8 werden begrenzt. Authentifizierung und TLS fehlen; vorerst nur kontrollierte LAN-/Testnetze. Details: `docs/protocol.md`, ADR 0002 und 0003.

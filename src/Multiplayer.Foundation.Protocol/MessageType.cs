@@ -1,0 +1,23 @@
+namespace Multiplayer.Foundation.Protocol
+{
+    public enum MessageType : byte
+    {
+        Hello = 1,
+        HandshakeAccepted = 2,
+        HandshakeRejected = 3,
+        Ping = 4,
+        Pong = 5,
+        LobbyListRequest = 6,
+        LobbyListResponse = 7,
+        CreateLobby = 8,
+        JoinLobby = 9,
+        LeaveLobby = 10,
+        LobbyStateUpdate = 11,
+        PlayerJoined = 12,
+        PlayerLeft = 13,
+        PlayerReadyChanged = 14,
+        Disconnect = 15,
+        Error = 16,
+        CloseLobby = 17
+    }
+}

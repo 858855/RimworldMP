@@ -1,5 +1,9 @@
 # Build-Umgebung
 
-**Ist-Zustand 2026-10-14:** RimWorld 1.6.4871 rev598 ist lokal installiert; `Assembly-CSharp.dll` liegt in `RimWorldLinux_Data/Managed`. Kein .NET-SDK, Mono oder MSBuild im PATH; es wurden noch keine produktiven C#-Builds ausgeführt. Ein .NET-Installationsskript wurde nur nach `/tmp/dotnet-install-rimworldmp.sh` geladen.
+Lokales .NET-SDK `10.0.402` liegt unter `/home/fabiok/.local/share/dotnet-rimworldmp` (ohne Systeminstallation). Der Protokollkern zielt auf `netstandard2.0`; der paketfreie Test-Runner auf `net10.0`.
 
-Geplant: Spielunabhängige Bibliotheken/Server mit lokalem .NET-SDK bauen; RimWorld-Adapter getrennt gegen rechtmäßig lokal vorhandene 1.6-Referenzen kompilieren. Proprietäre Assemblies bleiben außerhalb von Git. Konkrete Befehle und Ausgaben nach Einführung der Projekte ergänzen.
+```bash
+/home/fabiok/.local/share/dotnet-rimworldmp/dotnet run --project tests/Protocol.Tests/Protocol.Tests.csproj -c Release
+```
+
+Am 2026-10-15 bestanden fünf Testgruppen. Binäre Artefakte landen in ignorierten `bin/`/`obj/`-Verzeichnissen. RimWorld-Client-Code wurde noch nicht gebaut. Lokal installiert: RimWorld `1.6.4871 rev598`, Steam-Build `23969874`, `Assembly-CSharp.dll` unter `RimWorldLinux_Data/Managed`. Proprietäre Assemblies bleiben außerhalb von Git.

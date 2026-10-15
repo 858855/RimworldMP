@@ -1,120 +1,191 @@
 schema_version: 2
 status_models:
-  implementation: [not_started, planned, in_progress, implemented, blocked]
-  verification: [not_tested, build_passed, tests_passed, tests_failed, runtime_verified, blocked]
-  integration: [not_submitted, ready_for_human_review, changes_requested, approved, merged]
+  implementation:
+  - not_started
+  - planned
+  - in_progress
+  - implemented
+  - blocked
+  verification:
+  - not_tested
+  - build_passed
+  - tests_passed
+  - tests_failed
+  - runtime_verified
+  - blocked
+  integration:
+  - not_submitted
+  - ready_for_human_review
+  - changes_requested
+  - approved
+  - merged
 tasks:
-  - id: DOC-001
-    title: Bestehende Wissensbasis und Projektgedächtnis sichern
-    goal: Archiv und erste Projektdokumentation zugänglich machen.
-    priority: high
-    components: [governance, knowledge_base]
-    depends_on: []
-    acceptance: ["Archiv geprüft", "Projektgedächtnis angelegt"]
-    implementation: implemented
-    verification: tests_passed
-    integration: ready_for_human_review
-    branch: docs/project-governance
-    evidence: [docs/verification/2026-10-14-project-baseline.md]
-  - id: ENV-001
-    title: Lokale RimWorld-Version erfassen
-    goal: Konkreten 1.6-Build für den Client festhalten.
-    priority: high
-    components: [rimworld_adapter]
-    depends_on: []
-    acceptance: ["Version und Steam-Build aus lokalen Dateien ermittelt"]
-    implementation: implemented
-    verification: tests_passed
-    integration: not_submitted
-    branch: docs/project-governance
-    evidence: [docs/verification/RECOVERY_REPORT.md]
-  - id: GOV-002
-    title: Governance auf Version 2.0 migrieren
-    goal: Statusdimensionen, Review-Regeln und Konsistenzprüfung einführen.
-    priority: critical
-    components: [governance]
-    depends_on: [DOC-001]
-    acceptance: ["Recovery-Bericht vorhanden", "Drei Statusdimensionen validiert", "Governance-Dateien und Review-Bericht vorhanden"]
-    implementation: implemented
-    verification: tests_passed
-    integration: ready_for_human_review
-    branch: docs/project-governance
-    evidence: [docs/verification/2026-10-15-governance-v2.md]
-  - id: NET-001
-    title: Versioniertes TCP-Protokoll und Netzwerk-Core
-    goal: Begrenztes Framing, Handshake, Heartbeats und Client-Verbindung implementieren.
-    priority: critical
-    components: [protocol, network_core]
-    depends_on: [GOV-002]
-    acceptance: ["Fragmentierte Frames korrekt gelesen", "Versionskonflikt abgelehnt", "Nachrichtenlimit erzwungen", "Zwei TCP-Clients erreichbar"]
-    implementation: planned
-    verification: not_tested
-    integration: not_submitted
-    branch: feat/network-protocol
-    base_branch: docs/project-governance
-    evidence: []
-  - id: SERVER-001
-    title: Autoritativer Linux-Dedicated-Server
-    goal: Konfiguration, Sitzungen, Listener und geordneten Shutdown implementieren.
-    priority: high
-    components: [dedicated_server]
-    depends_on: [NET-001]
-    acceptance: ["Server startet ohne RimWorld", "Ungültige Konfiguration abgelehnt", "Shutdown schließt Verbindungen"]
-    implementation: planned
-    verification: not_tested
-    integration: not_submitted
-    branch: feat/dedicated-server
-    base_branch: feat/network-protocol
-    evidence: []
-  - id: LOBBY-001
-    title: Mehrere Lobbys und Ready-Status
-    goal: Server entscheidet über Mitgliedschaft, Host und Bereitschaft.
-    priority: high
-    components: [lobby_core, dedicated_server]
-    depends_on: [SERVER-001]
-    acceptance: ["Zwei Clients sehen denselben Zustand", "Host-Rechte geprüft", "Disconnect entfernt Spieler", "Doppelte Mitgliedschaft verhindert"]
-    implementation: planned
-    verification: not_tested
-    integration: not_submitted
-    branch: feat/lobby-management
-    base_branch: feat/dedicated-server
-    evidence: []
-  - id: CLIENT-001
-    title: RimWorld-1.6-Mod mit Verbindung und Lobby-UI
-    goal: Tatsächliche Mod-Assembly und bedienbare Oberfläche erstellen.
-    priority: high
-    components: [rimworld_adapter, network_core]
-    depends_on: [NET-001, LOBBY-001, ENV-001]
-    acceptance: ["Mod baut gegen lokalen 1.6-Build", "UI erreichbar", "Lobby-Aktionen am Server sichtbar"]
-    implementation: planned
-    verification: not_tested
-    integration: not_submitted
-    branch: feat/rimworld-client
-    base_branch: feat/lobby-management
-    evidence: []
-  - id: TEST-001
-    title: Zwei-Client-Integration und RimWorld-Laufzeit
-    goal: Netzwerk und UI mit zwei unabhängigen Clients nachweisen.
-    priority: high
-    components: [network_core, lobby_core, dedicated_server, rimworld_adapter]
-    depends_on: [CLIENT-001]
-    acceptance: ["Echte Verbindung", "Lobby und Ready synchron", "Disconnect/Reconnect geprüft", "RimWorld lädt Mod"]
-    implementation: planned
-    verification: not_tested
-    integration: not_submitted
-    branch: test/lobby-integration
-    base_branch: feat/rimworld-client
-    evidence: []
-  - id: LIC-001
-    title: Lizenz für neue Projektdateien festlegen
-    goal: Rechte für spätere Veröffentlichung eindeutig dokumentieren.
-    priority: medium
-    components: [governance]
-    depends_on: []
-    acceptance: ["Lizenzentscheidung dokumentiert", "LICENSE-Datei stimmt mit Entscheidung überein"]
-    implementation: blocked
-    verification: blocked
-    integration: not_submitted
-    branch: null
-    evidence: []
-    blocker: "Lizenzwunsch des Rechteinhabers noch nicht festgelegt; technische Arbeit kann fortgesetzt werden."
+- id: DOC-001
+  title: Bestehende Wissensbasis und Projektgedächtnis sichern
+  goal: Archiv und erste Projektdokumentation zugänglich machen.
+  priority: high
+  components:
+  - governance
+  - knowledge_base
+  depends_on: []
+  acceptance:
+  - Archiv geprüft
+  - Projektgedächtnis angelegt
+  implementation: implemented
+  verification: tests_passed
+  integration: ready_for_human_review
+  branch: docs/project-governance
+  evidence:
+  - docs/verification/2026-10-14-project-baseline.md
+- id: ENV-001
+  title: Lokale RimWorld-Version erfassen
+  goal: Konkreten 1.6-Build für den Client festhalten.
+  priority: high
+  components:
+  - rimworld_adapter
+  depends_on: []
+  acceptance:
+  - Version und Steam-Build aus lokalen Dateien ermittelt
+  implementation: implemented
+  verification: tests_passed
+  integration: not_submitted
+  branch: docs/project-governance
+  evidence:
+  - docs/verification/RECOVERY_REPORT.md
+- id: GOV-002
+  title: Governance auf Version 2.0 migrieren
+  goal: Statusdimensionen, Review-Regeln und Konsistenzprüfung einführen.
+  priority: critical
+  components:
+  - governance
+  depends_on:
+  - DOC-001
+  acceptance:
+  - Recovery-Bericht vorhanden
+  - Drei Statusdimensionen validiert
+  - Governance-Dateien und Review-Bericht vorhanden
+  implementation: implemented
+  verification: tests_passed
+  integration: ready_for_human_review
+  branch: docs/project-governance
+  evidence:
+  - docs/verification/2026-10-15-governance-v2.md
+- id: NET-001
+  title: Versioniertes TCP-Protokoll und Netzwerk-Core
+  goal: Begrenztes Framing, Handshake, Heartbeats und Client-Verbindung implementieren.
+  priority: critical
+  components:
+  - protocol
+  - network_core
+  depends_on:
+  - GOV-002
+  acceptance:
+  - Fragmentierte Frames korrekt gelesen
+  - Versionskonflikt abgelehnt
+  - Nachrichtenlimit erzwungen
+  - Zwei TCP-Clients erreichbar
+  implementation: in_progress
+  verification: tests_passed
+  integration: not_submitted
+  branch: feat/network-protocol
+  base_branch: docs/project-governance
+  evidence:
+  - docs/verification/2026-10-15-protocol.md
+- id: SERVER-001
+  title: Autoritativer Linux-Dedicated-Server
+  goal: Konfiguration, Sitzungen, Listener und geordneten Shutdown implementieren.
+  priority: high
+  components:
+  - dedicated_server
+  depends_on:
+  - NET-001
+  acceptance:
+  - Server startet ohne RimWorld
+  - Ungültige Konfiguration abgelehnt
+  - Shutdown schließt Verbindungen
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: feat/dedicated-server
+  base_branch: feat/network-protocol
+  evidence: []
+- id: LOBBY-001
+  title: Mehrere Lobbys und Ready-Status
+  goal: Server entscheidet über Mitgliedschaft, Host und Bereitschaft.
+  priority: high
+  components:
+  - lobby_core
+  - dedicated_server
+  depends_on:
+  - SERVER-001
+  acceptance:
+  - Zwei Clients sehen denselben Zustand
+  - Host-Rechte geprüft
+  - Disconnect entfernt Spieler
+  - Doppelte Mitgliedschaft verhindert
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: feat/lobby-management
+  base_branch: feat/dedicated-server
+  evidence: []
+- id: CLIENT-001
+  title: RimWorld-1.6-Mod mit Verbindung und Lobby-UI
+  goal: Tatsächliche Mod-Assembly und bedienbare Oberfläche erstellen.
+  priority: high
+  components:
+  - rimworld_adapter
+  - network_core
+  depends_on:
+  - NET-001
+  - LOBBY-001
+  - ENV-001
+  acceptance:
+  - Mod baut gegen lokalen 1.6-Build
+  - UI erreichbar
+  - Lobby-Aktionen am Server sichtbar
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: feat/rimworld-client
+  base_branch: feat/lobby-management
+  evidence: []
+- id: TEST-001
+  title: Zwei-Client-Integration und RimWorld-Laufzeit
+  goal: Netzwerk und UI mit zwei unabhängigen Clients nachweisen.
+  priority: high
+  components:
+  - network_core
+  - lobby_core
+  - dedicated_server
+  - rimworld_adapter
+  depends_on:
+  - CLIENT-001
+  acceptance:
+  - Echte Verbindung
+  - Lobby und Ready synchron
+  - Disconnect/Reconnect geprüft
+  - RimWorld lädt Mod
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: test/lobby-integration
+  base_branch: feat/rimworld-client
+  evidence: []
+- id: LIC-001
+  title: Lizenz für neue Projektdateien festlegen
+  goal: Rechte für spätere Veröffentlichung eindeutig dokumentieren.
+  priority: medium
+  components:
+  - governance
+  depends_on: []
+  acceptance:
+  - Lizenzentscheidung dokumentiert
+  - LICENSE-Datei stimmt mit Entscheidung überein
+  implementation: blocked
+  verification: blocked
+  integration: not_submitted
+  branch: null
+  evidence: []
+  blocker: Lizenzwunsch des Rechteinhabers noch nicht festgelegt; technische Arbeit
+    kann fortgesetzt werden.

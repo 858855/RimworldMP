@@ -2,43 +2,67 @@ schema_version: 2
 project:
   name: RimWorld Multiplayer Foundation
   repository_path: /mnt/Arbeit/Git Projekte/RimworldMP
-  goal: "Version 0.1: echte Client-Server-Verbindung, autoritative Lobbys und RimWorld-Client-Mod; kein Gameplay-Sync."
+  goal: 'Version 0.1: echte Client-Server-Verbindung, autoritative Lobbys und RimWorld-Client-Mod;
+    kein Gameplay-Sync.'
 product_version: 0.1.0-dev
 target_rimworld_version:
-  primary: "1.6.4871 rev598"
-  steam_build_id: "23969874"
+  primary: 1.6.4871 rev598
+  steam_build_id: '23969874'
   runtime: Unity/Mono
   game_runtime_tested: false
   other_versions_verified: []
-current_phase: governance_v2_and_protocol_preparation
+current_phase: network_protocol
 git:
-  branch: docs/project-governance
-  base_branch: main
-  base_commit: 0909d11
+  branch: feat/network-protocol
+  base_branch: docs/project-governance
+  base_commit: 7e3a9ae
   current_commit_ref: HEAD
   pushed: false
   merged: false
   dependent_branches: []
 components:
-  governance: {implementation: implemented, verification: tests_passed, integration: ready_for_human_review}
-  knowledge_base: {implementation: implemented, verification: tests_passed, integration: ready_for_human_review}
-  protocol: {implementation: planned, verification: not_tested, integration: not_submitted}
-  network_core: {implementation: planned, verification: not_tested, integration: not_submitted}
-  lobby_core: {implementation: planned, verification: not_tested, integration: not_submitted}
-  dedicated_server: {implementation: planned, verification: not_tested, integration: not_submitted}
-  rimworld_adapter: {implementation: planned, verification: not_tested, integration: not_submitted}
+  governance:
+    implementation: implemented
+    verification: tests_passed
+    integration: ready_for_human_review
+  knowledge_base:
+    implementation: implemented
+    verification: tests_passed
+    integration: ready_for_human_review
+  protocol:
+    implementation: implemented
+    verification: tests_passed
+    integration: not_submitted
+  network_core:
+    implementation: planned
+    verification: not_tested
+    integration: not_submitted
+  lobby_core:
+    implementation: planned
+    verification: not_tested
+    integration: not_submitted
+  dedicated_server:
+    implementation: planned
+    verification: not_tested
+    integration: not_submitted
+  rimworld_adapter:
+    implementation: planned
+    verification: not_tested
+    integration: not_submitted
 verified_capabilities:
-  - "Archiv: 49 Einträge gegen eingebettetes Manifest geprüft."
-  - "Drei XML-Beispiele syntaktisch geprüft; kein RimWorld-Laufzeitnachweis."
-  - "Lokale RimWorld-Version und Steam-Build aus Installationsdateien gelesen."
+- 'Archiv: 49 Einträge gegen eingebettetes Manifest geprüft.'
+- Drei XML-Beispiele syntaktisch geprüft; kein RimWorld-Laufzeitnachweis.
+- Lokale RimWorld-Version und Steam-Build aus Installationsdateien gelesen.
+- 'Wire-Version 1: 5 automatisierte Protokoll-Testgruppen bestanden (Frame/Payload).'
 known_issues:
-  - "Bisher kein produktiver Multiplayer-Code und keine C#-Builds."
+- Bisher kein produktiver Multiplayer-Code und keine C#-Builds.
 blockers:
-  - "Lokales .NET-SDK/Mono für Builds noch nicht verfügbar."
-  - "RimWorld-API-Signaturen und Mod-Laufzeit noch nicht geprüft."
-  - "1.7-Multiplayer wegen Prepatcher und fehlenden Tests ungeklärt."
-active_tasks: [GOV-002]
-next_action: "Governance 2.0 validieren und committen; danach Protokoll-Branch von diesem Branch ableiten."
+- RimWorld-API-Signaturen und Mod-Laufzeit noch nicht geprüft.
+- 1.7-Multiplayer wegen Prepatcher und fehlenden Tests ungeklärt.
+active_tasks:
+- NET-001
+next_action: 'NET-001: TCP-Client, Handshake, Timeout und Heartbeat auf Basis des
+  geprüften FrameCodec ergänzen.'
 documentation_refs:
   tasks: docs/ai/TASKS.yaml
   handoff: docs/ai/SESSION_HANDOFF.md
@@ -47,4 +71,5 @@ documentation_refs:
   spec: docs/SPEC.md
   architecture: docs/ai/ARCHITECTURE.md
   review: docs/reviews/2026-10-15-governance-v2.md
-last_updated: "2026-10-15"
+  protocol_verification: docs/verification/2026-10-15-protocol.md
+last_updated: '2026-10-15'

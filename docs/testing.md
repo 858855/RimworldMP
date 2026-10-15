@@ -1,5 +1,5 @@
-# Prüfstrategie
+# Prüfstrategie und Ist-Stand
 
-Risikobasiert prüfen: Governance per YAML-/Verweisvalidator; Protokoll per Framing-/Grenzwerttests; Server per Start/Shutdown- und echten TCP-Integrationstests; Lobby per Zwei-Client-Zustandsvergleich; RimWorld per Build, Game-Start und UI-Aktionen. Jeder Nachweis nennt Befehl, Umgebung, Exit-Code und Grenzen unter `docs/verification/`.
+Nach Änderungstyp testen: Protocol mit Framing-/Grenzwertfällen, Network mit echten TCP-Verbindungen, Server mit Start/Shutdown und ungültigen Clients, Lobby mit zwei Zustandsvergleichen, RimWorld mit Build, Game-Start und UI. Nachweise unter `docs/verification/` nennen Befehl, Ergebnis und Grenzen.
 
-**Bisher:** Archivprüfung (49 Einträge) und drei XML-Strukturprüfungen bestanden. Kein C#-Build, kein Serverlauf, kein Game-Start und kein Zwei-Client-Test. `VALIDATION.md` ist ein historischer Archivbericht, kein Produktnachweis.
+**Ausgeführt:** Archivprüfung (49 Einträge), drei XML-Strukturprüfungen, Governance-Validator und fünf Protokoll-Testgruppen. **Nicht ausgeführt:** TCP-Integration, Serverlauf, RimWorld-Client-Build/Game-Start, zwei RimWorld-Clients. `VALIDATION.md` ist ein historischer Archivbericht, kein Produktnachweis.
