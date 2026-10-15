@@ -14,14 +14,14 @@ target_rimworld_version:
   runtime: Unity/Mono
   game_runtime_tested: true
   other_versions_verified: []
-current_phase: main_menu_and_lobby_chat_preview
+current_phase: menu_chat_and_internet_reachability_merged
 git:
-  branch: feat/main-menu-chat
-  base_branch: main
-  base_commit: dfe9d23
+  branch: main
+  base_branch: null
+  base_commit: null
   current_commit_ref: HEAD
   pushed: true
-  merged: false
+  merged: true
   dependent_branches:
   - docs/project-governance
   - feat/network-protocol
@@ -106,13 +106,18 @@ verified_capabilities:
 user_reported_capabilities:
 - 'Steam-Verbindung laut Benutzer am 2026-10-15 erfolgreich; Ablauf, Heimanschlüsse und weitere Lobbyfunktionen noch nicht dokumentiert. Siehe docs/verification/2026-10-15-steam-user-connection.md.'
 - 'Multiplayer-Knopf direkt unter Tutorial und Fensteröffnung vom Benutzer am 2026-10-15 im Spiel bestätigt; siehe docs/verification/2026-10-15-menu-chat.md.'
+- 'Spieltest durch Benutzer (Windows, 1.6.4871 rev590): Mod lädt, Einstellungsfenster bedienbar, Direkt-Host erstellt Lobby. Dabei gefundene UPnP-/Adressfehler auf fix/internet-connectivity korrigiert.'
+- 'Branch fix/internet-connectivity: Dual-Stack-Bindung `::`, Client über IPv6/DNS mit Fallback und UPnP gegen Fake-Gateway getestet (sieben Testprojekte unter .NET 8); Mod-Build gegen Windows-1.6-Installation (rev590) ohne Warnungen; SSDP gegen echte FRITZ!Box nur lesend.'
+- 'Merge von feat/main-menu-chat und fix/internet-connectivity in main: RimWorld-1.6-Mod (Linux, 1.6.4871 rev598) ohne Warnungen gebaut, Dedicated Server gebaut, alle sieben Testprojekte unter .NET 10.0.13 auf Linux bestanden. Siehe docs/verification/2026-10-15-merge-menu-chat-internet.md.'
 known_issues:
 - 'RimWorld-UI durch Codex nicht verifiziert: -nographics verursacht Atlasfehler; grafischer Start
   kam auch im 180-s-Wiederholungsversuch nicht bis zu belegten Mod-Ladeeinträgen.'
 - 'Version.txt meldet rev598, die gestartete Spiel-Runtime rev600; exakte Laufzeitkompatibilität offen.'
 - 'Chat-UI, Steam-/IP-Bedienung und Enter-Shortcut im neuen Fenster noch nicht im Spiel geprüft.'
 - 'Wire-Version 2 ist nicht mit älteren Version-1-Mods/Servern kombinierbar; beide Spieler benötigen dieselbe Vorschau.'
-- Server und Client haben keine Authentifizierung/TLS; nur kontrolliertes LAN/Testnetz.
+- Server und Client haben keine Authentifizierung/TLS; mit Standardbindung `::` und UPnP ist eine per IP gehostete Lobby öffentlich erreichbar.
+- 'NET-002: echte Internetverbindung, UPnP-Freigabe am echten Router und Mono-Laufzeit im Spiel nicht geprüft.'
+- 'Zusammengeführtes Verbindungsfenster (Steam, IP mit UPnP-Option, Erreichbarkeitsanzeige neben Chat) nur gebaut, nicht im Spiel geprüft.'
 blockers:
 - Vollständiger RimWorld-UI-Laufzeittest in dieser Umgebung offen.
 - 1.7-Unterstützung ungeklärt.
@@ -123,7 +128,8 @@ active_tasks:
 - STEAM-001
 - UI-002
 - CHAT-001
-next_action: Neues Fenster mit zwei Spielern über Steam sowie TCP testen; Chat, Ready und Disconnect im Spiel prüfen.
+- NET-002
+next_action: Gemergten Stand als ZIP installieren; mit zwei Spielern Steam-Lobby und IP-Lobby mit UPnP aus fremdem Netz prüfen, dabei Chat, Ready, Disconnect und Adresse kopieren testen.
 documentation_refs:
   tasks: docs/ai/TASKS.yaml
   handoff: docs/ai/SESSION_HANDOFF.md
@@ -160,4 +166,7 @@ documentation_refs:
   continuation_prompt: docs/ai/CONTINUATION_PROMPT.md
   continuation_review: docs/reviews/2026-10-15-continuation-prompt.md
   continuation_verification: docs/verification/2026-10-15-continuation-prompt.md
+  internet_reachability: docs/verification/2026-10-15-internet-reachability.md
+  internet_reachability_review: docs/reviews/2026-10-15-internet-reachability.md
+  internet_reachability_decision: docs/decisions/0012-internet-reachability.md
 last_updated: '2026-10-15'

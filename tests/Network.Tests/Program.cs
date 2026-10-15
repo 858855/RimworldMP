@@ -60,6 +60,34 @@ await Expect<TimeoutException>(() => HandshakeClient.ConnectAsync("127.0.0.1", p
 await server; listener.Stop();
 Console.WriteLine("PASS: handshake timeout");
 
+Assert(HostEndpoint.TryParse(" 203.0.113.5 ", 28491, out string h, out int p) && h == "203.0.113.5" && p == 28491, "IPv4 default port");
+Assert(HostEndpoint.TryParse("example.org:1234", 28491, out h, out p) && h == "example.org" && p == 1234, "name with port");
+Assert(HostEndpoint.TryParse("[2001:db8::5]:4000", 28491, out h, out p) && h == "2001:db8::5" && p == 4000, "bracketed IPv6 with port");
+Assert(HostEndpoint.TryParse("[2001:db8::5]", 28491, out h, out p) && h == "2001:db8::5" && p == 28491, "bracketed IPv6");
+Assert(HostEndpoint.TryParse("2001:db8::5", 28491, out h, out p) && h == "2001:db8::5" && p == 28491, "bare IPv6");
+Assert(!HostEndpoint.TryParse("", 28491, out _, out _) && !HostEndpoint.TryParse("host:0", 28491, out _, out _) &&
+    !HostEndpoint.TryParse("host:70000", 28491, out _, out _) && !HostEndpoint.TryParse("a b", 28491, out _, out _) &&
+    !HostEndpoint.TryParse("[1.2.3.4]:5", 28491, out _, out _) && !HostEndpoint.TryParse("x:y:z", 28491, out _, out _),
+    "invalid endpoints rejected");
+Console.WriteLine("PASS: server address parsing");
+
+listener = new TcpListener(IPAddress.IPv6Loopback, 0);
+listener.Start();
+port = ((IPEndPoint)listener.LocalEndpoint).Port;
+server = Task.Run(async () => { using var accepted = await listener.AcceptTcpClientAsync(); });
+using (var overIPv6 = await NetworkConnection.ConnectAsync("[::1]", port, TimeSpan.FromSeconds(3)))
+    Assert(!overIPv6.IsClosed, "IPv6 connection");
+await server; listener.Stop();
+listener = new TcpListener(IPAddress.Loopback, 0);
+listener.Start();
+port = ((IPEndPoint)listener.LocalEndpoint).Port;
+server = Task.Run(async () => { using var accepted = await listener.AcceptTcpClientAsync(); });
+using (var byName = await NetworkConnection.ConnectAsync("localhost", port, TimeSpan.FromSeconds(3)))
+    Assert(!byName.IsClosed, "host name resolved, refused address skipped");
+await server; listener.Stop();
+await Expect<SocketException>(() => NetworkConnection.ConnectAsync("127.0.0.1", port, TimeSpan.FromSeconds(3)));
+Console.WriteLine("PASS: IPv6 literal, DNS name with fallback, refused connection reported");
+
 static void Assert(bool condition, string name)
 {
     if (!condition) throw new Exception("FAIL: " + name);

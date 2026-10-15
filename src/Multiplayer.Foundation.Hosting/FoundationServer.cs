@@ -26,15 +26,57 @@ public sealed class FoundationServer : IAsyncDisposable
     }
     public int BoundPort => listener == null ? 0 : ((IPEndPoint)listener.LocalEndpoint).Port;
     public int ConnectedClients => peers.Count;
+    public bool AcceptsIPv4 { get; private set; }
+    public bool AcceptsIPv6 { get; private set; }
+
+    /// <summary>Address a client on this machine uses to reach the listener.</summary>
+    public IPAddress LoopbackAddress
+    {
+        get
+        {
+            if (listener == null) throw new InvalidOperationException("Server not started.");
+            IPAddress bound = ((IPEndPoint)listener.LocalEndpoint).Address;
+            if (bound.Equals(IPAddress.Any)) return IPAddress.Loopback;
+            if (bound.Equals(IPAddress.IPv6Any)) return AcceptsIPv4 ? IPAddress.Loopback : IPAddress.IPv6Loopback;
+            return bound;
+        }
+    }
 
     public Task StartAsync()
     {
         if (listener != null) throw new InvalidOperationException("Server already started.");
         IPAddress address = config.Validate(true);
-        listener = new TcpListener(address, config.Port);
-        listener.Start();
+        listener = StartListener(address, config.Port);
         acceptTask = AcceptLoopAsync(stopping.Token);
         return Task.CompletedTask;
+    }
+
+    // "::" listens dual-stack (IPv4 and IPv6). Without IPv6 support it falls back to all IPv4 interfaces.
+    private TcpListener StartListener(IPAddress address, int port)
+    {
+        if (address.Equals(IPAddress.IPv6Any))
+        {
+            TcpListener? dual = null;
+            try
+            {
+                dual = new TcpListener(IPAddress.IPv6Any, port);
+                dual.Server.DualMode = true;
+                dual.Start();
+                AcceptsIPv4 = AcceptsIPv6 = true;
+                return dual;
+            }
+            catch (Exception error) when (error is SocketException { SocketErrorCode:
+                not (SocketError.AddressAlreadyInUse or SocketError.AccessDenied) } or NotSupportedException)
+            {
+                dual?.Stop();
+                address = IPAddress.Any;
+            }
+        }
+        var single = new TcpListener(address, port);
+        single.Start();
+        AcceptsIPv4 = address.AddressFamily == AddressFamily.InterNetwork;
+        AcceptsIPv6 = address.AddressFamily == AddressFamily.InterNetworkV6;
+        return single;
     }
 
     public async Task StopAsync()

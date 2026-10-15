@@ -1,6 +1,6 @@
 # Dedicated Server 0.1
 
-Der eigenständige .NET-10-Prozess nutzt denselben `netstandard2.1`-Hosting-Kern wie der direkte Host in der Mod und bindet standardmäßig nur an `127.0.0.1:28491`. Er akzeptiert mehrere TCP-Clients, prüft den Handshake, verwaltet Sitzungen und autoritative Lobbys, verteilt Snapshots, sendet Heartbeats und entfernt getrennte Clients. Details zum Nachrichtenformat: `docs/protocol.md`.
+Der eigenständige .NET-10-Prozess nutzt denselben `netstandard2.1`-Hosting-Kern wie der direkte Host in der Mod und bindet standardmäßig dual-stack an `::` Port 28491 (IPv4 und IPv6 auf allen Schnittstellen; ohne IPv6 Rückfall auf `0.0.0.0`). Er akzeptiert mehrere TCP-Clients, prüft den Handshake, verwaltet Sitzungen und autoritative Lobbys, verteilt Snapshots, sendet Heartbeats und entfernt getrennte Clients. Details zum Nachrichtenformat: `docs/protocol.md`.
 
 ## Lokal bauen und starten
 
@@ -9,7 +9,7 @@ DOTNET_BIN=/home/fabiok/.local/share/dotnet-rimworldmp/dotnet bash scripts/build
 DOTNET_BIN=/home/fabiok/.local/share/dotnet-rimworldmp/dotnet bash scripts/start-server.sh
 ```
 
-`build-server.sh` veröffentlicht nach `dist/server/` und kopiert `deployment/serverconfig.example.json` als lokale `dist/server/serverconfig.json`. `start-server.sh` liest diese lokale Datei; ein alternativer Konfigurationspfad ist sein erstes Argument. Strg+C oder unter Linux SIGTERM beendet Listener und Sitzungen. Ein verbundener Client erkennt dabei das Verbindungsende. Der Standardport ist TCP 28491. Für LAN-Tests kann `BindAddress` gezielt auf eine lokale Netzadresse gesetzt werden. Der Server bietet noch keine Authentifizierung oder TLS und ist nicht für öffentliche Internetserver freigegeben.
+`build-server.sh` veröffentlicht nach `dist/server/` und kopiert `deployment/serverconfig.example.json` als lokale `dist/server/serverconfig.json`. `start-server.sh` liest diese lokale Datei; ein alternativer Konfigurationspfad ist sein erstes Argument. Strg+C oder unter Linux SIGTERM beendet Listener und Sitzungen. Ein verbundener Client erkennt dabei das Verbindungsende. Der Standardport ist TCP 28491. `BindAddress` `127.0.0.1` beschränkt den Server auf den eigenen Rechner; eine konkrete Adresse bindet nur diese Schnittstelle. Für Internet-Spieler muss TCP 28491 in Router und Firewall freigegeben sein (der dedizierte Server macht kein UPnP). Der Server bietet noch keine Authentifizierung oder TLS: Wer Adresse und Port kennt, kann sich verbinden.
 
 `deployment/rimworldmp.service.example` ist ein manuell anzupassendes systemd-Beispiel; es wird nicht installiert oder aktiviert. Für diese Datei müssen Binary und Konfiguration nach `/opt/rimworldmp` kopiert und ein eingeschränkter Benutzer angelegt werden.
 

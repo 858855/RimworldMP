@@ -17,7 +17,7 @@ DOTNET_BIN=/home/fabiok/.local/share/dotnet-rimworldmp/dotnet bash scripts/build
 /home/fabiok/.local/share/dotnet-rimworldmp/dotnet run --project tests/Client.Tests/Client.Tests.csproj -c Release
 ```
 
-Für andere Installationen `RIMWORLD_MANAGED` setzen. Das Paket liegt danach unter `dist/RimWorldMultiplayerFoundation/`. Die Menü-/Chat-Vorschau referenziert `Lib.Harmony` 2.4.3; der Paketbau kopiert dessen `net472`-Assembly und MIT-Lizenz aus dem lokalen NuGet-Cache. RimWorld-Assemblies und Steamworks.NET werden nicht mitgeliefert.
+Für andere Installationen `RIMWORLD_MANAGED` setzen, unter Windows z. B. `RIMWORLD_MANAGED=E:/SteamLibrary/steamapps/common/RimWorld/RimWorldWin64_Data/Managed DOTNET_BIN=dotnet bash scripts/build-mod.sh` in Git Bash. Das Paket liegt danach unter `dist/RimWorldMultiplayerFoundation/`. Die Menü-/Chat-Vorschau referenziert `Lib.Harmony` 2.4.3; der Paketbau kopiert dessen `net472`-Assembly und MIT-Lizenz aus dem lokalen NuGet-Cache. RimWorld-Assemblies und Steamworks.NET werden nicht mitgeliefert.
 
 Die lokal in `main` integrierte Steam-Vorschau referenziert zusätzlich die Steamworks.NET-Assembly aus dem installierten RimWorld-1.6-`Managed`-Verzeichnis. Sie wird nur zum Kompilieren verwendet und nicht in das Mod-Paket kopiert. Ein Build belegt keine Steam-Laufzeitfunktion; siehe `docs/verification/2026-10-15-steam-transport.md`.
 

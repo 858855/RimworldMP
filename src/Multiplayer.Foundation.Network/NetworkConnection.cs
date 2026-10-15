@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.Linq;
+using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
@@ -47,13 +49,58 @@ namespace Multiplayer.Foundation.Network
             if (string.IsNullOrWhiteSpace(host)) throw new ArgumentException("Host is required.", nameof(host));
             if (port < 1 || port > 65535) throw new ArgumentOutOfRangeException(nameof(port));
             if (timeout <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(timeout));
-            var client = new TcpClient();
+            DateTime deadline = DateTime.UtcNow + timeout;
+            IPAddress[] addresses = await ResolveAsync(host.Trim(), timeout, cancellationToken).ConfigureAwait(false);
+            // Try every resolved address in resolver order (IPv6 and IPv4), sharing the remaining time.
+            Exception? lastError = null;
+            for (int i = 0; i < addresses.Length; i++)
+            {
+                TimeSpan remaining = deadline - DateTime.UtcNow;
+                if (remaining <= TimeSpan.Zero) break;
+                TimeSpan attempt = TimeSpan.FromTicks(remaining.Ticks / (addresses.Length - i));
+                try
+                {
+                    return await ConnectToAsync(addresses[i], port, attempt, cancellationToken).ConfigureAwait(false);
+                }
+                catch (TimeoutException error) { lastError = error; }
+                catch (SocketException error) { lastError = error; }
+            }
+            if (lastError is SocketException) throw lastError;
+            throw new TimeoutException("TCP connection timed out.");
+        }
+
+        private static async Task<IPAddress[]> ResolveAsync(string host, TimeSpan timeout,
+            CancellationToken cancellationToken)
+        {
+            string literal = host.StartsWith("[", StringComparison.Ordinal) && host.EndsWith("]", StringComparison.Ordinal)
+                ? host.Substring(1, host.Length - 2) : host;
+            if (IPAddress.TryParse(literal, out IPAddress? parsed)) return new[] { parsed };
+            Task<IPAddress[]> lookup = Dns.GetHostAddressesAsync(host);
+            Task delay = Task.Delay(timeout, cancellationToken);
+            if (await Task.WhenAny(lookup, delay).ConfigureAwait(false) != lookup)
+            {
+                Observe(lookup);
+                cancellationToken.ThrowIfCancellationRequested();
+                throw new TimeoutException("Host name lookup timed out.");
+            }
+            IPAddress[] usable = (await lookup.ConfigureAwait(false))
+                .Where(a => a.AddressFamily == AddressFamily.InterNetwork || a.AddressFamily == AddressFamily.InterNetworkV6)
+                .ToArray();
+            if (usable.Length == 0) throw new SocketException((int)SocketError.HostNotFound);
+            return usable;
+        }
+
+        private static async Task<NetworkConnection> ConnectToAsync(IPAddress address, int port, TimeSpan timeout,
+            CancellationToken cancellationToken)
+        {
+            var client = new TcpClient(address.AddressFamily);
             try
             {
-                Task connect = client.ConnectAsync(host, port);
+                Task connect = client.ConnectAsync(address, port);
                 Task delay = Task.Delay(timeout, cancellationToken);
                 if (await Task.WhenAny(connect, delay).ConfigureAwait(false) != connect)
                 {
+                    Observe(connect);
                     cancellationToken.ThrowIfCancellationRequested();
                     throw new TimeoutException("TCP connection timed out.");
                 }
@@ -67,6 +114,9 @@ namespace Multiplayer.Foundation.Network
                 throw;
             }
         }
+
+        private static void Observe(Task task) =>
+            task.ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
 
         public async Task SendAsync(WireMessage message, CancellationToken cancellationToken = default)
         {
