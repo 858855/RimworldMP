@@ -412,7 +412,7 @@ tasks:
   - Zwei Steam-Konten und zwei Heimanschlüsse für den Abschluss erforderlich
   implementation: in_progress
   verification: build_passed
-  integration: approved
+  integration: merged
   branch: feat/steam-friends-p2p
   base_branch: main
   base_commit: 5b533cd

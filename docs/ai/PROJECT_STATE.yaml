@@ -16,12 +16,12 @@ target_rimworld_version:
   other_versions_verified: []
 current_phase: steam_home_to_home_development
 git:
-  branch: feat/steam-friends-p2p
-  base_branch: main
-  base_commit: 5b533cd
+  branch: main
+  base_branch: null
+  base_commit: null
   current_commit_ref: HEAD
   pushed: false
-  merged: false
+  merged: true
   dependent_branches:
   - docs/project-governance
   - feat/network-protocol
@@ -70,7 +70,7 @@ components:
   steam_p2p:
     implementation: in_progress
     verification: build_passed
-    integration: approved
+    integration: merged
 verified_capabilities:
 - 'Archiv: 49 Einträge gegen eingebettetes Manifest geprüft.'
 - Drei XML-Beispiele syntaktisch geprüft; kein RimWorld-Laufzeitnachweis.
@@ -105,7 +105,7 @@ blockers:
 active_tasks:
 - TEST-001
 - STEAM-001
-next_action: Steam-Pfad im laufenden RimWorld mit zwei Steam-Konten auf getrennten Heimanschlüssen prüfen; erst danach Installations-ZIP und Integrationsreview abschließen.
+next_action: Steam-Pfad im laufenden RimWorld mit zwei Steam-Konten auf getrennten Heimanschlüssen prüfen; Laufzeitfehler auf einem Arbeitsbranch beheben und eine verifizierte Ausgabe erst danach vorbereiten.
 documentation_refs:
   tasks: docs/ai/TASKS.yaml
   handoff: docs/ai/SESSION_HANDOFF.md
