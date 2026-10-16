@@ -1082,7 +1082,7 @@ tasks:
   - 'Der betroffene Client wird ohne Neustart repariert; Hashes danach gleich'
   implementation: in_progress
   verification: tests_passed
-  integration: not_submitted
+  integration: merged
   branch: claude/resync
   base_branch: claude/save-join
   base_commit: 2e6b77d
@@ -1107,7 +1107,7 @@ tasks:
   - 'Neues Laden des Provider-Spielstands ergibt gleiche Hashes'
   implementation: in_progress
   verification: tests_passed
-  integration: not_submitted
+  integration: merged
   branch: claude/save-join
   base_branch: main
   base_commit: e4501df
@@ -1134,7 +1134,7 @@ tasks:
   - 'Reconnect stellt den Besitz wieder her'
   implementation: in_progress
   verification: tests_passed
-  integration: not_submitted
+  integration: merged
   branch: claude/save-join
   base_branch: main
   base_commit: e4501df
@@ -1425,7 +1425,7 @@ tasks:
   - 'Ergebnis wird in allen Spielen am selben Tick ausgeführt'
   implementation: in_progress
   verification: tests_passed
-  integration: not_submitted
+  integration: merged
   branch: claude/vote
   base_branch: claude/resync
   base_commit: bd4c98e

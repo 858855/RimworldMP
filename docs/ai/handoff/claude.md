@@ -9,6 +9,7 @@
 - **C2 erledigt (Koordinator-Seite), Branch `claude/resync` auf `claude/save-join`, ADR 0033:** Desync führt zu Snapshot und Neuladen der Abweichenden; automatisches Fortsetzen, `DesyncResolved` (73); nach drei Fehlschlägen `ResyncGaveUp` (74); `SnapshotLoaded` (75) jetzt Pflicht für Beitritt **und** Resync.
 - **C3 erledigt (Koordinator-Seite), Branch `claude/vote` auf `claude/resync`, ADR 0034:** Abstimmungen nur in Coop-Demokratie; Host öffnet und beendet; gemeinsame Pause, Fortsetzen gesperrt; Mehrheit, Host bei Gleichstand, Enthaltung; Ergebnis als `ScheduledKind.VoteResult` (4); Codes 76–79. Gemeinsame System-Pause für Desync und Abstimmung.
 - **Nummernbereich 71–79 ist ausgeschöpft.** C4 (`SEC-001`, Lobby-Passwort) kommt ohne neue Codes aus (Erweiterung von `CreateLobby`/`JoinLobby`); sonst neuen Bereich mit dem Benutzer abstimmen.
+- **Gemergt nach `main` (2026-10-16, Freigabe des Benutzers):** C1, C2 und C3 per Fast-Forward. Die Branches `claude/save-join`, `claude/resync` und `claude/vote` sind danach entfernt.
 - **Nächste Aufgabe:** C4 `SEC-001` auf `claude/ip-password`.
 - **Wünsche an Codex:**
   - Tick-Treiber nach ADR 0030:

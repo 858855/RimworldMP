@@ -14,7 +14,7 @@ target_rimworld_version:
   runtime: Unity/Mono
   game_runtime_tested: true
   other_versions_verified: []
-current_phase: coop_foundations_merged_parallel_lanes
+current_phase: lockstep_coordinator_complete_game_side_in_progress
 git:
   branch: main
   base_branch: null
@@ -113,6 +113,7 @@ verified_capabilities:
 - 'PlayerKey (ID-001): Hello trägt SteamID oder lokale GUID; über Steam-Nachbildung wird eine fremde SteamID abgelehnt, Doppelverbindung abgelehnt, Kennung binnen 1,5 s nach Trennen frei. Spielneustart nicht getestet. Siehe docs/verification/2026-10-15-player-key.md.'
 - 'Setup-Regeln serverseitig (ADR 0017): Phasen, Sperre, Fähnchen, Startort nur Host, alle fertig vor Weiter; im Lobby-Kern und Ende zu Ende über ListenHost mit Steam-ähnlichem Gast getestet. Spielseite fehlt. Siehe docs/verification/2026-10-15-setup-rules.md.'
 - 'Lockstep-Koordinator (ADR 0030): gleiche Befehle an gleichen Ticks in 6 simulierten Läufen mit drei Spielen; Desync erkannt und alle am selben Tick pausiert; Ende zu Ende über ListenHost mit Steam-ähnlichem Gast. Spielseite fehlt. Siehe docs/verification/2026-10-16-lockstep-coordinator.md.'
+- 'Koordinator (Merge 2026-10-16): koordiniertes Speichern, Beitritt im laufenden Spiel, Desync-Reparatur und Coop-Demokratie-Abstimmung auf main; Simulationen zeigen gleiche Ausführungsfolge nach Beitritt, Reparatur und Abstimmung. Spielseite in Arbeit (Codex). Siehe docs/verification/2026-10-16-save-join.md, -resync.md, -votes.md.'
 user_reported_capabilities:
 - 'Allein-Start (Debug-Option) mit den Einrichtungsseiten des Hosts laut Benutzer am 2026-10-15 im Spiel funktionsfähig („works“, Build b0f4df8); Spiegel beim Gast ungeprüft.'
 - 'Mod-Prüfung und Start-Knopf (Fassung feat/lobby-hardening) laut Benutzer am 2026-10-15 mit zwei Spielern funktionsfähig; die auf feat/setup-rules übertragene Fassung ist noch nicht mit zwei Spielern geprüft.'
@@ -153,7 +154,7 @@ active_tasks:
 - SETUP-003
 - SETUP-004
 - SETUP-005
-next_action: 'Parallele Bahnen nach docs/ai/ASSIGNMENTS.md: Claude C1 SAVE-001/JOIN-001 (Koordinator), Codex X1 VER-001 oder X2 Tick-Treiber. Spieltests derzeit nicht möglich.'
+next_action: 'Codex: codex/resync-game auf main bringen, Prüfhinweise aus docs/ai/handoff/claude.md einarbeiten, dann X1 (Tickpfad-Threads) und X4 (SYNC-002). Claude: C4 SEC-001. Spieltests weiterhin offen.'
 documentation_refs:
   tasks: docs/ai/TASKS.yaml
   handoff: docs/ai/SESSION_HANDOFF.md
