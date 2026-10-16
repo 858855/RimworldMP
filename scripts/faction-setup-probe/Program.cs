@@ -38,6 +38,10 @@ foreach (string name in types)
         .Where(method => method.DeclaringType == type &&
             (method.Name.Contains("Faction", StringComparison.OrdinalIgnoreCase) ||
              method.Name.Contains("Generate", StringComparison.OrdinalIgnoreCase) ||
+             method.Name.Contains("Make", StringComparison.OrdinalIgnoreCase) ||
+             method.Name.Contains("DeSpawn", StringComparison.OrdinalIgnoreCase) ||
+             method.Name.Contains("Set", StringComparison.OrdinalIgnoreCase) ||
+             method.Name.Contains("Random", StringComparison.OrdinalIgnoreCase) ||
              method.Name.Contains("InitGame", StringComparison.OrdinalIgnoreCase) ||
              method.Name.Contains("Start", StringComparison.OrdinalIgnoreCase) ||
              method.Name.Contains("Player", StringComparison.OrdinalIgnoreCase) ||
@@ -81,7 +85,8 @@ foreach (string name in new[]
     "Verse.GetOrGenerateMapUtility", "Verse.MapGenerator", "Verse.Map", "RimWorld.Planet.MapParent",
     "RimWorld.Storyteller", "RimWorld.IncidentQueue", "RimWorld.IncidentParms", "RimWorld.FiringIncident",
     "RimWorld.IncidentWorker", "RimWorld.IncidentDef", "RimWorld.IIncidentTarget",
-    "RimWorld.Planet.WorldObject", "RimWorld.Planet.Caravan", "Verse.PawnGenerator", "Verse.GenSpawn"
+    "RimWorld.Planet.WorldObject", "RimWorld.Planet.Caravan", "Verse.Pawn", "Verse.CellFinder",
+    "Verse.PawnGenerator", "Verse.GenSpawn"
 })
 {
     Type? type = game.GetType(name);
@@ -99,6 +104,10 @@ foreach (string name in new[]
     foreach (MethodBase method in type.GetMethods(flags).Cast<MethodBase>().Concat(type.GetConstructors(flags))
         .Where(method => method.DeclaringType == type &&
             (method.Name.Contains("Generate", StringComparison.OrdinalIgnoreCase) ||
+             method.Name.Contains("Make", StringComparison.OrdinalIgnoreCase) ||
+             method.Name.Contains("DeSpawn", StringComparison.OrdinalIgnoreCase) ||
+             method.Name.Contains("Set", StringComparison.OrdinalIgnoreCase) ||
+             method.Name.Contains("Random", StringComparison.OrdinalIgnoreCase) ||
              method.Name.Contains("Faction", StringComparison.OrdinalIgnoreCase) ||
              method.Name.Contains("Map", StringComparison.OrdinalIgnoreCase) ||
              method.Name.Contains("Ideo", StringComparison.OrdinalIgnoreCase) ||

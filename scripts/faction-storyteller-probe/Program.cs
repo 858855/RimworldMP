@@ -60,11 +60,22 @@ Type parms = game.GetType("RimWorld.IncidentParms", throwOnError: true)!;
 if (parms.GetField("target", BindingFlags.Public | BindingFlags.Instance) == null)
     throw new InvalidOperationException("IncidentParms.target missing.");
 Type storyteller = game.GetType("RimWorld.Storyteller", throwOnError: true)!;
+if (!game.GetType("Verse.IExposable", throwOnError: true)!.IsAssignableFrom(storyteller) ||
+    storyteller.GetConstructor(Type.EmptyTypes) == null)
+    throw new InvalidOperationException("Storyteller cannot be restored through deep Scribe.");
 if (!storyteller.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
     .Any(method => method.Name == "TryFire" && method.GetParameters().Length == 2 &&
         method.GetParameters()[0].ParameterType == firing && method.GetParameters()[1].ParameterType == typeof(bool)))
     throw new InvalidOperationException("Storyteller.TryFire(FiringIncident, bool) missing.");
 Console.WriteLine("PASS: scoped incident owner, target and fire guards have matching signatures.");
+Type incidentTarget = game.GetType("RimWorld.IIncidentTarget", throwOnError: true)!;
+Type map = game.GetType("Verse.Map", throwOnError: true)!;
+Type worldObject = game.GetType("RimWorld.Planet.WorldObject", throwOnError: true)!;
+Type caravan = game.GetType("RimWorld.Planet.Caravan", throwOnError: true)!;
+if (!incidentTarget.IsAssignableFrom(map) || !incidentTarget.IsAssignableFrom(caravan) ||
+    map.GetProperty("ParentFaction") == null || worldObject.GetProperty("Faction") == null)
+    throw new InvalidOperationException("Faction incident target ownership surface changed.");
+Console.WriteLine("PASS: map and caravan incident targets expose faction ownership.");
 return 0;
 
 void PrintSurface(string typeName, params string[] methodNames)
