@@ -172,28 +172,25 @@ namespace Multiplayer.Foundation.RimWorld
             Log.Error("Multiplayer Foundation: " + reason);
         }
 
-        private void SaveAtBoundary(IReadOnlyList<ScheduledCommand> commands)
+        private void SaveAtBoundary(ScheduledCommand command)
         {
             if (lobby == null || client == null || scheduledSaveFile != null)
                 throw new InvalidOperationException("Ein koordiniertes Speichern läuft bereits oder die Lobby fehlt.");
             saveRequested = false;
             snapshotRecipients.Clear();
-            foreach (ScheduledCommand command in commands)
+            if (command.Data.Length > 16 * 64)
+                throw new ProtocolException("Ungültige Empfängerliste für den Snapshot.");
+            foreach (Guid recipient in LockstepPayloads.SaveTargets(command.Data))
             {
-                if (command.Data.Length > 16 * 64)
-                    throw new ProtocolException("Ungültige Empfängerliste für den Snapshot.");
-                foreach (Guid recipient in LockstepPayloads.SaveTargets(command.Data))
-                {
-                    if (recipient == Guid.Empty) throw new ProtocolException("Leerer Snapshot-Empfänger.");
-                    // C2: an affected player waits for the host's copy and must not save its diverged state.
-                    if (recipient == client.SessionId && lobby.HostId != client.SessionId)
-                    { tickDriver?.FinishSave(); return; }
-                    if (lobby.HostId == client.SessionId && !snapshotRecipients.Contains(recipient)) snapshotRecipients.Enqueue(recipient);
-                }
+                if (recipient == Guid.Empty) throw new ProtocolException("Leerer Snapshot-Empfänger.");
+                // C2: an affected player waits for the host's copy and must not save its diverged state.
+                if (recipient == client.SessionId && lobby.HostId != client.SessionId)
+                { tickDriver?.FinishSave(); return; }
+                if (lobby.HostId == client.SessionId && !snapshotRecipients.Contains(recipient)) snapshotRecipients.Enqueue(recipient);
             }
             if (snapshotQueue.Count + snapshotRecipients.Count > 64)
                 throw new ProtocolException("Zu viele wartende Snapshot-Empfänger.");
-            scheduledSaveFile = GameCodec.FileNameFor(lobby.Name) + " - tick " + commands[0].Boundary + "-" + commands[0].Sequence;
+            scheduledSaveFile = GameCodec.FileNameFor(lobby.Name) + " - tick " + command.Boundary + "-" + command.Sequence;
             scheduledSaveStartedUtc = DateTime.UtcNow;
             try { GameDataSaveLoader.SaveGame(scheduledSaveFile); }
             catch (Exception error) { throw new InvalidOperationException("Speichern an der Tickgrenze fehlgeschlagen.", error); }

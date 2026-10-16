@@ -27,7 +27,6 @@ namespace Multiplayer.Foundation.RimWorld
                     if (thing is Pawn pawn)
                     {
                         AddInt(pawn.CurJob?.def?.index ?? -1);
-                        AddInt(pawn.health == null ? -1 : BitConverter.SingleToInt32Bits(pawn.health.summaryHealth.SummaryHealthPercent));
                         var needs = pawn.needs?.AllNeeds.OrderBy(n => n.def.index).ToList();
                         AddInt(needs?.Count ?? -1);
                         if (needs != null) foreach (Need need in needs)
@@ -40,7 +39,11 @@ namespace Multiplayer.Foundation.RimWorld
             if (factions != null) foreach (Faction faction in factions)
             {
                 AddInt(faction.loadID);
-                foreach (Faction other in factions) { AddInt(other.loadID); AddInt(faction.GoodwillWith(other)); }
+                foreach (Faction other in factions)
+                {
+                    if (other == faction) continue;
+                    AddInt(other.loadID); AddInt(faction.GoodwillWith(other));
+                }
             }
             var quests = Current.Game?.questManager?.QuestsListForReading.OrderBy(q => q.id).ToList();
             AddInt(quests?.Count ?? -1);

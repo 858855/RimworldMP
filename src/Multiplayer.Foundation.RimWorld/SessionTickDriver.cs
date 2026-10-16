@@ -11,7 +11,8 @@ namespace Multiplayer.Foundation.RimWorld
     internal sealed class SessionTickDriver
     {
         private readonly LockstepClient lockstep;
-        private readonly Action<IReadOnlyList<ScheduledCommand>> saveAtBoundary;
+        private readonly Action<ScheduledCommand> saveAtBoundary;
+        private readonly Queue<ScheduledCommand> boundaryCommands = new Queue<ScheduledCommand>();
         private readonly Guid localSession;
         private readonly int landingTicksGame;
         private readonly SessionRandom random;
@@ -23,7 +24,7 @@ namespace Multiplayer.Foundation.RimWorld
         private bool tickRandomActive;
         private int currentTick;
 
-        internal SessionTickDriver(Guid lobbyId, Guid localSession, int landingTicksGame, Action<IReadOnlyList<ScheduledCommand>> saveAtBoundary,
+        internal SessionTickDriver(Guid lobbyId, Guid localSession, int landingTicksGame, Action<ScheduledCommand> saveAtBoundary,
             JoinSnapshot? join = null)
         {
             LobbyId = lobbyId; this.localSession = localSession;
@@ -32,14 +33,13 @@ namespace Multiplayer.Foundation.RimWorld
             random = new SessionRandom(lobbyId);
             catchingUp = join != null;
             lastHashTick = join?.Boundary ?? 0;
-            partialHashBoundary = join != null && join.Boundary % 60 != 0
-                ? (join.Boundary / 60 + 1) * 60 : -1;
+            partialHashBoundary = join != null ? (join.Boundary / 60 + 1) * 60 : -1;
         }
 
         internal Guid LobbyId { get; }
         internal bool Faulted { get; private set; }
         internal string Failure { get; private set; } = "";
-        internal bool Paused => lockstep.Paused || Faulted || awaitingResync || savePending;
+        internal bool Paused => lockstep.Paused || Faulted || awaitingResync || savePending || boundaryCommands.Count != 0;
         internal bool AwaitingResync => awaitingResync;
         internal bool CatchingUp => catchingUp;
         internal bool SavePending => savePending;
@@ -67,15 +67,22 @@ namespace Multiplayer.Foundation.RimWorld
             if (Faulted || awaitingResync) return;
             int completed = CompletedTick(manager);
             if (completed < 0) { Stop("Spiel-Ticks liegen vor dem gemeinsamen Startwert."); return; }
-            var commands = lockstep.TakeCommandsAt(completed);
-            if (commands.Any(c => c.Kind == ScheduledKind.Game))
-                Stop("Ein Spielbefehl ist eingetroffen, aber der Ausführer (SYNC-002) fehlt noch.");
-            else if (commands.Any(c => c.Kind != ScheduledKind.Save))
-                Stop("Unbekannte Art eines geplanten Befehls.");
-            else if (commands.Count != 0)
+            if (savePending) return;
+            if (boundaryCommands.Count == 0)
+                foreach (ScheduledCommand command in lockstep.TakeCommandsAt(completed)) boundaryCommands.Enqueue(command);
+            while (boundaryCommands.Count != 0 && !savePending && !Faulted)
             {
-                savePending = true;
-                saveAtBoundary(commands);
+                ScheduledCommand command = boundaryCommands.Dequeue();
+                if (command.Kind == ScheduledKind.Game)
+                    Stop("Ein Spielbefehl ist eingetroffen, aber der Ausführer (SYNC-002) fehlt noch.");
+                else if (command.Kind == ScheduledKind.Save)
+                {
+                    savePending = true;
+                    saveAtBoundary(command);
+                }
+                else if (command.Kind == ScheduledKind.VoteResult)
+                    Stop("Ein Abstimmungsergebnis ist eingetroffen, aber die Spielseite (VOTE-001) fehlt noch.");
+                else Stop("Unbekannte Art eines geplanten Befehls.");
             }
         }
 

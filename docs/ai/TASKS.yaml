@@ -1048,12 +1048,13 @@ tasks:
   verification: build_passed
   integration: not_submitted
   branch: codex/resync-game
-  base_branch: claude/resync
-  base_commit: bd4c98e
+  base_branch: main
+  base_commit: 8f7c32f
   evidence:
   - docs/verification/2026-10-16-lockstep-coordinator.md
   - docs/decisions/0030-lockstep-coordinator.md
   - docs/verification/2026-10-16-codex-save-join-hash.md
+  - docs/verification/2026-10-16-codex-rebase-review-fixes.md
   - docs/decisions/0042-state-hash-and-rand.md
   blocker: 'Plan-Hash und Rand-Neusaat im Mod gebaut; echter Zwei-Client-Desync-Test, Harmony-Laufzeit und DET-001 offen. Koordinator-Vergleich ist auf main bereits getestet.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
@@ -1430,11 +1431,12 @@ tasks:
   verification: build_passed
   integration: not_submitted
   branch: codex/resync-game
-  base_branch: claude/resync
-  base_commit: bd4c98e
+  base_branch: main
+  base_commit: 8f7c32f
   evidence:
   - docs/decisions/0041-save-and-join-game-adapter.md
   - docs/verification/2026-10-16-codex-save-join-hash.md
+  - docs/verification/2026-10-16-codex-rebase-review-fixes.md
   blocker: 'Save/Load und Autosave bei Tick 60000 im laufenden Zwei-Client-Spiel ungeprüft.'
 - id: JOIN-002
   title: 'Spielseite für Snapshot-Beitritt und Reparatur'
@@ -1455,11 +1457,12 @@ tasks:
   verification: build_passed
   integration: not_submitted
   branch: codex/resync-game
-  base_branch: claude/resync
-  base_commit: bd4c98e
+  base_branch: main
+  base_commit: 8f7c32f
   evidence:
   - docs/decisions/0041-save-and-join-game-adapter.md
   - docs/verification/2026-10-16-codex-save-join-hash.md
+  - docs/verification/2026-10-16-codex-rebase-review-fixes.md
   blocker: 'Zwei-Client-Spieltest und C2-Reparaturprotokoll offen; Besitzdaten aus dem Snapshot vorhanden, erneute Zuordnung im Spiel nicht geprüft.'
 - id: VOTE-001
   title: 'Coop-Demokratie: Abstimmung über Ereignisse im Spiel'

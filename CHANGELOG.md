@@ -16,6 +16,7 @@
 
 ### Spielseite für Save/Join, C2-Reparatur und Zustands-Hash (lokaler Arbeitsbranch `codex/resync-game`)
 
+- Nach dem Merge der Koordinatorarbeit auf `main` wurde die Spielseite darauf rebasiert. Das erste Hashfenster nach Beitritt oder Reparatur wird auch bei einer 60-Tick-Grenze ausgelassen. Speicherbefehle behalten ihre Position zwischen Spielbefehlen; nachfolgende Befehle warten, bis der Save abgeschlossen ist. Ein gecachter Gesundheitswert und Fraktionsbeziehungen zu sich selbst wurden aus dem Vergleichshash entfernt.
 - Geplante Speicherbefehle unterbrechen den Gleichlauf nicht mehr. Alle Spieler speichern am selben Tick; der Host kann seinen Stand als Snapshot gezielt an einen neuen Spieler senden. Der neue Spieler lädt ihn, holt auf und zeigt seinen Fortschritt an. Nach einer Desync-Meldung bleibt ein Neuladen möglich.
 - Die Spielzufallsfolge wird je gemeinsamem Tick neu gesetzt. Der Vergleichshash berücksichtigt nun die im Entwicklungsplan genannten Dinge, Pawns, Fraktionen und Quests sowie die Rand-Ziehungen. Vanilla-Autosaves außerhalb der Koordinator-Regel sind während der Sitzung abgeschaltet.
 - Nach dem Laden bestätigt der Client den Snapshot; nur betroffene Spieler warten bei einer Desync-Meldung auf die Reparatur. Erfolg und Abbruch der Reparatur werden angezeigt.
