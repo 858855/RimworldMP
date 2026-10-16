@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Gemeinsames Vorschaupaket für den späteren Spieltest (`codex/manual-test-candidate`, PKG-002)
+
+- X1, X4 und X5 liegen zusammen in einem installierbaren RimWorld-1.6-ZIP. Build, Archivinhalt und Prüfsumme wurden geprüft. Gameplay, Spiel-UI und Zwei-Rechner-Verbindung sind weiterhin ungetestet; X4 bleibt ein Zwischenstand.
+
 ### Erster Spielbefehl (Arbeitsbranch `codex/command-pipeline`, X4)
 
 - Draft/Undraft aus dem Spiel-UI wird als geplanter Befehl mit Karten- und Pawn-ID gesendet und an der gemeinsamen Tickgrenze ausgeführt. Fehlt die Figur beim Ausführen, wird der Befehl protokolliert und ausgelassen. Codec-Roundtrip und Mod-Build bestanden; das Verhalten in zwei laufenden RimWorld-Clients ist noch nicht geprüft. Weitere Spielaktionen bleiben offen.

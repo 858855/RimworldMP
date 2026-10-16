@@ -335,6 +335,32 @@ tasks:
   evidence:
   - docs/verification/2026-10-15-installable-mod-zip.md
   - docs/verification/2026-10-15-direct-host.md
+- id: PKG-002
+  title: Gemeinsames Vorschau-ZIP für spätere Tests mit Fabio und Sven
+  goal: X1, X4 und X5 auf einem Arbeitsbranch als identisches RimWorld-1.6-Mod-Paket bereitstellen.
+  description: Lokaler manueller Testkandidat; kein Gameplay-Funktionsnachweis und keine Veröffentlichung.
+  priority: high
+  owner: codex
+  components:
+  - rimworld_adapter
+  - deployment
+  depends_on:
+  - PKG-001
+  acceptance:
+  - X1, X4 und X5 sind auf einem codex-Arbeitsbranch enthalten
+  - Release-Mod baut gegen die lokale RimWorld-1.6-Assembly
+  - ZIP-Struktur und SHA-256 sind geprüft
+  - Noch nicht ausgeführte Spieltests und WIP-Anteile sind dokumentiert
+  implementation: implemented
+  verification: build_passed
+  integration: not_submitted
+  branch: codex/manual-test-candidate
+  base_branch: codex/command-pipeline
+  base_commit: f91655a
+  evidence:
+  - docs/verification/2026-10-16-manual-test-candidate.md
+  - docs/reviews/2026-10-16-manual-test-candidate.md
+  blocker: 'Manuelle RimWorld- und Zwei-Rechner-Tests stehen aus; SYNC-002 ist WIP. Kein Push/Merge ohne dafür geltende Freigabe.'
 - id: HOST-001
   title: Lobby ohne separaten Serverprozess aus der Mod hosten
   goal: Ein Spieler startet die autoritative Lobby direkt im RimWorld-Mod und ein Kollege verbindet sich per LAN-IP.
