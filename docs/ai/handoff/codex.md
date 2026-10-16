@@ -1,6 +1,6 @@
 # Übergabe Codex (Spielseite) – 2026-10-16
 
-- **Branch:** `codex/continuous-sync` von `main` @ `85e02f9`. Letzten Commit mit `git log -1 --oneline` prüfen; kein Push/Merge dieses Branches autorisiert.
+- **Branch:** `codex/continuous-sync` von `main` @ `85e02f9`. Letzten Commit mit `git log -1 --oneline` prüfen. Der Benutzer hat am 2026-10-17 den Push dieses Branches freigegeben; kein Merge autorisiert.
 - **Zuletzt:** SYNC-009 auf der Spielseite. `ConnectionQuality` misst Ping/Pong-Roundtrip und ausgefallene Antworten. `FoundationMod` sperrt den Tick und Vanilla-Autosave bei unerwartetem Verbindungsverlust, verbindet einen Gast über den letzten IP-/Steam-Endpunkt erneut und startet erst nach neuem Host-Snapshot. Gäste können dies über „Resync starten“ im Spieloverlay auch selbst auslösen. Lokales Tempo ist bei schlechter Verbindung auf 2×/1× begrenzt. ADR 0049, CODEMAP und Prüfnachweis enthalten Details.
 - **Stand der Prüfung:** Mod-Build und Dokumentvalidator gemäß `docs/verification/2026-10-16-continuous-sync.md`; kein RimWorld-Zwei-Client-Test auf Benutzerwunsch. Der bestehende Fraktions-Laufzeitschnitt und die Figurenwahl bleiben wie in `docs/verification/2026-10-16-faction-runtime-and-pawns.md` beschrieben; der produktive Fraktionsstart ist gesperrt.
 - **Offen:** Gast-Rejoin und Resync im laufenden Spiel prüfen, sobald der Benutzer das wieder wünscht; vollständige Gameplay-Befehlserfassung für dauerhaften Gleichlauf; Host-Rückkehr erfordert Koordinatorarbeit. Roh-Paketverlust ist über TCP/Steam nicht direkt messbar.
