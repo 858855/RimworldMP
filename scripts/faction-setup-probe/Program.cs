@@ -73,6 +73,44 @@ foreach (string name in new[] { "RimWorld.Planet.WorldGrid", "RimWorld.Planet.Ti
         Console.WriteLine("  FIELD: " + field);
 }
 
+// A proposed test slice must not guess how vanilla creates maps, factions, pawns or incident targets.
+foreach (string name in new[]
+{
+    "RimWorld.FactionGeneratorParms", "RimWorld.FactionDefOf", "RimWorld.FactionGenerator",
+    "RimWorld.Planet.Settlement", "RimWorld.Planet.WorldObjectsHolder", "RimWorld.Planet.WorldObjectMaker",
+    "Verse.GetOrGenerateMapUtility", "Verse.MapGenerator", "Verse.Map", "RimWorld.Planet.MapParent",
+    "RimWorld.Storyteller", "RimWorld.IncidentQueue", "RimWorld.IncidentParms", "RimWorld.FiringIncident",
+    "RimWorld.IncidentWorker", "RimWorld.IncidentDef", "RimWorld.IIncidentTarget",
+    "RimWorld.Planet.WorldObject", "RimWorld.Planet.Caravan", "Verse.PawnGenerator", "Verse.GenSpawn"
+})
+{
+    Type? type = game.GetType(name);
+    if (type == null) { Console.WriteLine("TEST-SLICE MISSING TYPE: " + name); continue; }
+    Console.WriteLine("TEST-SLICE TYPE: " + name);
+    foreach (FieldInfo field in type.GetFields(flags).Where(field => field.DeclaringType == type &&
+        (field.Name.Contains("faction", StringComparison.OrdinalIgnoreCase) ||
+         field.Name.Contains("ideo", StringComparison.OrdinalIgnoreCase) ||
+         field.Name.Contains("story", StringComparison.OrdinalIgnoreCase) ||
+         field.Name.Contains("incident", StringComparison.OrdinalIgnoreCase) ||
+         field.Name.Contains("tile", StringComparison.OrdinalIgnoreCase) ||
+         field.Name.Contains("pawn", StringComparison.OrdinalIgnoreCase) ||
+         field.Name.Contains("owner", StringComparison.OrdinalIgnoreCase))))
+        Console.WriteLine("  FIELD: " + field);
+    foreach (MethodBase method in type.GetMethods(flags).Cast<MethodBase>().Concat(type.GetConstructors(flags))
+        .Where(method => method.DeclaringType == type &&
+            (method.Name.Contains("Generate", StringComparison.OrdinalIgnoreCase) ||
+             method.Name.Contains("Faction", StringComparison.OrdinalIgnoreCase) ||
+             method.Name.Contains("Map", StringComparison.OrdinalIgnoreCase) ||
+             method.Name.Contains("Ideo", StringComparison.OrdinalIgnoreCase) ||
+             method.Name.Contains("Story", StringComparison.OrdinalIgnoreCase) ||
+             method.Name.Contains("Incident", StringComparison.OrdinalIgnoreCase) ||
+             method.Name.Contains("Spawn", StringComparison.OrdinalIgnoreCase) ||
+             method.Name.Contains("Add", StringComparison.OrdinalIgnoreCase) ||
+             method.Name == ".ctor"))
+        .OrderBy(method => method.Name, StringComparer.Ordinal))
+        Console.WriteLine("  METHOD: " + method);
+}
+
 foreach (var (typeName, methodName) in new[]
 {
     ("RimWorld.PageUtility", "InitGameStart"),

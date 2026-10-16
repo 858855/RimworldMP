@@ -59,6 +59,9 @@ namespace Multiplayer.Foundation.RimWorld
         private List<int> factionIds = new List<int>();
         private List<int> factionSiteTileIds = new List<int>();
         private List<int> factionSiteLayerIds = new List<int>();
+        // One independent incident queue and component set per slot, saved with the shared game.
+        private List<Storyteller> factionStorytellers = new List<Storyteller>();
+        private int lastFactionValidationTick = -1;
 
         public MultiplayerSession() { }
         public MultiplayerSession(Game game) { }
@@ -88,6 +91,7 @@ namespace Multiplayer.Foundation.RimWorld
             var selectedFactionIds = new List<int>();
             var selectedSiteTiles = new List<int>();
             var selectedSiteLayers = new List<int>();
+            var selectedStorytellers = new List<Storyteller>();
             string selectedDifficulty = "";
             string selectedFingerprint = "";
             if (mode.Mode == GameMode.Factions)
@@ -123,6 +127,7 @@ namespace Multiplayer.Foundation.RimWorld
                     selectedFactionIds.Add(assignment.Faction.loadID);
                     selectedSiteTiles.Add(assignment.Site.TileId);
                     selectedSiteLayers.Add(assignment.Site.LayerId);
+                    selectedStorytellers.Add(new Storyteller(assignment.Storyteller, difficulty, values));
                 }
                 if (selectedSiteTiles.Select((tile, i) => new SiteTile(tile, selectedSiteLayers[i])).Distinct().Count() != list.Count)
                     throw new InvalidOperationException("Fraktions-Startorte sind nicht eindeutig.");
@@ -141,6 +146,8 @@ namespace Multiplayer.Foundation.RimWorld
             factionIds = selectedFactionIds;
             factionSiteTileIds = selectedSiteTiles;
             factionSiteLayerIds = selectedSiteLayers;
+            factionStorytellers = selectedStorytellers;
+            lastFactionValidationTick = -1;
             var landed = owners.Where(o => colonists.Contains(o.Key)).OrderBy(o => o.Key).ToList();
             ownedPawns = landed.Select(o => o.Key).ToList();
             pawnOwners = landed.Select(o => o.Value.ToString()).ToList();
@@ -175,6 +182,23 @@ namespace Multiplayer.Foundation.RimWorld
             Enumerable.Range(0, factionSlots.Count).Select(index =>
                 (factionStorytellerOwners[index], factionSlots[index], factionIds[index], factionStorytellerDefs[index],
                     new SiteTile(factionSiteTileIds[index], factionSiteLayerIds[index])));
+
+        internal IEnumerable<(Storyteller Storyteller, Faction Owner)> LiveFactionStorytellers()
+        {
+            int tick = Find.TickManager.TicksGame;
+            if (lastFactionValidationTick < 0 || tick < lastFactionValidationTick || tick - lastFactionValidationTick >= 60)
+            {
+                string? invalid = FactionStorytellerError();
+                if (invalid != null) throw new InvalidOperationException(invalid);
+                lastFactionValidationTick = tick;
+            }
+            IReadOnlyList<Faction> factions = Current.Game.World.factionManager.AllFactionsListForReading;
+            for (int index = 0; index < factionSlots.Count; index++)
+            {
+                Faction owner = factions.Single(faction => faction.loadID == factionIds[index]);
+                yield return (factionStorytellers[index], owner);
+            }
+        }
 
         internal IReadOnlyList<FactionRestoreEntry> FactionRestoreEntries()
         {
@@ -217,11 +241,17 @@ namespace Multiplayer.Foundation.RimWorld
                 factionStorytellerDefs.Count != playerKeys.Count ||
                 factionSlots.Count != playerKeys.Count || factionIds.Count != playerKeys.Count ||
                 factionSiteTileIds.Count != playerKeys.Count || factionSiteLayerIds.Count != playerKeys.Count ||
+                factionStorytellers.Count != playerKeys.Count ||
                 playerKeys.Distinct().Count() != playerKeys.Count ||
                 factionStorytellerOwners.Distinct().Count() != playerKeys.Count ||
                 factionSlots.Distinct().Count() != playerKeys.Count ||
                 factionIds.Distinct().Count() != playerKeys.Count ||
                 factionSiteTileIds.Select((tile, i) => (Tile: tile, Layer: factionSiteLayerIds[i])).Distinct().Count() != playerKeys.Count ||
+                factionStorytellers.Any(storyteller => storyteller == null) ||
+                factionStorytellers.Distinct().Count() != factionStorytellers.Count ||
+                factionStorytellers.Any(storyteller =>
+                    factionStorytellers.Any(other => !ReferenceEquals(storyteller, other) &&
+                        ReferenceEquals(storyteller.incidentQueue, other.incidentQueue))) ||
                 factionSlots.Any(slot => slot < 0 || slot >= 64) ||
                 factionSiteTileIds.Any(tile => tile < 0) || factionSiteLayerIds.Any(layer => layer < 0) ||
                 !factionSlots.SequenceEqual(factionSlots.OrderBy(slot => slot)) ||
@@ -243,6 +273,21 @@ namespace Multiplayer.Foundation.RimWorld
             {
                 if (!allowed.Any(def => def.defName == name))
                     return "Ein Fraktions-Erzähler fehlt oder erzwingt eine andere Schwierigkeit.";
+            }
+            for (int index = 0; index < factionStorytellers.Count; index++)
+            {
+                Storyteller? storyteller = factionStorytellers[index];
+                if (storyteller?.def?.defName != factionStorytellerDefs[index] ||
+                    storyteller.difficultyDef?.defName != sharedDifficultyDef || storyteller.difficulty == null ||
+                    storyteller.incidentQueue == null)
+                    return "Eine gespeicherte Erzählerinstanz oder Ereigniswarteschlange fehlt.";
+                try
+                {
+                    if (DifficultyFingerprint(storyteller.difficulty) != sharedDifficultyFingerprint)
+                        return "Ein Fraktions-Erzähler hat abweichende Schwierigkeitswerte.";
+                }
+                catch (InvalidOperationException error)
+                { return "Fraktions-Schwierigkeit kann nicht geprüft werden: " + error.Message; }
             }
             return null;
         }
@@ -299,6 +344,7 @@ namespace Multiplayer.Foundation.RimWorld
             Scribe_Collections.Look(ref factionIds, "factionIds", LookMode.Value);
             Scribe_Collections.Look(ref factionSiteTileIds, "factionSiteTileIds", LookMode.Value);
             Scribe_Collections.Look(ref factionSiteLayerIds, "factionSiteLayerIds", LookMode.Value);
+            Scribe_Collections.Look(ref factionStorytellers, "factionStorytellers", LookMode.Deep);
             if (Scribe.mode != LoadSaveMode.PostLoadInit) return;
             sessionId ??= "";
             playerKeys ??= new List<string>(); playerNames ??= new List<string>();
@@ -308,6 +354,8 @@ namespace Multiplayer.Foundation.RimWorld
             factionStorytellerOwners ??= new List<string>(); factionStorytellerDefs ??= new List<string>();
             factionSlots ??= new List<int>(); factionIds ??= new List<int>();
             factionSiteTileIds ??= new List<int>(); factionSiteLayerIds ??= new List<int>();
+            factionStorytellers ??= new List<Storyteller>();
+            lastFactionValidationTick = -1;
         }
     }
 }

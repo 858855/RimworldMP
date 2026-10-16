@@ -4,6 +4,7 @@
 
 ### Fraktions-Einrichtung im Spiel (Arbeitsbranch `codex/faction-setup`, FACTION-005)
 
+- Für einen späteren Fraktions-Spielstand werden getrennte Erzählerinstanzen mit eigenen Ereigniswarteschlangen gespeichert. Der Spieltick ruft sie in Platzreihenfolge auf; Ereignisziele werden auf die zugehörige Fraktion begrenzt. Ungeklärte weltweite Ziele werden unterdrückt, ein fremdes konkretes Ziel hält den Tick mit Fehler an. Der Mod baut, aber dieser Pfad konnte noch nicht im laufenden Spiel geprüft werden.
 - Die Spieloberfläche sendet für jede Fraktion einen eigenen Startort und eine eigene Ideologie. Sie zeigt den Fertig-Status und eine Begründung, wenn der Host eine Wahl zurückweist. Der Host prüft vor dem Weiterschalten Siedelbarkeit, Abstand, Ideologieformat und die zugehörige Prüfsumme.
 - Fraktions-Spielstände können Standort, Platz, Fraktion und Erzähler zusammen speichern und beim Laden prüfen. Beim Fortsetzen sendet der Host die gespeicherte Platzliste an die Lobby und nutzt den bestehenden Spielstand-Transfer.
 - Der Mod baut gegen die lokale RimWorld-1.6-Assembly ohne Warnungen. Die Bedienung, bearbeitete Ideologien und das Fortsetzen wurden nicht im laufenden Spiel geprüft. Mehrere getrennte Startkolonien werden noch nicht erzeugt; der Fraktionsstart bleibt gesperrt.

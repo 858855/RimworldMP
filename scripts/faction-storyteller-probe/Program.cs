@@ -48,9 +48,23 @@ CheckCall("RimWorld.Storyteller", "StorytellerTick", "RimWorld.IncidentQueue", "
 CheckCall("RimWorld.Storyteller", "get_AllIncidentTargets", "Verse.Find", "get_Maps");
 CheckCall("RimWorld.Storyteller", "get_AllIncidentTargets", "Verse.Find", "get_WorldObjects");
 CheckCall("RimWorld.IncidentQueue", "IncidentQueueTick", "Verse.Find", "get_Storyteller");
+CheckCall("RimWorld.Storyteller", "StorytellerTick", "RimWorld.Storyteller", "MakeIncidentsForInterval");
 Console.WriteLine("PASS: vanilla tick, global incident targets and global queued-incident owner paths confirmed.");
 PrintSurface("RimWorld.Storyteller", "StorytellerTick", "TryFire", "get_AllIncidentTargets", "ExposeData");
 PrintSurface("RimWorld.IncidentQueue", "IncidentQueueTick", "ExposeData");
+PrintSurface("Verse.Find", "get_Storyteller");
+Type firing = game.GetType("RimWorld.FiringIncident", throwOnError: true)!;
+if (firing.GetField("parms", BindingFlags.Public | BindingFlags.Instance) == null)
+    throw new InvalidOperationException("FiringIncident.parms missing.");
+Type parms = game.GetType("RimWorld.IncidentParms", throwOnError: true)!;
+if (parms.GetField("target", BindingFlags.Public | BindingFlags.Instance) == null)
+    throw new InvalidOperationException("IncidentParms.target missing.");
+Type storyteller = game.GetType("RimWorld.Storyteller", throwOnError: true)!;
+if (!storyteller.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+    .Any(method => method.Name == "TryFire" && method.GetParameters().Length == 2 &&
+        method.GetParameters()[0].ParameterType == firing && method.GetParameters()[1].ParameterType == typeof(bool)))
+    throw new InvalidOperationException("Storyteller.TryFire(FiringIncident, bool) missing.");
+Console.WriteLine("PASS: scoped incident owner, target and fire guards have matching signatures.");
 return 0;
 
 void PrintSurface(string typeName, params string[] methodNames)

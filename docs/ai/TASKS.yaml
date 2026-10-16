@@ -1645,7 +1645,7 @@ tasks:
 - id: FACTION-003
   title: 'Storyteller je Fraktion bei gemeinsamer Schwierigkeit (Spielseite)'
   goal: 'Jede Fraktion erhält eine eigene, synchronisierte Ereignisplanung; Schwierigkeit und globale Spielregeln bleiben gemeinsam.'
-  description: 'ADR 0045 ergänzt ADR 0031/0037. Spielstand bindet PlayerKey, FactionSlot, echte Faction.loadID und StorytellerDef; gemeinsamer Host-Schwierigkeitszustand wird geprüft. Spiel-UI nutzt den integrierten Claude-Vertrag für Host-Optionen, eigene Wahl und Fertig. Mehrfach-Tick fehlt.'
+  description: 'ADR 0045 ergänzt ADR 0031/0037. Spielstand bindet PlayerKey, FactionSlot, echte Faction.loadID und StorytellerDef; gemeinsamer Host-Schwierigkeitszustand wird geprüft. Spiel-UI nutzt den integrierten Claude-Vertrag. Getrennte Erzähler-Instanzen, Queues und Platz-Ticks sind gebaut, aber nicht im Spiel geprüft.'
   priority: high
   owner: codex
   components:
@@ -1672,7 +1672,8 @@ tasks:
   - docs/verification/2026-10-16-faction-storyteller-contract.md
   - docs/verification/2026-10-16-faction-storyteller-ui.md
   - docs/verification/2026-10-16-faction-ui-merge-gate.md
-  blocker: 'FACTION-001 erzeugt noch keine getrennten Spielerfraktionen. Vanilla Tick, Ziele und Queue nutzen globalen Storyteller; sichere Mehrfachausführung, Save/Load, UI-Spieltest und Zwei-Client-Test fehlen. Fraktionsstart gesperrt.'
+  - docs/verification/2026-10-16-faction-storyteller-runtime.md
+  blocker: 'FACTION-001 erzeugt noch keine getrennten Spielerfraktionen. Neuer Mehrfach-Tick, Zieltrennung und Save/Load sind nur gebaut, nicht im Spiel geprüft. UI-Spieltest und Zwei-Client-Test fehlen. Fraktionsstart gesperrt.'
   plan_ref: docs/decisions/0045-faction-storyteller-boundary.md
 - id: FACTION-005
   title: 'Fraktionsmodus: Spielseite für Standort, Ideologie und Fortsetzen'
@@ -1704,5 +1705,6 @@ tasks:
   - docs/decisions/0046-faction-setup-preflight.md
   - docs/verification/2026-10-16-faction-setup-audit.md
   - docs/verification/2026-10-16-faction-setup-game-side.md
-  blocker: 'Vanilla PrepForMapGen bindet Pawns an eine globale Faction.OfPlayer. Zweite Karte/Pawn-Gruppe und getrennte Ideo-Instanzen sind nicht nachgewiesen; Laufzeittests im Spiel ohne Benutzerfreigabe nicht ausgeführt. Fraktionsstart gesperrt.'
+  - docs/verification/2026-10-16-faction-storyteller-runtime.md
+  blocker: 'Vanilla PrepForMapGen bindet Pawns an eine globale Faction.OfPlayer. Zweite Karte/Pawn-Gruppe und getrennte Ideo-Instanzen sind nicht nachgewiesen; Laufzeittests im Spiel ohne Benutzerfreigabe nicht ausgeführt. Fraktionsstart im Koordinator und Spieladapter gesperrt.'
   plan_ref: docs/decisions/0031-game-modes.md
