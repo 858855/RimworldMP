@@ -48,6 +48,31 @@ foreach (string name in types)
         Console.WriteLine("  METHOD: " + method);
 }
 
+// FACTION-005: signatures used by the game-side site/ideology contract. Reflection only; it never starts RimWorld.
+foreach (string name in new[] { "RimWorld.Planet.WorldGrid", "RimWorld.Planet.TileFinder", "RimWorld.Ideo", "RimWorld.IdeoPresetDef", "RimWorld.IdeoManager", "RimWorld.IdeoGenerator", "RimWorld.FactionIdeosTracker", "RimWorld.Page_ConfigureIdeo", "Verse.ModsConfig", "Verse.Scribe", "Verse.Scribe_Deep" })
+{
+    Type? type = game.GetType(name);
+    if (type == null) { Console.WriteLine("MISSING TYPE: " + name); continue; }
+    Console.WriteLine("CONTRACT TYPE: " + name);
+    foreach (MethodBase method in type.GetMethods(flags).Cast<MethodBase>().Concat(type.GetConstructors(flags))
+        .Where(method => method.DeclaringType == type &&
+            (method.Name.Contains("Distance", StringComparison.OrdinalIgnoreCase) ||
+             method.Name.Contains("Ideo", StringComparison.OrdinalIgnoreCase) ||
+             method.Name.Contains("Settlement", StringComparison.OrdinalIgnoreCase) ||
+             method.Name.Contains("Save", StringComparison.OrdinalIgnoreCase) ||
+             method.Name.Contains("Load", StringComparison.OrdinalIgnoreCase) ||
+             method.Name.Contains("Expose", StringComparison.OrdinalIgnoreCase) ||
+             method.Name.Contains("Preset", StringComparison.OrdinalIgnoreCase) ||
+             method.Name.Contains("Add", StringComparison.OrdinalIgnoreCase) ||
+             method.Name.Contains("Choose", StringComparison.OrdinalIgnoreCase) ||
+             method.Name == ".ctor"))
+        .OrderBy(method => method.Name, StringComparer.Ordinal))
+        Console.WriteLine("  METHOD: " + method);
+    foreach (FieldInfo field in type.GetFields(flags).Where(field => field.DeclaringType == type &&
+        (field.Name.Contains("ideo", StringComparison.OrdinalIgnoreCase) || field.Name.Contains("preset", StringComparison.OrdinalIgnoreCase))))
+        Console.WriteLine("  FIELD: " + field);
+}
+
 foreach (var (typeName, methodName) in new[]
 {
     ("RimWorld.PageUtility", "InitGameStart"),

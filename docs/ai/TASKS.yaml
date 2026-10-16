@@ -1675,9 +1675,9 @@ tasks:
   blocker: 'FACTION-001 erzeugt noch keine getrennten Spielerfraktionen. Vanilla Tick, Ziele und Queue nutzen globalen Storyteller; sichere Mehrfachausführung, Save/Load, UI-Spieltest und Zwei-Client-Test fehlen. Fraktionsstart gesperrt.'
   plan_ref: docs/decisions/0045-faction-storyteller-boundary.md
 - id: FACTION-005
-  title: 'Fraktionsmodus: Spielseiten-Audit und sichere Generierungsgrenze'
-  goal: 'Den Vanilla-Startpfad für mehrere Spielerfraktionen prüfen und eine deterministische, gespeicherte Slot-zu-Fraktion-Zuordnung vorbereiten.'
-  description: 'Codex-Teil von FACTION-001. Erste Arbeitseinheit: reproduzierbarer Assembly-Audit; noch keine zweite Fraktion und keine Freischaltung des Fraktionsstarts.'
+  title: 'Fraktionsmodus: Spielseite für Standort, Ideologie und Fortsetzen'
+  goal: 'Wahlen je Platz prüfen, Ideologien an den Host übergeben, Fraktions-Spielstände eindeutig zuordnen und die sichere Mehrfraktions-Generierung vorbereiten.'
+  description: 'Codex-Teil von FACTION-001 auf Claudes ADR-0038-Vertrag. Standort/Ideologie, Relaisprüfung, gespeicherter Standort und FactionRestore sind gebaut; echte Generierung und Laufzeitnachweise fehlen.'
   priority: high
   owner: codex
   components:
@@ -1685,18 +1685,24 @@ tasks:
   depends_on:
   - MODE-001
   - FACTION-004
+  - FACTION-006
   acceptance:
   - '1.6-Startpfad und relevante API-Signaturen aus lokaler Assembly dokumentiert'
-  - 'Hook-Grenze und Datenübergabe zum Koordinator konkret beschrieben'
+  - 'Jede Fraktion wählt eigenen gültigen Startort und Ideologie; Host prüft alle Wahlen vor SetupAdvance'
+  - 'PlayerKey, FactionSlot, Faction.loadID, Erzähler und Standort werden gespeichert und beim Laden geprüft'
+  - 'Fortgesetzte Fraktionslobby erhält FactionRestore und den gespeicherten Spielstand'
+  - 'Hook vor PrepForMapGen erzeugt tatsächlich getrennte Fraktionen, Karten und Ideologien in Slot-Reihenfolge'
+  - 'Spieltest mit zwei Fraktionen und Save/Load belegt die Zuordnung'
   - 'Coop bleibt unverändert und Fraktionsstart gesperrt'
   implementation: in_progress
   verification: build_passed
   integration: not_submitted
   branch: codex/faction-setup
-  base_branch: main
-  base_commit: 9fc1519
+  base_branch: claude/faction-sites
+  base_commit: 428a065
   evidence:
   - docs/decisions/0046-faction-setup-preflight.md
   - docs/verification/2026-10-16-faction-setup-audit.md
-  blocker: 'Audit bestätigt globale Faction.OfPlayer- und GameInitData-Einzelwerte. Echte getrennte Fraktionen, Ideologie, Startorte und Spieltests fehlen. Koordinator-Vertrag für eigene Startorte/Ideologien je FactionSlot noch nicht implementiert.'
+  - docs/verification/2026-10-16-faction-setup-game-side.md
+  blocker: 'Vanilla PrepForMapGen bindet Pawns an eine globale Faction.OfPlayer. Zweite Karte/Pawn-Gruppe und getrennte Ideo-Instanzen sind nicht nachgewiesen; Laufzeittests im Spiel ohne Benutzerfreigabe nicht ausgeführt. Fraktionsstart gesperrt.'
   plan_ref: docs/decisions/0031-game-modes.md

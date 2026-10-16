@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
@@ -82,6 +83,10 @@ namespace Multiplayer.Foundation.RimWorld
         private string? hostScenarioName;
         // SETUP-003: a guest's own starting-site page, where "Next" sets the guest's flag.
         private bool guestSiteMapActive;
+        // ADR 0038: full ideology bytes are relayed only to the host; the lobby exposes their label and hash.
+        private readonly Dictionary<byte, (PlayerKey Player, string Label, byte[] Data)> factionIdeologies =
+            new Dictionary<byte, (PlayerKey, string, byte[])>();
+        private Guid? factionRestoreSentTo;
         // SETUP-004: the host owns the pawns (CharacterHost); guests see the latest roster.
         private readonly CharacterHost characterHost = new CharacterHost();
         private byte[] lastRosterPayload = System.Array.Empty<byte>();
@@ -123,6 +128,7 @@ namespace Multiplayer.Foundation.RimWorld
         private bool saveRequested;
         internal bool HostSetupActive => hostSetupActive;
         internal bool GuestSiteMapActive => guestSiteMapActive;
+        internal bool FactionSetupVisible => lobby?.Mode.Mode == GameMode.Factions;
 
         /// <summary>
         /// The shared game stays paused before Playing, until its driver is ready, and on coordinator pause/failure.
@@ -935,14 +941,17 @@ namespace Multiplayer.Foundation.RimWorld
                 return;
             }
             bool solo = hosted?.AllowSoloStart == true;
+            bool restoring = lobby.Mode.Mode == GameMode.Factions && lobby.FactionsRestored;
             string? reason = LobbyRegistry.StartBlockReason(lobby, client.SessionId, solo) ??
-                (Current.ProgramState != ProgramState.Entry ? "Nur im Hauptmenü möglich." : null);
-            if (Widgets.ButtonText(new Rect(x, y, 180f, 32f), "Spiel starten", true, true, reason == null))
+                ((restoring ? Current.ProgramState != ProgramState.Playing : Current.ProgramState != ProgramState.Entry)
+                    ? restoring ? "Zuerst den Fraktions-Spielstand laden." : "Nur im Hauptmenü möglich." : null);
+            if (Widgets.ButtonText(new Rect(x, y, 180f, 32f), restoring ? "Spiel fortsetzen" : "Spiel starten", true, true, reason == null))
             {
                 int players = lobby.Players.Count;
                 Find.WindowStack.Add(Dialog_MessageBox.CreateConfirmation(
-                    "Spiel mit " + players + " Spielern starten? Die Lobby wird gesperrt.",
-                    () => Send(MessageType.SetupAdvance, SetupPayloads.Advance(SetupPhase.Scenario)), false, "Spiel starten", WindowLayer.Dialog));
+                    "Spiel mit " + players + " Spielern " + (restoring ? "fortsetzen" : "starten") + "? Die Lobby wird gesperrt.",
+                    () => Send(MessageType.SetupAdvance, SetupPayloads.Advance(restoring ? SetupPhase.Generating : SetupPhase.Scenario)),
+                    false, restoring ? "Fortsetzen" : "Spiel starten", WindowLayer.Dialog));
             }
             if (reason != null) Widgets.Label(new Rect(x + 190f, y + 4f, width - 190f, 28f), reason);
             y += 38f;
@@ -953,6 +962,29 @@ namespace Multiplayer.Foundation.RimWorld
                 GUI.color = Color.white;
                 y += 27f;
             }
+        }
+
+        /// <summary>Restore the saved slot table when a loaded Factions game hosts a new lobby or resumes after abort.</summary>
+        private void TryRestoreFactionLobby()
+        {
+            if (lobby?.Mode.Mode != GameMode.Factions || lobby.Phase != SetupPhase.Lobby || lobby.FactionsRestored ||
+                client == null || lobby.HostId != client.SessionId || Current.ProgramState != ProgramState.Playing ||
+                factionRestoreSentTo == lobby.Id) return;
+            MultiplayerSession? session = MultiplayerSession.ForCurrentGame;
+            if (session?.Active != true || session.Mode != lobby.Mode) return;
+            string? invalid = session.FactionStorytellerError();
+            if (invalid != null) { status = "Fraktions-Spielstand ungültig: " + invalid; return; }
+            try
+            {
+                IReadOnlyList<FactionRestoreEntry> entries = session.FactionRestoreEntries();
+                PlayerView? me = lobby.Players.FirstOrDefault(player => player.Id == client.SessionId);
+                if (me == null || !entries.Any(entry => entry.Player == me.Key))
+                { status = "Host hat keinen Platz in diesem Fraktions-Spielstand."; return; }
+                if (SendBackground(new WireMessage(MessageType.FactionRestore, requestId++, new FactionRestore(entries).ToPayload())))
+                    factionRestoreSentTo = lobby.Id;
+            }
+            catch (Exception error) when (error is InvalidOperationException || error is ProtocolException)
+            { status = "Fraktions-Spielstand kann nicht fortgesetzt werden: " + error.Message; }
         }
 
         // Shown while the lobby is in setup. Until the shared setup pages exist nothing here may look like
@@ -966,9 +998,11 @@ namespace Multiplayer.Foundation.RimWorld
             foreach (PlayerView player in lobby.Players)
             {
                 string label = player.Name + (player.Id == lobby.HostId ? " [Host]" : "");
-                if (lobby.Mode.Mode == GameMode.Factions && lobby.Phase == SetupPhase.Storyteller)
+                if (lobby.Mode.Mode == GameMode.Factions && lobby.Phase >= SetupPhase.Storyteller && lobby.Phase <= SetupPhase.Ideology)
                     label += " · Platz " + (player.FactionSlot?.ToString() ?? "?") + " · " +
-                        StorytellerLabel(player.Storyteller) + (player.Ready ? " · fertig" : " · offen");
+                        (lobby.Phase == SetupPhase.Storyteller ? StorytellerLabel(player.Storyteller) :
+                         lobby.Phase == SetupPhase.SiteSelection ? (player.FactionSite.HasValue ? "Ort gewählt" : "Ort offen") :
+                         (player.Ideology?.Label ?? "Ideologie offen")) + (player.Ready ? " · fertig" : " · offen");
                 Widgets.Label(new Rect(x, y, width, 27f), label);
                 y += 27f;
             }
@@ -976,6 +1010,31 @@ namespace Multiplayer.Foundation.RimWorld
             DrawSetupDetails(x, ref y, width);
             if (lobby.Mode.Mode == GameMode.Factions && lobby.Phase == SetupPhase.Storyteller)
                 DrawFactionStoryteller(x, ref y, width);
+            if (lobby.Mode.Mode == GameMode.Factions && (lobby.Phase == SetupPhase.SiteSelection || lobby.Phase == SetupPhase.Ideology))
+            {
+                PlayerView? me = lobby.Players.FirstOrDefault(player => player.Id == client.SessionId);
+                Widgets.Label(new Rect(x, y, width, 26f), LobbyRegistry.FactionSetupBlockReason(lobby) ?? "Alle Wahlen sind bestätigt.");
+                y += 30f;
+                if (!string.IsNullOrEmpty(me?.FactionNote))
+                { Widgets.Label(new Rect(x, y, width, 48f), "Deine Wahl wurde abgelehnt: " + me.FactionNote); y += 52f; }
+                if (lobby.Phase == SetupPhase.SiteSelection)
+                {
+                    Widgets.Label(new Rect(x, y, width, 26f), "Dein Ort: " + (me?.FactionSite is SiteTile own ? SiteFlags.Describe(SiteFlags.ToPlanetTile(own)) : "noch offen"));
+                    y += 30f;
+                }
+                else
+                {
+                    Widgets.Label(new Rect(x, y, width, 26f), "Deine Ideologie: " + (me?.Ideology?.Label ?? "noch offen"));
+                    y += 30f;
+                    if (Widgets.ButtonText(new Rect(x, y, 190f, 30f), "Ideologie wählen")) OpenFactionIdeologyMenu();
+                    y += 36f;
+                }
+                bool ready = me?.Ready ?? false;
+                bool chosen = lobby.Phase == SetupPhase.SiteSelection ? me?.FactionSite.HasValue == true : me?.Ideology != null;
+                if (Widgets.ButtonText(new Rect(x, y, 135f, 30f), ready ? "Nicht fertig" : "Fertig", true, true, me != null && (ready || chosen)))
+                    Send(MessageType.PlayerReadyChanged, LobbyPayloads.Bool(!ready));
+                y += 36f;
+            }
             if (lobby.Phase == SetupPhase.SiteSelection && lobby.HostId != client.SessionId && !guestSiteMapActive && guestWorldLoaded)
             {
                 if (Widgets.ButtonText(new Rect(x, y, 200f, 30f), "Weltkarte öffnen")) OpenGuestSiteMap();
@@ -1121,6 +1180,46 @@ namespace Multiplayer.Foundation.RimWorld
             Find.WindowStack.Add(new FloatMenu(choices));
         }
 
+        private void OpenFactionIdeologyMenu()
+        {
+            if (lobby?.Mode.Mode != GameMode.Factions || lobby.Phase != SetupPhase.Ideology || client == null) return;
+            if (!ModsConfig.IdeologyActive)
+            { SendFactionIdeologyChoice(FactionIdeologyCodec.FixedChoice()); return; }
+            var choices = new List<FloatMenuOption>();
+            foreach (IdeoPresetDef preset in DefDatabase<IdeoPresetDef>.AllDefsListForReading
+                .Where(def => DefNames.IsValid(def.defName)).OrderBy(def => def.defName, StringComparer.Ordinal))
+            {
+                IdeoPresetDef selected = preset;
+                choices.Add(new FloatMenuOption("Vorlage: " + selected.LabelCap,
+                    () => SendFactionIdeologyChoice(FactionIdeologyCodec.PresetChoice(selected))));
+            }
+            if (SetupMirror.CurrentPage() is Page_ConfigureIdeo page && page.ideo != null)
+            {
+                Ideo selected = page.ideo;
+                choices.Add(new FloatMenuOption("Bearbeitete Ideologie: " + selected.name,
+                    () =>
+                    {
+                        try { SendFactionIdeologyChoice(FactionIdeologyCodec.EditedChoice(selected)); }
+                        catch (Exception error) when (error is InvalidDataException || error is IOException || error is ArgumentException)
+                        { status = "Ideologie konnte nicht gespeichert werden: " + error.Message; }
+                    }));
+            }
+            if (choices.Count == 0) { status = "Keine Ideologie-Vorlage ist lokal verfügbar."; return; }
+            Find.WindowStack.Add(new FloatMenu(choices));
+        }
+
+        private void SendFactionIdeologyChoice((string Label, byte[] Data) choice)
+        {
+            try
+            {
+                string? invalid = FactionIdeologyCodec.InvalidReason(choice.Label, choice.Data);
+                if (invalid != null) { status = invalid; return; }
+                Send(MessageType.FactionIdeologyChoice, FactionPayloads.IdeologyChoice(choice.Label, choice.Data));
+            }
+            catch (Exception error) when (error is InvalidDataException || error is ProtocolException || error is IOException)
+            { status = "Ideologie konnte nicht gesendet werden: " + error.Message; }
+        }
+
         private void DrawWorldTransfer(float x, ref float y, float width)
         {
             if (lobby == null || client == null) return;
@@ -1179,9 +1278,13 @@ namespace Multiplayer.Foundation.RimWorld
             }
             bool isHost = lobby != null && client != null && lobby.HostId == client.SessionId;
             if (lobby?.Phase == SetupPhase.SiteSelection)
-                second = isHost ? "Du wählst den Startort. Fähnchen sind Vorschläge." : "Nur der Host wählt. „Weiter“ setzt dein Fähnchen.";
+                second = lobby.Mode.Mode == GameMode.Factions ?
+                    LobbyRegistry.FactionSetupBlockReason(lobby) ?? "Alle Fraktionsorte sind gewählt." :
+                    isHost ? "Du wählst den Startort. Fähnchen sind Vorschläge." : "Nur der Host wählt. „Weiter“ setzt dein Fähnchen.";
             if (lobby?.Mode.Mode == GameMode.Factions && lobby.Phase == SetupPhase.Storyteller)
                 second = LobbyRegistry.StorytellerBlockReason(lobby) ?? "Alle haben einen Erzähler gewählt und sind fertig.";
+            if (lobby?.Mode.Mode == GameMode.Factions && lobby.Phase == SetupPhase.Ideology)
+                second = LobbyRegistry.FactionSetupBlockReason(lobby) ?? "Alle Ideologien sind gewählt.";
             Widgets.Label(new Rect(inRect.x, inRect.y + 26f, inRect.width, 26f), second);
             float buttonY = inRect.y + 58f;
             if (lobby?.Mode.Mode == GameMode.Factions && lobby.Phase == SetupPhase.Storyteller)
@@ -1203,24 +1306,53 @@ namespace Multiplayer.Foundation.RimWorld
                 if (isHost && Widgets.ButtonText(new Rect(inRect.x, inRect.yMax - 30f, 140f, 28f), "Abbrechen")) ConfirmAbort();
                 return;
             }
+            if (lobby?.Mode.Mode == GameMode.Factions && lobby.Phase == SetupPhase.Ideology)
+            {
+                PlayerView? me = client == null ? null : lobby.Players.FirstOrDefault(player => player.Id == client.SessionId);
+                if (Widgets.ButtonText(new Rect(inRect.x, buttonY, 170f, 30f), "Ideologie wählen")) OpenFactionIdeologyMenu();
+                bool ready = me?.Ready ?? false;
+                if (Widgets.ButtonText(new Rect(inRect.x + 175f, buttonY, 105f, 30f), ready ? "Zurück" : "Fertig", true, true,
+                    me != null && (ready || me.Ideology != null)))
+                    Send(MessageType.PlayerReadyChanged, LobbyPayloads.Bool(!ready));
+                Widgets.Label(new Rect(inRect.x, buttonY + 38f, inRect.width, 24f), "Deine Wahl: " + (me?.Ideology?.Label ?? "offen"));
+                if (!string.IsNullOrEmpty(me?.FactionNote))
+                    Widgets.Label(new Rect(inRect.x, buttonY + 65f, inRect.width, 54f), "Abgelehnt: " + me.FactionNote);
+                if (Widgets.ButtonText(new Rect(inRect.x, inRect.yMax - 30f, 110f, 28f), "Chat / Lobby")) OpenWindow();
+                if (isHost && Widgets.ButtonText(new Rect(inRect.x + 115f, inRect.yMax - 30f, 140f, 28f), "Abbrechen")) ConfirmAbort();
+                return;
+            }
             if (lobby?.Phase == SetupPhase.SiteSelection)
             {
-                if (Widgets.ButtonText(new Rect(inRect.x, buttonY, 105f, 30f), "Fähnchen hier")) PlaceFlagAtSelection();
+                bool factions = lobby.Mode.Mode == GameMode.Factions;
+                if (Widgets.ButtonText(new Rect(inRect.x, buttonY, 105f, 30f), factions ? "Ort hier" : "Fähnchen hier")) PlaceFlagAtSelection();
                 if (Widgets.ButtonText(new Rect(inRect.x + 110f, buttonY, 95f, 30f), "Entfernen"))
-                    SendBackground(new WireMessage(MessageType.SiteFlag, requestId++, SetupPayloads.Flag(null)));
+                    SendBackground(new WireMessage(factions ? MessageType.FactionSiteChoice : MessageType.SiteFlag, requestId++,
+                        factions ? FactionPayloads.SiteChoice(null) : SetupPayloads.Flag(null)));
                 if (Widgets.ButtonText(new Rect(inRect.x + 210f, buttonY, 110f, 30f), "Chat / Lobby")) OpenWindow();
                 float listY = buttonY + 36f;
-                var flagged = lobby.Players.Select((p, i) => (Player: p, Index: i)).Where(e => e.Player.Flag != null).Take(4).ToList();
+                var flagged = lobby.Players.Select((p, i) => (Player: p, Index: i))
+                    .Where(e => factions ? e.Player.FactionSite != null : e.Player.Flag != null)
+                    .Take(factions ? 2 : 4).ToList();
                 if (flagged.Count == 0)
-                    Widgets.Label(new Rect(inRect.x, listY, inRect.width, 24f), "Noch keine Fähnchen.");
+                    Widgets.Label(new Rect(inRect.x, listY, inRect.width, 24f), factions ? "Noch keine Fraktionsorte." : "Noch keine Fähnchen.");
                 foreach (var (player, index) in flagged)
                 {
-                    PlanetTile tile = SiteFlags.ToPlanetTile(player.Flag!.Value);
+                    PlanetTile tile = SiteFlags.ToPlanetTile((factions ? player.FactionSite : player.Flag)!.Value);
                     GUI.color = SiteFlags.ColorFor(index);
                     Widgets.Label(new Rect(inRect.x, listY + 3f, inRect.width - 70f, 24f), player.Name + ": " + SiteFlags.Describe(tile));
                     GUI.color = Color.white;
                     if (Widgets.ButtonText(new Rect(inRect.x + inRect.width - 64f, listY, 64f, 26f), "Hin")) SiteFlags.JumpTo(tile);
                     listY += 28f;
+                }
+                if (factions && client != null)
+                {
+                    PlayerView? me = lobby.Players.FirstOrDefault(player => player.Id == client.SessionId);
+                    bool ready = me?.Ready ?? false;
+                    if (!string.IsNullOrEmpty(me?.FactionNote))
+                        Widgets.Label(new Rect(inRect.x, inRect.yMax - 92f, inRect.width, 27f), "Abgelehnt: " + me.FactionNote);
+                    if (Widgets.ButtonText(new Rect(inRect.x, inRect.yMax - 64f, 105f, 28f), ready ? "Nicht fertig" : "Fertig", true, true,
+                        me != null && (ready || me.FactionSite.HasValue)))
+                        Send(MessageType.PlayerReadyChanged, LobbyPayloads.Bool(!ready));
                 }
                 if (isHost && Widgets.ButtonText(new Rect(inRect.x, inRect.yMax - 30f, 140f, 28f), "Abbrechen")) ConfirmAbort();
                 return;
@@ -1370,6 +1502,13 @@ namespace Multiplayer.Foundation.RimWorld
         private void StartSharedGame()
         {
             if (lobby == null) return;
+            if (lobby.Mode.Mode == GameMode.Factions && !lobby.FactionsRestored)
+            {
+                startRequested = false;
+                gameText = "Fraktionsstart gesperrt: getrennte Karten, Pawns und Ideologien sind noch nicht geprüft.";
+                SendBackground(new WireMessage(MessageType.SetupAbort, requestId++, Array.Empty<byte>()));
+                return;
+            }
             startOwners = characterHost.SnapshotOwners();
             startPlayers = lobby.Players.Select(p => (p.Key, p.Name)).ToList();
             bool requested = startRequested;
@@ -1517,12 +1656,25 @@ namespace Multiplayer.Foundation.RimWorld
             if (reopenWindow) OpenWindow();
         }
 
-        /// <summary>Sets (or moves) this player's flag to the selected world tile, if a colony could start there.</summary>
+        /// <summary>Sets a Coop suggestion or this faction's own starting site after local validation.</summary>
         internal void PlaceFlagAtSelection()
         {
             if (lobby?.Phase != SetupPhase.SiteSelection || Find.World == null) return;
             PlanetTile tile = Find.WorldSelector.SelectedTile;
             if (!tile.Valid) { Messages.Message("Erst ein Feld auf der Weltkarte auswählen.", MessageTypeDefOf.RejectInput, false); return; }
+            if (lobby.Mode.Mode == GameMode.Factions)
+            {
+                PlayerView? me = lobby.Players.FirstOrDefault(player => player.Id == client?.SessionId);
+                if (me?.FactionSlot == null) { status = "Kein Fraktionsplatz zugeordnet."; return; }
+                SiteTile site = SiteFlags.ToSiteTile(tile);
+                string? invalid = FactionSiteChoice.InvalidReason(site,
+                    lobby.Players.Where(player => player.FactionSlot != me.FactionSlot && player.FactionSite.HasValue)
+                        .Select(player => player.FactionSite!.Value));
+                if (invalid != null) { Messages.Message(invalid, MessageTypeDefOf.RejectInput, false); return; }
+                if (SendBackground(new WireMessage(MessageType.FactionSiteChoice, requestId++, FactionPayloads.SiteChoice(site))))
+                    Messages.Message("Fraktionsort gewählt: " + SiteFlags.Describe(tile), MessageTypeDefOf.SilentInput, false);
+                return;
+            }
             var reason = new System.Text.StringBuilder();
             if (!TileFinder.IsValidTileForNewSettlement(tile, reason, false))
             { Messages.Message("Hier kann keine Kolonie starten: " + reason, MessageTypeDefOf.RejectInput, false); return; }
@@ -1535,14 +1687,23 @@ namespace Multiplayer.Foundation.RimWorld
         {
             if (WorldSelfTest.ShowingSitePage) return;
             if (lobby?.Phase != SetupPhase.SiteSelection) { SiteFlags.Shown = Array.Empty<(string, PlanetTile, Color)>(); return; }
-            SiteFlags.Shown = lobby.Players.Select((p, i) => (Player: p, Index: i)).Where(e => e.Player.Flag != null)
-                .Select(e => (e.Player.Name, SiteFlags.ToPlanetTile(e.Player.Flag!.Value), SiteFlags.ColorFor(e.Index))).ToList();
+            bool factions = lobby.Mode.Mode == GameMode.Factions;
+            SiteFlags.Shown = lobby.Players.Select((p, i) => (Player: p, Index: i))
+                .Where(e => factions ? e.Player.FactionSite.HasValue : e.Player.Flag.HasValue)
+                .Select(e => (e.Player.Name, SiteFlags.ToPlanetTile((factions ? e.Player.FactionSite : e.Player.Flag)!.Value),
+                    SiteFlags.ColorFor(e.Index))).ToList();
         }
 
         private void OnPhaseChanged(SetupPhase before, SetupPhase now)
         {
             if (lobby == null || client == null) return;
-            if (before == SetupPhase.Lobby && now != SetupPhase.Lobby && lobby.HostId == client.SessionId) BeginHostSetup();
+            if (before == SetupPhase.Lobby && now != SetupPhase.Lobby && lobby.HostId == client.SessionId)
+            {
+                if (lobby.Mode.Mode == GameMode.Factions && now == SetupPhase.Generating &&
+                    Current.ProgramState == ProgramState.Playing && MultiplayerSession.ForCurrentGame?.Mode == lobby.Mode)
+                { hostSetupActive = true; nextMirrorAt = 0f; gameText = "Geladener Fraktions-Spielstand wird übertragen …"; }
+                else BeginHostSetup();
+            }
             bool guest = lobby.HostId != client.SessionId;
             if (!guest && before == SetupPhase.Characters && now == SetupPhase.Generating) StartSharedGame();
             if (now != SetupPhase.Characters && before == SetupPhase.Characters) ResetCharacters();
@@ -1569,6 +1730,8 @@ namespace Multiplayer.Foundation.RimWorld
             }
             if (now == SetupPhase.Lobby && before != SetupPhase.Lobby)
             {
+                factionIdeologies.Clear();
+                factionRestoreSentTo = null;
                 hostSettings = null; lastMirror = null;
                 ResetWorld();
                 ResetGame();
@@ -1606,6 +1769,9 @@ namespace Multiplayer.Foundation.RimWorld
         {
             if (!hostSetupActive) return;
             if (client == null || lobby == null || lobby.HostId != client.SessionId) { EndHostSetup(true); return; }
+            if (lobby.Mode.Mode == GameMode.Factions && lobby.Phase >= SetupPhase.Generating &&
+                Current.ProgramState == ProgramState.Playing)
+            { UpdateHostGame(); return; }
             if (Time.realtimeSinceStartup < nextMirrorAt) return;
             nextMirrorAt = Time.realtimeSinceStartup + 0.5f;
             if (lobby.Phase >= SetupPhase.Generating) { UpdateHostGame(); return; }
@@ -1633,7 +1799,49 @@ namespace Multiplayer.Foundation.RimWorld
                 PublishRoster(Find.GameInitData);
             if (wanted == null || advancePending || lobby.Phase >= wanted.Value) return;
             // The server only accepts the next phase, so walk forward one step per answer.
-            if (lobby.Phase == SetupPhase.SiteSelection)
+            if (lobby.Mode.Mode == GameMode.Factions && lobby.Phase == SetupPhase.SiteSelection)
+            {
+                foreach (PlayerView player in lobby.Players.OrderBy(p => p.FactionSlot ?? byte.MaxValue))
+                {
+                    if (player.FactionSlot == null) { status = "Fraktionsplatz fehlt."; return; }
+                    if (player.FactionSite == null) { status = "Startort fehlt: " + player.Name; return; }
+                    string? invalid = FactionSiteChoice.InvalidReason(player.FactionSite,
+                        lobby.Players.Where(other => other.FactionSlot != player.FactionSlot && other.FactionSite.HasValue)
+                            .Select(other => other.FactionSite!.Value));
+                    if (invalid == null) continue;
+                    status = "Startort abgelehnt: " + player.Name + ": " + invalid;
+                    if (player.FactionNote != invalid)
+                        SendBackground(new WireMessage(MessageType.FactionChoiceClear, requestId++,
+                            FactionPayloads.ClearChoice(player.FactionSlot.Value, FactionChoiceKind.Site, ShortFactionNote(invalid))));
+                    return;
+                }
+                if (LobbyRegistry.FactionSetupBlockReason(lobby) != null) return;
+                advancePending = SendBackground(new WireMessage(MessageType.SetupAdvance, requestId++,
+                    SetupPayloads.Advance((SetupPhase)((byte)lobby.Phase + 1))));
+            }
+            else if (lobby.Mode.Mode == GameMode.Factions && lobby.Phase == SetupPhase.Ideology)
+            {
+                foreach (PlayerView player in lobby.Players.OrderBy(p => p.FactionSlot ?? byte.MaxValue))
+                {
+                    if (player.FactionSlot == null) { status = "Fraktionsplatz fehlt."; return; }
+                    if (player.Ideology == null) { status = "Ideologie fehlt: " + player.Name; return; }
+                    string? invalid = null;
+                    if (!factionIdeologies.TryGetValue(player.FactionSlot.Value, out var value) ||
+                        value.Player != player.Key || !IdeologySummary.Of(value.Label, value.Data).SameAs(player.Ideology))
+                        invalid = "Ideologie-Daten fehlen beim Host; bitte erneut wählen.";
+                    else invalid = FactionIdeologyCodec.InvalidReason(value.Label, value.Data);
+                    if (invalid == null) continue;
+                    status = "Ideologie abgelehnt: " + player.Name + ": " + invalid;
+                    if (player.FactionNote != invalid)
+                        SendBackground(new WireMessage(MessageType.FactionChoiceClear, requestId++,
+                            FactionPayloads.ClearChoice(player.FactionSlot.Value, FactionChoiceKind.Ideology, ShortFactionNote(invalid))));
+                    return;
+                }
+                if (LobbyRegistry.FactionSetupBlockReason(lobby) != null) return;
+                advancePending = SendBackground(new WireMessage(MessageType.SetupAdvance, requestId++,
+                    SetupPayloads.Advance((SetupPhase)((byte)lobby.Phase + 1))));
+            }
+            else if (lobby.Phase == SetupPhase.SiteSelection)
             {
                 GameInitData? init = Find.GameInitData;
                 if (init == null || !init.startingTile.Valid) return;
@@ -1643,6 +1851,14 @@ namespace Multiplayer.Foundation.RimWorld
             else
                 advancePending = SendBackground(new WireMessage(MessageType.SetupAdvance, requestId++,
                     SetupPayloads.Advance((SetupPhase)((byte)lobby.Phase + 1))));
+        }
+
+        private static string ShortFactionNote(string reason)
+        {
+            string printable = new string(reason.Where(c => !char.IsControl(c)).ToArray());
+            while (System.Text.Encoding.UTF8.GetByteCount(printable) > FactionPayloads.MaximumNoteBytes)
+                printable = printable.Substring(0, printable.Length - 1);
+            return printable.Length == 0 ? "Ungültige Wahl." : printable;
         }
 
         // SETUP-005, host: after vanilla's map generation, save once, announce the fingerprint and send the save;
@@ -1656,7 +1872,14 @@ namespace Multiplayer.Foundation.RimWorld
             if (gameFileName == null)
             {
                 Find.TickManager.CurTimeSpeed = TimeSpeed.Paused;
-                session.Begin(lobby.Id, lobby.Mode, startPlayers ?? lobby.Players.Select(p => (p.Key, p.Name)).ToList(),
+                if (lobby.Mode.Mode == GameMode.Factions && session.Active)
+                {
+                    try { session.RebindLobby(lobby.Id); }
+                    catch (InvalidOperationException error) { gameText = error.Message; return; }
+                }
+                else if (lobby.Mode.Mode == GameMode.Factions)
+                { gameText = "Fraktionsstart gesperrt: kein geprüfter Mehrfraktions-Spielstand vorhanden."; return; }
+                else session.Begin(lobby.Id, lobby.Mode, startPlayers ?? lobby.Players.Select(p => (p.Key, p.Name)).ToList(),
                     startOwners ?? new Dictionary<int, PlayerKey>(), GameFingerprint.Colonists().Select(p => p.thingIDNumber).ToList());
                 gameFileName = GameCodec.FileNameFor(lobby.Name);
                 saveStartedUtc = DateTime.UtcNow;
@@ -1796,6 +2019,7 @@ namespace Multiplayer.Foundation.RimWorld
             startRequested = false; allowGameStart = false; resendGame = false; startOwners = null; startPlayers = null;
             gameFileName = null; sentGame = null; gameFingerprint = null; hostSaveFile = null; reloadFrom = null; gameUpload = null; gameDownload = null;
             guestGameFile = null; guestGameLoading = false; gameText = "";
+            factionRestoreSentTo = null;
             if (Current.ProgramState == ProgramState.Playing) Find.WindowStack.TryRemove(typeof(SetupOverlayWindow), false);
         }
 
@@ -2221,15 +2445,24 @@ namespace Multiplayer.Foundation.RimWorld
                                 {
                                     chatMessages.Clear(); tickDriver = null; pendingTickMessages.Clear();
                                     requestedPause = null; requestedSpeed = null;
+                                    factionIdeologies.Clear();
                                 }
                                 SetupPhase before = lobby?.Id == received.Id ? lobby.Phase : SetupPhase.Lobby;
                                 lobby = received;
                                 advancePending = false;
                                 OnPhaseChanged(before, received.Phase);
+                                TryRestoreFactionLobby();
                             }
                             break;
                         case MessageType.PawnRoster:
                             pawnRoster = PawnRoster.Read(message.Payload);
+                            break;
+                        case MessageType.FactionIdeologyChoice:
+                            if (lobby?.Mode.Mode != GameMode.Factions || client == null || lobby.HostId != client.SessionId ||
+                                lobby.Phase != SetupPhase.Ideology)
+                                throw new ProtocolException("Ideologie-Relais außerhalb der Host-Einrichtung.");
+                            var relayed = FactionPayloads.ReadIdeologyForHost(message.Payload);
+                            factionIdeologies[relayed.Slot] = (relayed.Player, relayed.Label, relayed.Data);
                             break;
                         case MessageType.PawnRequest:
                             PawnRequest pawnRequest = PawnRequest.Read(message.Payload);
@@ -2247,6 +2480,7 @@ namespace Multiplayer.Foundation.RimWorld
                             break;
                         case MessageType.LeaveLobby:
                             lobby = null; chatMessages.Clear(); status = "Lobby verlassen";
+                            factionRestoreSentTo = null; factionIdeologies.Clear();
                             hostSettings = null; lastMirror = null;
                             ResetGame();
                             if (hostSetupActive) EndHostSetup(true);
@@ -2297,6 +2531,7 @@ namespace Multiplayer.Foundation.RimWorld
                             var reader = new PayloadReader(message.Payload);
                             byte code = reader.ReadByte(); string reason = reader.ReadString(); reader.EnsureComplete();
                             advancePending = false;
+                            factionRestoreSentTo = null;
                             requestedPause = null; requestedSpeed = null; saveRequested = false;
                             if (startRequested)
                             {

@@ -14,3 +14,22 @@
 Die erste Arbeitseinheit ist ein reproduzierbarer Assembly-Audit des tatsächlichen Vanilla-Generierungspfads. Er soll eine sichere Hook-Stelle identifizieren oder einen Blocker belegen; er erzeugt noch keine zweite Fraktion.
 
 **Audit-Ergebnis:** `GameInitData.playerFaction` und `.startingTile` sind Einzelwerte. `PrepForMapGen` läuft vor Map-Generierung über `Faction.OfPlayer → FactionManager.OfPlayer`. `FactionGenerator.NewGeneratedFaction` und `FactionManager.Add` existieren, aber Generator und Vanilla-Start ordnen Pawns, Ideologie und Karte nicht automatisch nach Multiplayer-Slots zu. Daher darf die Spielseite jetzt keine zweite Spielerfraktion blind erzeugen. Zuerst braucht sie je Slot einen autoritativen Startort-/Ideologie-Vertrag; danach einen hostseitigen Generierungsschritt vor `PrepForMapGen`, eindeutige Save-Zuordnung und gezielte Laufzeitprüfung. Details: `docs/verification/2026-10-16-faction-setup-audit.md`.
+
+## Abgleich mit ADR 0038 (FACTION-005)
+
+- **Basis:** `claude/faction-sites` @ `428a065` enthält den Vertrag für Standort (98), Ideologie (99), Zurückweisung (100) und Wiederherstellung (101). `codex/faction-setup` baut lokal darauf auf; kein Push, bis die Koordinator-Seite auf `main` ist.
+- **Standort:** Der Client sendet ausschließlich die eigene Wahl per 98, prüft zuerst RimWorld-Siedelbarkeit und Abstand zu allen sichtbaren anderen Fraktionsstandorten. Der Host prüft den vollständigen Slotplan vor dem Fortschritt erneut. Coop 26/27 bleibt separat.
+- **Ideologieformat:** Versioniertes, kanonisches Datenformat wird in der Spielseite dokumentiert; der Server behandelt die Bytes nur als Hash. Die Host-Seite speichert den empfangenen vollständigen Wert je Slot und prüft ihn gegen den Lobby-Hash. Ungültige oder fehlende Werte führen zu 100 mit Grund.
+- **Phasen:** Vor jedem fraktionsbezogenen `SetupAdvance` müssen die Wahlen aller Plätze vorhanden und gültig sein. Der Host prüft in aufsteigender Slot-Reihenfolge. Die serverseitige Fraktionsstartsperre bleibt unverändert.
+- **Generierung/Save:** Der Hook vor `PrepForMapGen` darf erst aktiviert werden, wenn neben den bestätigten API-Signaturen die Zuordnung von mehreren Startkarten, Pawns und Ideologien sowie die Wiederherstellung im echten Spiel überprüfbar ist. Ein bloßes Erzeugen zusätzlicher `Faction`-Objekte wäre keine funktionierende Fraktionspartie. Die Session-Persistenz wird ohne stillen Rückfall auf `Faction.OfPlayer` vorbereitet.
+
+### Datenformat der Ideologie (Version 1)
+
+- Die über 99 gesendeten Bytes sind höchstens 49 152 Byte lang. Byte 0 ist `1` (Formatversion), Byte 1 die Art: `0` = feste Wahl ohne Ideology-DLC, `1` = installierte `IdeoPresetDef`, `2` = bearbeitete `Ideo`.
+- Art 0 hat genau zwei Bytes und die Bezeichnung `Ohne Ideology`. Art 1 enthält danach den UTF-8-`defName` der Vorlage. Art 2 enthält danach Gzip-komprimiertes XML aus RimWorld `Scribe_Deep.Look(ref ideo, "ideo")` mit Stamm `mpIdeology`. Entpackt werden maximal 2 MB angenommen; DTDs sind verboten. Die Bezeichnung kommt separat aus `Ideo.name` und ist auf 96 UTF-8-Bytes begrenzt.
+- Der Host prüft Format, DLC-Zustand, installierte Vorlage beziehungsweise begrenztes XML und den SHA-256 aus `PlayerView.Ideology`. Das ist eine **Strukturprüfung**, noch kein Nachweis, dass eine geladene bearbeitete Ideologie als unabhängige Instanz in eine neue Fraktion eingesetzt werden kann. Ohne diesen Nachweis darf der Fraktionsstart nicht frei werden.
+- Gäste können eine lokal installierte Vorlage wählen. Eine bearbeitete Ideologie kann derzeit nur von der offenen Vanilla-Host-Seite `Page_ConfigureIdeo` übernommen werden; ein eigener Gast-Editor ist offen. Mehrere Fraktionen mit gleicher Vorlage müssen später getrennte `Ideo`-Instanzen erhalten.
+
+### Noch nicht aktivierter Generierungshook
+
+Der 1.6-Assembly-Audit bestätigt `PageUtility.InitGameStart → GameInitData.PrepForMapGen → Faction.OfPlayer`. Es ist **nicht** belegt, wie Vanilla mehrere Startkarten/Pawn-Gruppen mit verschiedenen `Faction`-Objekten vor `PrepForMapGen` verbindet. Daher bleibt der Host-Start im Fraktionsmodus auch spielseitig gesperrt. Ein späterer Hook braucht zuerst einen reproduzierbaren Spieltest mit zwei Slots und muss vor `PrepForMapGen` in Slot-Reihenfolge Fraktion, Ideologie, Standort und Pawn-Gruppe erzeugen. Er darf weder die Coop-Route noch globale Ereignisziele nach ADR 0037 R4 still ändern.

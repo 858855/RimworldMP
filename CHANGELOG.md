@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Fraktions-Einrichtung im Spiel (Arbeitsbranch `codex/faction-setup`, FACTION-005)
+
+- Die Spieloberfläche sendet für jede Fraktion einen eigenen Startort und eine eigene Ideologie. Sie zeigt den Fertig-Status und eine Begründung, wenn der Host eine Wahl zurückweist. Der Host prüft vor dem Weiterschalten Siedelbarkeit, Abstand, Ideologieformat und die zugehörige Prüfsumme.
+- Fraktions-Spielstände können Standort, Platz, Fraktion und Erzähler zusammen speichern und beim Laden prüfen. Beim Fortsetzen sendet der Host die gespeicherte Platzliste an die Lobby und nutzt den bestehenden Spielstand-Transfer.
+- Der Mod baut gegen die lokale RimWorld-1.6-Assembly ohne Warnungen. Die Bedienung, bearbeitete Ideologien und das Fortsetzen wurden nicht im laufenden Spiel geprüft. Mehrere getrennte Startkolonien werden noch nicht erzeugt; der Fraktionsstart bleibt gesperrt.
+
 ### Fraktionsmodus: Startort und Ideologie je Fraktion, Fortsetzen (Arbeitsbranch `claude/faction-sites`, FACTION-006)
 
 - Im Fraktionsmodus wählt jeder Spieler Startort und Ideologie seiner eigenen Fraktion. Zwei Fraktionen können nicht auf demselben Feld beginnen. Das Spiel des Hosts kann eine ungültige Wahl mit Begründung zurückweisen; der Spieler sieht den Grund und wählt neu. Weiter geht es erst, wenn alle gewählt haben und fertig sind.
