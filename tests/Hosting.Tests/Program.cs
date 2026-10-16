@@ -294,6 +294,8 @@ await using (var setupHost = await ListenHost.StartAsync("127.0.0.1", 0, "Host",
     await StateAsync(setupGuest, MessageType.PlayerReadyChanged, ++request, LobbyPayloads.Bool(true));
     LobbyView generating = await StateAsync(hostClient, MessageType.SetupAdvance, ++request, SetupPayloads.Advance(SetupPhase.Generating));
     Assert(generating.Phase == SetupPhase.Generating, "everyone done: setup continues");
+    Assert(await ErrorCodeAsync(setupGuest, MessageType.ClientTick, ++request, new ClientTick(0, 0).ToPayload()) == 6,
+        "lockstep messages only in a running game (SYNC-001)");
     byte[] rulesGame = Enumerable.Repeat((byte)3, 32).ToArray();
     Assert(await ErrorCodeAsync(setupGuest, MessageType.GameReady, ++request, SetupPayloads.Fingerprint(rulesGame)) == 3, "only the host sends the game");
     await StateAsync(hostClient, MessageType.GameReady, ++request, SetupPayloads.Fingerprint(rulesGame));
@@ -303,9 +305,69 @@ await using (var setupHost = await ListenHost.StartAsync("127.0.0.1", 0, "Host",
     Assert(guestLoaded.Players.All(p => p.WorldStatus == WorldStatus.Match), "guest loaded the same game");
     LobbyView landed = await StateAsync(hostClient, MessageType.SetupAdvance, ++request, SetupPayloads.Advance(SetupPhase.Playing));
     Assert(landed.Phase == SetupPhase.Playing, "everyone loaded the game: landed (SETUP-005)");
+
+    // SYNC-001 (ADR 0024) over the real server and a Steam-like link.
+    var hostLog = new LockstepLog(hostClient);
+    var guestLog = new LockstepLog(setupGuest);
+    await hostClient.SendAsync(MessageType.ClientTick, 0, new ClientTick(1000, 0).ToPayload());
+    await setupGuest.SendAsync(MessageType.ClientTick, 0, new ClientTick(1000, 0).ToPayload());
+    TickHorizon first = await hostLog.HorizonAsync(_ => true);
+    Assert(first.Horizon == 1000 && first.Speed == SessionSpeed.Paused, "the game starts at the reported tick, paused");
+    await guestLog.HorizonAsync(h => h.Horizon == 1000);
+    await setupGuest.SendAsync(MessageType.LockstepCommand, ++request,
+        new LockstepCommand(LockstepCommandKind.SetSpeed, LockstepCommandKind.Speed(SessionSpeed.Normal)).ToPayload());
+    TickHorizon hostRunning = await hostLog.HorizonAsync(h => h.Horizon >= 1003);
+    await guestLog.HorizonAsync(h => h.Horizon >= 1003);
+    foreach (LockstepLog log in new[] { hostLog, guestLog })
+    {
+        ScheduledCommand go = log.Seen.Where(m => m.Type == MessageType.ScheduledCommand).Select(m => ScheduledCommand.Read(m.Payload)).Single();
+        Assert(go.Tick == 1001 && go.Seq == 1 && go.Issuer == setupGuestKey && LockstepCommandKind.ReadSpeed(go.Payload) == SessionSpeed.Normal,
+            "a guest continues: the command is stamped with the guest's key at tick 1001");
+        Assert(log.CommandsBeforeHorizons(), "the command arrived before any horizon that reached its tick");
+    }
+    Assert(hostRunning.Speed == SessionSpeed.Normal, "the clock runs at Normal");
+
+    // The guest stays at tick 1000; the host keeps up with its horizon: the horizon stops two seconds ahead of the guest.
+    var gate = System.Diagnostics.Stopwatch.StartNew();
+    while (gate.Elapsed < TimeSpan.FromSeconds(3))
+    {
+        TickHorizon latest = await hostLog.HorizonAsync(_ => true);
+        await hostClient.SendAsync(MessageType.ClientTick, 0, new ClientTick(latest.Horizon, 0).ToPayload());
+    }
+    Assert(hostLog.Latest!.Horizon == 1120 && hostLog.Latest.WaitingFor == setupGuest.SessionId && hostLog.Latest.WaitingTick == 1000,
+        "the slowest player sets the pace (horizon " + hostLog.Latest.Horizon + ")");
+    await setupGuest.SendAsync(MessageType.ClientTick, 0, new ClientTick(1120, 0).ToPayload());
+    TickHorizon released = await hostLog.HorizonAsync(h => h.Horizon > 1120);
+    Assert(released.WaitingFor == Guid.Empty, "the horizon moves on once the guest caught up");
+
+    Assert(await ErrorCodeAsync(setupGuest, MessageType.LockstepCommand, ++request,
+        new LockstepCommand(LockstepCommandKind.SetSpeed, LockstepCommandKind.Speed(SessionSpeed.Fast)).ToPayload()) == 3,
+        "only the host changes the speed level");
+    hostLog.Clear(); guestLog.Clear();
+    await hostClient.SendAsync(MessageType.LockstepCommand, ++request,
+        new LockstepCommand(LockstepCommandKind.Marker, LockstepCommandKind.MarkerText("Test")).ToPayload());
+    ScheduledCommand hostMarker = await hostLog.CommandAsync(), guestMarker = await guestLog.CommandAsync();
+    Assert(hostMarker.Tick == guestMarker.Tick && hostMarker.Seq == guestMarker.Seq && hostMarker.Seq == 2 &&
+        LockstepCommandKind.ReadMarker(guestMarker.Payload) == "Test" && guestMarker.Issuer == PlayerKey.Steam(76561198000000030UL),
+        "a marker reaches both players with the same tick and sequence number");
+
+    await hostClient.SendAsync(MessageType.StateHash, 0, new StateHash(1080, 7).ToPayload());
+    await setupGuest.SendAsync(MessageType.StateHash, 0, new StateHash(1080, 7).ToPayload());
+    await guestLog.HorizonAsync(h => h.CheckedTick == 1080);
+    await hostClient.SendAsync(MessageType.StateHash, 0, new StateHash(1140, 1).ToPayload());
+    await setupGuest.SendAsync(MessageType.StateHash, 0, new StateHash(1140, 2).ToPayload());
+    foreach (LockstepLog log in new[] { hostLog, guestLog })
+    {
+        var desync = DesyncDetected.Read((await log.UntilAsync(m => m.Type == MessageType.DesyncDetected)).Payload);
+        Assert(desync.Tick == 1140 && desync.Players.SequenceEqual(new[] { setupGuest.SessionId }), "both hear that the guest's state differs");
+    }
+    Console.WriteLine("PASS: lockstep over the network: start, command order, the slowest sets the pace, speed rule, marker, hash check (SYNC-001)");
+
     Assert(await ErrorCodeAsync(setupGuest, MessageType.SetupAbort, ++request, Array.Empty<byte>()) == 3, "guest cannot abort");
     LobbyView reset = await StateAsync(hostClient, MessageType.SetupAbort, ++request, Array.Empty<byte>());
     Assert(reset.Phase == SetupPhase.Lobby && reset.Site == null, "host abort returns to the lobby");
+    Assert(await ErrorCodeAsync(hostClient, MessageType.ClientTick, ++request, new ClientTick(1200, 0).ToPayload()) == 6,
+        "the lockstep session ends with the game");
 }
 Console.WriteLine("PASS: setup rules hold over the network: guest refused for host steps, start, characters and landing wait for everyone");
 

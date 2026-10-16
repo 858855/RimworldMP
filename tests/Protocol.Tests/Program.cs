@@ -67,7 +67,7 @@ await Run("lobby chat payload and limits", () =>
 });
 await Run("transfer payloads and limits", () =>
 {
-    Equal((byte)3, FrameCodec.Version);
+    Equal((byte)4, FrameCodec.Version);
     byte[] hash = new byte[32]; hash[0] = 7;
     Guid id = Guid.NewGuid(), peer = Guid.NewGuid();
     ulong length = 3UL * TransferPayloads.ChunkSize + 5;
@@ -313,6 +313,52 @@ await Run("pawn roster and requests", () =>
     Equal(0, PawnXenotypeChoice.Parse(PawnXenotypeChoice.CustomXenotype("Leer", false, "", Array.Empty<string>()).ToText()).Genes.Count);
     Throws<ProtocolException>(() => PawnXenotypeChoice.Parse("Hussar"));
     Throws<ProtocolException>(() => PawnXenotypeChoice.Parse("c:only-name"));
+    return Task.CompletedTask;
+});
+await Run("lockstep payloads (SYNC-001)", () =>
+{
+    PlayerKey issuer = PlayerKey.Steam(76561198000000001);
+    var command = LockstepCommand.Read(new LockstepCommand(LockstepCommandKind.SetSpeed, LockstepCommandKind.Speed(SessionSpeed.Fast)).ToPayload());
+    Equal(LockstepCommandKind.SetSpeed, command.Kind); Equal(SessionSpeed.Fast, LockstepCommandKind.ReadSpeed(command.Payload));
+    Throws<ProtocolException>(() => new LockstepCommand(0, Array.Empty<byte>()));
+    Throws<ProtocolException>(() => new LockstepCommand(16, new byte[LockstepCommand.MaximumPayloadBytes + 1]));
+    Equal(LockstepCommand.MaximumPayloadBytes, LockstepCommand.Read(new LockstepCommand(16, new byte[LockstepCommand.MaximumPayloadBytes]).ToPayload()).Payload.Length);
+    Throws<ProtocolException>(() => LockstepCommandKind.ReadSpeed(new byte[] { 4 })); // Ultrafast is not a session speed
+    Throws<ProtocolException>(() => LockstepCommandKind.ReadSpeed(new byte[] { 1, 1 }));
+    Equal("Test 1", LockstepCommandKind.ReadMarker(LockstepCommandKind.MarkerText("Test 1")));
+    Throws<ProtocolException>(() => LockstepCommandKind.MarkerText(new string('x', 65)));
+
+    var scheduled = ScheduledCommand.Read(new ScheduledCommand(1001, 7, issuer, new LockstepCommand(LockstepCommandKind.Marker,
+        LockstepCommandKind.MarkerText("hallo"))).ToPayload());
+    Equal(1001, scheduled.Tick); Equal(7u, scheduled.Seq); Equal(issuer, scheduled.Issuer); Equal(LockstepCommandKind.Marker, scheduled.Kind);
+    Equal("hallo", LockstepCommandKind.ReadMarker(scheduled.Payload));
+    Throws<ProtocolException>(() => new ScheduledCommand(0, 1, issuer, command));
+    Throws<ProtocolException>(() => new ScheduledCommand(5, 0, issuer, command));
+    byte[] badTick = new ScheduledCommand(5, 1, issuer, command).ToPayload(); badTick[0] = 0x80; // > int.MaxValue
+    Throws<ProtocolException>(() => ScheduledCommand.Read(badTick));
+
+    Guid slow = Guid.NewGuid();
+    var horizon = TickHorizon.Read(new TickHorizon(int.MaxValue, SessionSpeed.Superfast, slow, 12, -1).ToPayload());
+    Equal(int.MaxValue, horizon.Horizon); Equal(SessionSpeed.Superfast, horizon.Speed); Equal(slow, horizon.WaitingFor);
+    Equal(12, horizon.WaitingTick); Equal(-1, horizon.CheckedTick);
+    Equal(960, TickHorizon.Read(new TickHorizon(1000, SessionSpeed.Paused, Guid.Empty, 0, 960).ToPayload()).CheckedTick);
+    byte[] badSpeed = new TickHorizon(1, SessionSpeed.Normal, Guid.Empty, 0, -1).ToPayload(); badSpeed[4] = 4;
+    Throws<ProtocolException>(() => TickHorizon.Read(badSpeed));
+    Throws<ProtocolException>(() => new TickHorizon(-1, SessionSpeed.Normal, Guid.Empty, 0, -1));
+
+    var tick = ClientTick.Read(new ClientTick(60000, ClientTickFlags.ForcedNormalSpeed).ToPayload());
+    Equal(60000, tick.Tick); Equal(ClientTickFlags.ForcedNormalSpeed, tick.Flags);
+    Throws<ProtocolException>(() => ClientTick.Read(new byte[] { 0, 0, 0, 1, 2 }));
+    Throws<ProtocolException>(() => ClientTick.Read(new byte[] { 0, 0, 0, 1 }));
+
+    var hash = StateHash.Read(new StateHash(120, 0xFEDCBA9876543210).ToPayload());
+    Equal(120, hash.Tick); Equal(0xFEDCBA9876543210UL, hash.Hash);
+    Throws<ProtocolException>(() => StateHash.Read(new byte[] { 0, 0, 0, 1, 0 }));
+
+    var desync = DesyncDetected.Read(new DesyncDetected(120, new[] { slow }).ToPayload());
+    Equal(120, desync.Tick); Equal(slow, desync.Players.Single());
+    Throws<ProtocolException>(() => new DesyncDetected(120, Array.Empty<Guid>()));
+    Throws<ProtocolException>(() => DesyncDetected.Read(new byte[] { 0, 0, 0, 120, 0 }));
     return Task.CompletedTask;
 });
 Console.WriteLine($"PASS: {passed} protocol test groups");

@@ -20,6 +20,17 @@ namespace Multiplayer.Foundation.Lobby
         public Guid Actor { get; }
     }
 
+    /// <summary>SYNC-001 (ADR 0024): a lobby whose shared game runs. <see cref="GameId"/> is new for every game.</summary>
+    public sealed class PlayingRoom
+    {
+        public PlayingRoom(Guid lobbyId, Guid gameId, Guid host, IReadOnlyList<(Guid Id, PlayerKey Key)> members)
+        { LobbyId = lobbyId; GameId = gameId; Host = host; Members = members; }
+        public Guid LobbyId { get; }
+        public Guid GameId { get; }
+        public Guid Host { get; }
+        public IReadOnlyList<(Guid Id, PlayerKey Key)> Members { get; }
+    }
+
     public sealed class LobbyRegistry
     {
         private readonly object gate = new object();
@@ -372,6 +383,24 @@ namespace Multiplayer.Foundation.Lobby
             }
         }
 
+        /// <summary>SYNC-001: every lobby whose shared game runs, for the server's lockstep clock.</summary>
+        public IReadOnlyList<PlayingRoom> PlayingRooms()
+        {
+            lock (gate)
+                return rooms.Values.Where(r => r.Phase == SetupPhase.Playing).OrderBy(r => r.Id).Select(PlayingRoomOf).ToArray();
+        }
+
+        /// <summary>SYNC-001: the running game of the actor's lobby; lockstep messages are valid only there (code 6).</summary>
+        public PlayingRoom PlayingRoomOf(Guid actor)
+        {
+            lock (gate)
+            {
+                Room room = GetCurrentRoom(GetMember(actor));
+                if (room.Phase != SetupPhase.Playing) throw new LobbyRuleException(6, "No shared game is running.");
+                return PlayingRoomOf(room);
+            }
+        }
+
         public LobbyChange? RemoveMember(Guid id)
         {
             lock (gate)
@@ -416,6 +445,7 @@ namespace Multiplayer.Foundation.Lobby
         private void EnterPhase(Room room, SetupPhase phase)
         {
             room.Phase = phase; room.Revision++; room.Roster = null;
+            if (phase == SetupPhase.Playing) room.GameId = Guid.NewGuid(); // a new lockstep session per game (SYNC-001)
             foreach (Guid id in room.Members) { members[id].Ready = false; members[id].Flag = null; members[id].PawnHash = null; }
         }
         private void ResetSetup(Room room)
@@ -446,6 +476,8 @@ namespace Multiplayer.Foundation.Lobby
             if (string.IsNullOrWhiteSpace(name) || name.Length > 40 || name.Any(char.IsControl))
                 throw new LobbyRuleException(1, "Name must have 1-40 printable characters.");
         }
+        private PlayingRoom PlayingRoomOf(Room room) =>
+            new PlayingRoom(room.Id, room.GameId, room.Host, room.Members.Select(id => (id, members[id].Key)).ToArray());
         private LobbyChange Change(Room room, Guid actor)
         {
             var players = room.Members.Select(id => new PlayerView(id, members[id].Name, members[id].Ready, members[id].Key,
@@ -480,6 +512,7 @@ namespace Multiplayer.Foundation.Lobby
             public byte[]? HostWorld { get; set; }
             public byte[]? HostGame { get; set; }
             public PawnRoster? Roster { get; set; }
+            public Guid GameId { get; set; }
             public List<Guid> Members { get; } = new List<Guid>();
         }
     }

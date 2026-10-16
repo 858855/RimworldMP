@@ -44,6 +44,13 @@ namespace Multiplayer.Foundation.Protocol
         GameReady = 35,
         GameLoaded = 36,
         // SETUP-004, guest character page
-        PawnPortrait = 37
+        PawnPortrait = 37,
+        // SYNC-001 lockstep (ADR 0024, wire version 4)
+        LockstepCommand = 38,
+        ScheduledCommand = 39,
+        TickHorizon = 40,
+        ClientTick = 41,
+        StateHash = 42,
+        DesyncDetected = 43
     }
 }

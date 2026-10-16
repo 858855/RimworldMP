@@ -5,19 +5,26 @@ using System.Net.Sockets;
 using Multiplayer.Foundation.Lobby;
 using Multiplayer.Foundation.Network;
 using Multiplayer.Foundation.Protocol;
+using Multiplayer.Foundation.Session;
 
 namespace Multiplayer.Foundation.Server;
 
 public sealed class FoundationServer : IAsyncDisposable
 {
+    /// <summary>SYNC-001 (ADR 0024): how often the lockstep clock moves the horizon of every running game.</summary>
+    public const int LockstepStepMilliseconds = 50;
+
     private readonly HostConfig config;
     private readonly LobbyRegistry lobbies;
     private readonly TransferRelay transfers = new();
+    private readonly LockstepSessions lockstep = new();
+    private readonly Stopwatch lockstepClock = Stopwatch.StartNew();
     private readonly ConcurrentDictionary<Guid, Peer> peers = new();
     private readonly ConcurrentDictionary<Guid, Task> peerTasks = new();
     private readonly CancellationTokenSource stopping = new();
     private TcpListener? listener;
     private Task? acceptTask;
+    private Task? lockstepTask;
     private int pendingConnections;
 
     public FoundationServer(HostConfig config)
@@ -28,6 +35,7 @@ public sealed class FoundationServer : IAsyncDisposable
     public int BoundPort => listener == null ? 0 : ((IPEndPoint)listener.LocalEndpoint).Port;
     public int ConnectedClients => peers.Count;
     public int ActiveTransfers => transfers.ActiveTransfers;
+    public int RunningGames => lockstep.Count;
     public bool AcceptsIPv4 { get; private set; }
     public bool AcceptsIPv6 { get; private set; }
 
@@ -50,6 +58,7 @@ public sealed class FoundationServer : IAsyncDisposable
         IPAddress address = config.Validate(true);
         listener = StartListener(address, config.Port);
         acceptTask = AcceptLoopAsync(stopping.Token);
+        lockstepTask = LockstepLoopAsync(stopping.Token);
         return Task.CompletedTask;
     }
 
@@ -87,6 +96,7 @@ public sealed class FoundationServer : IAsyncDisposable
         stopping.Cancel(); listener?.Stop();
         foreach (Peer peer in peers.Values) peer.Connection.Dispose();
         if (acceptTask != null) await acceptTask.ConfigureAwait(false);
+        if (lockstepTask != null) await lockstepTask.ConfigureAwait(false);
         await Task.WhenAll(peerTasks.Values.ToArray()).ConfigureAwait(false);
     }
 
@@ -131,6 +141,26 @@ public sealed class FoundationServer : IAsyncDisposable
         return true;
     }
 
+    // SYNC-001 (ADR 0024): the only sender of lockstep messages. Each step's messages go out in order before the next
+    // step, so on every connection the commands for tick t arrive before any horizon at or past t.
+    private async Task LockstepLoopAsync(CancellationToken token)
+    {
+        try
+        {
+            while (!token.IsCancellationRequested)
+            {
+                await Task.Delay(LockstepStepMilliseconds, token).ConfigureAwait(false);
+                IReadOnlyList<PlayingRoom> playing = lobbies.PlayingRooms();
+                if (playing.Count == 0 && lockstep.Count == 0) continue;
+                var outgoing = lockstep.Step(playing.Select(ToLockstepRoom).ToArray(), lockstepClock.ElapsedMilliseconds);
+                await DeliverAsync(outgoing, token).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private static LockstepRoom ToLockstepRoom(PlayingRoom room) => new(room.GameId, room.Host, room.Members);
+
     private async Task HandleClientAsync(NetworkConnection connection, PlayerKey? verifiedKey, CancellationToken serverToken)
     {
         Guid sessionId = Guid.NewGuid();
@@ -172,6 +202,8 @@ public sealed class FoundationServer : IAsyncDisposable
                     if (message == null || message.Type == MessageType.Disconnect) break;
                     try { await ProcessAsync(peer, message, serverToken).ConfigureAwait(false); }
                     catch (LobbyRuleException error)
+                    { await SendErrorAsync(peer, message.RequestId, error.Code, error.Message, serverToken).ConfigureAwait(false); }
+                    catch (LockstepRuleException error)
                     { await SendErrorAsync(peer, message.RequestId, error.Code, error.Message, serverToken).ConfigureAwait(false); }
                     catch (ProtocolException error)
                     { await SendErrorAsync(peer, message.RequestId, 1, error.Message, serverToken).ConfigureAwait(false); break; }
@@ -346,6 +378,19 @@ public sealed class FoundationServer : IAsyncDisposable
                 if (listHost != peer.Id && peers.TryGetValue(listHost, out Peer? listOwner))
                     await listOwner.Connection.SendAsync(new WireMessage(MessageType.ModManifestRequest, 0,
                         LobbyPayloads.GuidValue(peer.Id)), token).ConfigureAwait(false);
+                break;
+            // SYNC-001 (ADR 0024): only in a running game. Ordered and answered by the lockstep clock, not here.
+            case MessageType.LockstepCommand:
+                LockstepCommand command = LockstepCommand.Read(message.Payload);
+                lockstep.Submit(ToLockstepRoom(lobbies.PlayingRoomOf(peer.Id)), peer.Id, command, lockstepClock.ElapsedMilliseconds);
+                break;
+            case MessageType.ClientTick:
+                ClientTick tick = ClientTick.Read(message.Payload);
+                lockstep.ReportTick(ToLockstepRoom(lobbies.PlayingRoomOf(peer.Id)), peer.Id, tick);
+                break;
+            case MessageType.StateHash:
+                StateHash hash = StateHash.Read(message.Payload);
+                lockstep.ReportHash(ToLockstepRoom(lobbies.PlayingRoomOf(peer.Id)), peer.Id, hash);
                 break;
             case MessageType.TransferBegin:
                 TransferBegin begin = TransferPayloads.ReadBegin(message.Payload);

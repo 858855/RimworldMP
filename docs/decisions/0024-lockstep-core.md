@@ -1,0 +1,57 @@
+# ADR 0024 – Lockstep-Kern: Befehlsreihenfolge, Tick-Horizont und Tick-Treiber (SYNC-001, Minimum DET-001)
+
+- **Status:** angenommen (Freigabe des Besitzers am 2026-10-16). Branch `feat/sync-lockstep` (auf `feat/mod-check-setup-ui`, lokal). Designnotiz nach `AGENTS.md` Regel 4, Aufgabenvertrag nach Regel 30. Baut auf ADR 0023 auf (Phase `Playing`) und ersetzt dort „pausiert bis SYNC-001“. Umsetzung von Plan §3.1, §7.1, §7.4 (P-1, P-6) im kleinsten lauffähigen Schnitt.
+- **Ziel:** Nach der Landung läuft die Zeit bei allen Spielern im Gleichschritt. Der Server ordnet Befehle und gibt Ticks frei. Jeder Client simuliert nur bis zur Freigabe; der langsamste bestimmt das Tempo. Pause und Geschwindigkeit sind die ersten geteilten Befehle. Abweichungen werden alle 60 Ticks über eine Prüfsumme erkannt.
+- **Nicht-Ziele (eigene Meilensteine):** Spieleraktionen wie Bauen, Zeichnen, Einziehen oder Arbeit (SYNC-002/004), Serializer-Registry (SYNC-002), volle Geschwindigkeitsrichtlinien und Dialoge mit gemeinsamer Pause (SYNC-003/007), koordiniertes Speichern und Beitreten (SAVE-001/JOIN-001), Diagnosepaket und Reparatur (DESYNC-002/003), Zwei-Instanzen-Harness (TOOL-001), Rechte (SYNC-005).
+- **Wichtig für den Test:** Jede Spieleraktion, die den Spielzustand ändert, bleibt in diesem Schnitt lokal und führt zur Abweichung. Das Feld im Spiel sagt das und meldet die Abweichung. Ohne Eingaben müssen die Prüfsummen gleich bleiben.
+
+## Regeln
+
+- **Ticks:** absolute `TickManager.TicksGame`. Horizont `h` heißt: „du darfst simulieren, bis `TicksGame == h`“. Ein Befehl für Tick `t` wird ausgeführt, sobald `TicksGame == t − 1`, vor dem Tick `t`. Mehrere Befehle laufen in `seq`-Reihenfolge.
+- **Server (neues Projekt `Multiplayer.Foundation.Session`, netstandard2.0, ohne Verse, Plan §3.2):** ein `LockstepSequencer` je Lobby in `Playing`.
+  - **Start:** Er wartet, bis jeder Spieler einen `ClientTick` gemeldet hat. Dann ist `h` der kleinste gemeldete Tick, und die Sitzung steht auf Pause.
+  - **Takt alle 50 ms:** Wartende Befehle bekommen Tick `h + 1` und fortlaufende `seq` und gehen an alle. Danach rückt `h` um die verstrichene Zeit × Ticks/s vor. Die Werte sind Normal 60, Schnell 180, Superschnell 360; der Selbsttest prüft sie gegen `TickRateMultiplier`.
+  - **Flusskontrolle:** `h` steigt höchstens bis `min(ClientTick) + 2 s` an Ticks. Gestaute Zeit wird nicht nachgeholt; der langsamste Client bestimmt das Tempo. Der Horizont nennt, auf wen gewartet wird, und dessen Tick.
+  - **Reihenfolge:** Nur dieser Takt sendet Lockstep-Nachrichten. So kommen auf jeder Verbindung alle Befehle für Tick `t` vor jedem Horizont `≥ t` an (TCP und Steam reliable halten die Reihenfolge).
+  - **Spieler:** Wer geht, zählt nicht mehr. Geht der Host, endet die Sitzung wie in ADR 0023. Den Aussteller stempelt der Server mit dem `PlayerKey`.
+  - **Grenzen (Plan §7.12):** Befehl höchstens 32 KiB, höchstens 30 je Sekunde und Spieler.
+- **Pause und Geschwindigkeit:** Befehl der Art `1` (`SetSpeed`).
+  - Der Server prüft die Regeln aus Plan §7.1: Pausieren und Fortsetzen darf jeder; die Stufe 1/2/3 wählt der Host. Drückt ein Gast bei Pause 1/2/3, geht es mit der letzten Stufe weiter. Ultraschnell (Dev) wird abgelehnt.
+  - Das gemeinsame Spiel startet pausiert.
+  - Meldet ein Client vanillas Gefahrenbremse (`TimeSlower.ForcedNormalSpeed`), rechnet der Server mit Normal.
+- **Andere Befehle:** Art `2` ist eine Testmarkierung ohne Spielwirkung. Jeder Client zeigt „Markierung #seq von X bei Tick t“, damit zwei Spieler den gleichen Tick vergleichen können. Arten ab `16` ordnet der Server, ohne sie zu lesen; ihre Ausführung kommt mit SYNC-002. Bis dahin sind sie überall ein geloggtes No-op.
+- **Tick-Treiber (Client, Harmony auf `TickManager`):** `AGENTS.md` Regel 12 verlangt, dass ein übersprungenes Original beabsichtigt ist. Hier ist es das.
+  - **Prefix `TickManagerUpdate`:** Er führt fällige Befehle aus und rechnet mit `TickPacer` die Ticks dieses Frames aus: Tempo der Sitzung, schneller bei Rückstand, nie über `h`, höchstens etwa 25 ms Tickzeit je Frame. Dann ruft er `DoSingleTick` selbst auf. Vanillas Update läuft danach weiter, kann aber keinen Tick auslösen.
+  - **Prefix `DoSingleTick`:** In der Sitzung läuft ein Tick nur aus dem Treiber.
+  - **Setter `CurTimeSpeed`, `TogglePaused`, `Pause()`:** werden zur Anfrage an den Server; lokal ändert sich nichts. Das gilt auch für vanillas Autopause bei Bedrohung: Sie pausiert für alle. Die Zeitanzeige zeigt die Geschwindigkeit der Sitzung.
+  - Kein Tick, solange ein LongEvent wartet; der Treiber prüft das nach jedem Tick. Fenster mit `forcePause` halten die Sitzung nicht an (Plan §7.6).
+  - `ClientTick` geht etwa 10-mal je Sekunde an den Server, sofort auch beim Erreichen von `h`.
+  - `Application.runInBackground` ist in der Sitzung an, sonst hält ein Spieler im Hintergrund alle an. Danach wird der alte Wert zurückgesetzt.
+- **Determinismus (Minimum aus DET-001):**
+  - **Zufall je Tick (P-6):** Vor jedem Tick `Rand.PushState(Seed(Sitzung, Tick))`, danach `PopState`; je Befehl dasselbe mit `(Tick, seq)`. Zufall aus Oberfläche und Zeichnen zwischen den Ticks verschiebt den Spielstrom dann nicht mehr. Der Sitzungs-Seed ist ein stabiler Hash von `MultiplayerSession.SessionId`.
+  - **Autosave:** in der Sitzung aus (`Autosaver.AutosaverTick` wird übersprungen). Jeder Spieler hätte sonst eigene Intervalle. Koordiniertes Speichern kommt mit SAVE-001; manuelles Speichern bleibt lokal möglich.
+  - **Prüfsumme (Minimum aus DESYNC-001):** beim Start und nach jedem Tick mit `TicksGame % 60 == 0`. 64-Bit-Hash über Tick und Karten (`uniqueID`); je Thing, sortiert nach `thingIDNumber`: ID, `def.index`, Position, HP, Stapel; je Pawn: Job-Def, Anzahl Hediffs, Bedürfnisse als Float-Bits. Der Client sendet `StateHash`. Der Server vergleicht, sobald alle gemeldet haben, und sendet bei Abweichung einmal `DesyncDetected`. Alle zeigen eine Meldung und schreiben ihre Zusammenfassung dieses Ticks ins `Player.log`. Eine Reparatur gibt es noch nicht.
+- **Protokoll (Wire-Version 4; Builds mit Version 3 werden abgelehnt):**
+  - `LockstepCommand` (38, C→S): Art `u16`, Nutzlast (≤ 32 KiB).
+  - `ScheduledCommand` (39, S→alle): Tick `u32`, `seq` `u32`, Aussteller `PlayerKey`, Art, Nutzlast.
+  - `TickHorizon` (40, S→alle): `h` `u32`, Geschwindigkeit `u8`, wartet auf (Session-ID oder leer), dessen Tick `u32`, letzter Tick mit gleichen Prüfsummen (`u32`, `0xFFFFFFFF` = noch keiner).
+  - `ClientTick` (41, C→S): Tick `u32`, Flags `u8` (Bit 0 Gefahrenbremse).
+  - `StateHash` (42, C→S): Tick `u32`, Hash (8 Byte).
+  - `DesyncDetected` (43, S→alle): Tick `u32`, Anzahl, abweichende Session-IDs.
+  - Alle nur in `Playing`, sonst Fehler 6.
+- **Anzeige:** Das Feld oben rechts zeigt Tick, Geschwindigkeit, „Warte auf X (N Ticks)“, die letzte Prüfung („gleich bis Tick X“ oder „Abweichung bei Tick X“), den Hinweis „Befehle werden noch nicht geteilt (SYNC-002)“ und den Knopf „Testmarkierung“.
+- **Persistenz:** keine neue. Der Lockstep-Zustand lebt im Speicher. Nach dem Ende der Sitzung läuft das Spiel als Einzelspieler-Kopie weiter (ADR 0023).
+- **Performance:** Der Hash über alle Things kostet auf einer frischen Karte (rund 20 000 bis 40 000 Things) wenige ms, alle 60 Ticks. Der Verkehr je Client liegt unter 2 KB/s (20 Horizonte, 10 ClientTicks, 1 bis 6 Hashes je Sekunde).
+- **Tests:**
+  - **Session.Tests (neu):** Tick-Vergabe und Reihenfolge, Befehle vor dem Horizont, Flusskontrolle (der langsamste bremst, sein Austritt löst die Bremse), Start wartet auf alle, Geschwindigkeitsregeln, Grenzen, Hash-Vergleich, `TickPacer`, Client-Warteschlange, Seed.
+  - **Protocol.Tests:** neue Nutzlasten hin und zurück, Grenzen.
+  - **Hosting.Tests:** echter Server, zwei Clients bis `Playing`. Horizont; ein Befehl kommt bei beiden mit gleichem Tick vor dem Horizont an; ein langsamer Client bremst; eine Abweichung wird gemeldet; außerhalb von `Playing` Fehler 6.
+  - **Selbsttest im Spiel** (nach dem Laden der Gastkopie im bestehenden `-mpWorldSelfTest`):
+    - `TickRateMultiplier` je Stufe.
+    - Treiber mit einem Sequencer im selben Prozess und einem gedrosselten Schein-Mitspieler: `TicksGame` nie über `h`, der langsame bremst, Pause hält, `SetSpeed` wirkt genau bei seinem Tick, vanillas Geschwindigkeitstasten werden zur Anfrage.
+    - Determinismus: derselbe Spielstand zweimal geladen, je N Ticks (Standard 6 000; einmal 60 000 wie in DET-001), mit Oberflächen-Zufall zwischen den Ticks. Alle Prüfsummen müssen gleich sein.
+    - Gegenprobe ohne Zufall je Tick: Die Prüfsummen müssen abweichen. Das zeigt, dass Hash und Neuseed wirken.
+  - **Zwei echte Spieler:** offen (Benutzer). Die Anleitung steht in der Verifikation.
+- **Abweichung vom Plan:** DET-001 verlangt zwei Instanzen (TOOL-001). Dieser Schnitt prüft den Determinismus im selben Prozess, mit zwei Ladevorgängen, und live zwischen echten Spielern über die Prüfsumme. Der volle DET-001 bleibt offen.
+- **Risiken:** unentdeckter Nichtdeterminismus in vanilla 1.6 (Threads, Hash-Reihenfolge, Arbeit in `Update` statt `Tick`). Die Prüfsumme zeigt ihn, findet aber nicht die Ursache (DESYNC-002). Langsame PCs bremsen alle. Die 50-ms-Schritte können ruckeln; `TickPacer` glättet sie.
+- **Rollback:** Commits zurücknehmen. Dann gilt wieder der Stand von ADR 0023: pausiert nach der Landung.

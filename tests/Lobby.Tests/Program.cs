@@ -131,6 +131,12 @@ Expect(8, () => setup.AdvanceSetup(host, SetupPhase.Playing));
 setup.ReportGame(g2, game);
 LobbyView landed = setup.AdvanceSetup(host, SetupPhase.Playing).State!;
 Assert(landed.Phase == SetupPhase.Playing && landed.Players.All(p => p.WorldStatus == WorldStatus.Match), "all loaded: everyone landed");
+// SYNC-001: the running game is listed for the lockstep clock, with every member and their key.
+PlayingRoom running = setup.PlayingRooms().Single();
+Assert(running.LobbyId == room && running.Host == host && running.GameId != Guid.Empty &&
+    running.Members.Select(m => m.Id).OrderBy(id => id).SequenceEqual(new[] { host, g1, g2 }.OrderBy(id => id)) &&
+    setup.PlayingRoomOf(g1).GameId == running.GameId, "the running game for the lockstep clock");
+Expect(6, () => setup.PlayingRoomOf(late));                                           // not in this lobby
 Expect(6, () => setup.ReportGame(g1, game));                                          // only while the game starts
 Expect(6, () => setup.AdvanceSetup(host, (SetupPhase)10));                            // nothing after landing yet
 Expect(6, () => setup.Ready(g1, true));
@@ -140,6 +146,8 @@ LobbyView aborted = setup.AbortSetup(host).State!;
 Assert(aborted.Phase == SetupPhase.Lobby && aborted.Site == null && aborted.Players.All(p => !p.Ready && p.WorldStatus == WorldStatus.None),
     "host abort resets to lobby");
 Expect(6, () => setup.AbortSetup(host));
+Assert(setup.PlayingRooms().Count == 0, "an aborted game is no longer running");
+Expect(6, () => setup.PlayingRoomOf(g1));
 setup.Join(late, room);                                                               // unlocked again
 Console.WriteLine("PASS: setup phases, lock, host-only steps, flags and host site choice, everyone done before characters continue, landing after every guest loaded the game (SETUP-005)");
 
