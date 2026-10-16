@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Multiplayer.Foundation.Protocol;
 using RimWorld;
+using UnityEngine;
 using Verse;
 
 namespace Multiplayer.Foundation.RimWorld
@@ -141,7 +142,108 @@ namespace Multiplayer.Foundation.RimWorld
                 Safe(() => pawn.story?.traits?.allTraits.Select(t => t.LabelCap).ToList()),
                 skills.Take(PawnCard.MaximumEntries).ToList(),
                 incapable.Take(PawnCard.MaximumEntries).ToList(),
-                Safe(() => pawn.health?.hediffSet?.hediffs.Where(h => h.Visible).Select(h => h.LabelCap).ToList()));
+                Safe(() => pawn.health?.hediffSet?.hediffs.Where(h => h.Visible).Select(h => h.LabelCap).ToList()),
+                Details(pawn));
+        }
+
+        // What else the vanilla character card shows, for the guests' page. Every part is optional: a failure leaves it empty.
+        private static PawnCardDetails Details(Pawn pawn)
+        {
+            string first = "", nick = "", last = "";
+            if (pawn.Name is NameTriple triple) { first = triple.First; nick = triple.Nick; last = triple.Last; }
+            else nick = pawn.Name?.ToStringShort ?? "";
+            string xenotype = "", icon = "";
+            try
+            {
+                if (pawn.genes != null)
+                {
+                    xenotype = pawn.genes.XenotypeLabelCap;
+                    if (pawn.genes.CustomXenotype != null) icon = pawn.genes.CustomXenotype.iconDef != null ? "c:" + pawn.genes.CustomXenotype.iconDef.defName : "";
+                    else if (pawn.genes.Xenotype != null) icon = "x:" + pawn.genes.Xenotype.defName;
+                }
+            }
+            catch (Exception) { }
+            uint color = 0;
+            try
+            {
+                if (pawn.story?.favoriteColor != null)
+                {
+                    Color32 c = pawn.story.favoriteColor.color;
+                    color = ((uint)c.r << 24) | ((uint)c.g << 16) | ((uint)c.b << 8) | c.a;
+                }
+            }
+            catch (Exception) { }
+            var health = new List<(string, string)>();
+            try
+            {
+                foreach (Hediff hediff in pawn.health.hediffSet.hediffs.Where(h => h.Visible).Take(PawnCard.MaximumEntries))
+                    health.Add((Clip(hediff.Part?.LabelCap ?? "WholeBody".Translate().CapitalizeFirst().ToString(), 64), Clip(hediff.LabelCap, 128)));
+            }
+            catch (Exception) { }
+            var relations = new List<(string, string, short, short)>();
+            try
+            {
+                foreach (Pawn other in pawn.relations.RelatedPawns.Take(PawnCard.MaximumEntries))
+                {
+                    PawnRelationDef? relation = pawn.GetMostImportantRelation(other);
+                    if (relation == null) continue;
+                    relations.Add((Clip(relation.GetGenderSpecificLabelCap(other), 64), Clip(other.Name?.ToStringFull ?? other.LabelShort, 96),
+                        (short)pawn.relations.OpinionOf(other), (short)(other.relations?.OpinionOf(pawn) ?? 0)));
+                }
+            }
+            catch (Exception) { }
+            var possessions = new List<(string, int)>();
+            try
+            {
+                if (Find.GameInitData?.startingPossessions != null && Find.GameInitData.startingPossessions.TryGetValue(pawn, out List<ThingDefCount> things))
+                    foreach (ThingDefCount thing in things.Take(PawnCard.MaximumEntries)) possessions.Add((Clip(thing.ThingDef.LabelCap, 96), thing.Count));
+            }
+            catch (Exception) { }
+            return new PawnCardDetails(Clip(first, 64), Clip(nick, 64), Clip(last, 64), (byte)pawn.gender,
+                (ushort)Math.Min(ushort.MaxValue, pawn.ageTracker?.AgeBiologicalYears ?? 0), (ushort)Math.Min(ushort.MaxValue, pawn.ageTracker?.AgeChronologicalYears ?? 0),
+                Clip(xenotype, 64), Clip(icon, 96), color, health, relations, possessions);
+        }
+
+        // Cuts text to what the wire allows (UTF-8 bytes).
+        private static string Clip(string? text, int bytes)
+        {
+            text ??= "";
+            while (text.Length > 0 && System.Text.Encoding.UTF8.GetByteCount(text) > bytes) text = text.Substring(0, text.Length - 1);
+            return text;
+        }
+
+        /// <summary>What decides a portrait's look; a new pawn or other genes, body or hair draws it again (guest page).</summary>
+        internal static string PortraitKey(Pawn pawn)
+        {
+            try
+            {
+                return pawn.thingIDNumber + "|" + pawn.genes?.XenotypeLabel + "|" + pawn.story?.bodyType?.defName + "|" + pawn.story?.headType?.defName +
+                    "|" + pawn.story?.hairDef?.defName + "|" + pawn.story?.SkinColor + "|" + pawn.apparel?.WornApparelCount;
+            }
+            catch (Exception) { return pawn.thingIDNumber.ToString(); }
+        }
+
+        /// <summary>The pawn as the vanilla character page shows it (no headgear), as PNG; null if it cannot be drawn.</summary>
+        internal static byte[]? RenderPortrait(Pawn pawn)
+        {
+            RenderTexture? previous = RenderTexture.active;
+            Texture2D? image = null;
+            try
+            {
+                RenderTexture texture = PortraitsCache.Get(pawn, Page_ConfigureStartingPawns.PawnPortraitSize, Rot4.South, default, 1f, false, false, false, true);
+                RenderTexture.active = texture;
+                image = new Texture2D(texture.width, texture.height, TextureFormat.RGBA32, false);
+                image.ReadPixels(new Rect(0f, 0f, texture.width, texture.height), 0, 0);
+                image.Apply();
+                byte[] png = image.EncodeToPNG();
+                return png.Length > 0 && png.Length <= PawnPortrait.MaximumImageBytes ? png : null;
+            }
+            catch (Exception error) { Log.Warning("Multiplayer Foundation: portrait of " + pawn.LabelShort + " failed: " + error.Message); return null; }
+            finally
+            {
+                RenderTexture.active = previous;
+                if (image != null) UnityEngine.Object.Destroy(image);
+            }
         }
 
         private static IReadOnlyList<string> Safe(Func<List<string>?> read)

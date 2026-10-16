@@ -25,6 +25,10 @@ namespace Multiplayer.Foundation.RimWorld
         private static float siteOpenedAt;
         private static Page_SelectStartingSite? sitePage;
         private static bool screenshotTaken;
+        // SETUP-004: the guest's character page (stage 4).
+        private static GuestPageTestWindow? guestPageWindow;
+        private static bool guestPageOk, guestShotTaken;
+        private static string guestPageInfo = "";
 
         /// <summary>True while the self-test owns the flags on the site page.</summary>
         internal static bool ShowingSitePage => siteStage != 0;
@@ -81,10 +85,32 @@ namespace Multiplayer.Foundation.RimWorld
                     " open=" + open + " flagFrames=" + SiteFlags.FramesDrawn + " flags=" + SiteFlags.Shown.Count);
                 SiteFlags.Shown = Array.Empty<(string, PlanetTile, UnityEngine.Color)>();
                 pawnsPassed = RunPawnTest();
-                // Like a guest after the site page: no setup page, only the multiplayer window. Does the world stay?
+                // SETUP-004: the guest's character page with these pawns, as a guest receives them (opened before the site
+                // page closes, so a window stays open).
+                guestPageWindow = OpenGuestPageTest();
                 if (sitePage != null) Find.WindowStack.TryRemove(sitePage, false);
                 sitePage = null;
+                siteStage = 4; siteOpenedAt = UnityEngine.Time.realtimeSinceStartup;
+                return;
+            }
+            if (siteStage == 4)
+            {
+                float openFor = UnityEngine.Time.realtimeSinceStartup - siteOpenedAt;
+                if (openFor >= 2f && !guestShotTaken && Environment.GetCommandLineArgs().Any(a => a == "-mpSelfTestScreenshot"))
+                {
+                    guestShotTaken = true;
+                    string shot = System.IO.Path.Combine(GenFilePaths.SaveDataFolderPath, "MultiplayerFoundation", "selftest-guest-page.png");
+                    UnityEngine.ScreenCapture.CaptureScreenshot(shot);
+                    Log.Message("Multiplayer Foundation world self-test: screenshot " + shot);
+                }
+                if (openFor < 3f) return;
+                bool shown = guestPageWindow != null && guestPageWindow.Frames > 0 && guestPageWindow.Errors == 0;
+                Log.Message("Multiplayer Foundation world self-test: guest page " + (guestPageOk && shown ? "PASS" : "FAIL") + " " + guestPageInfo +
+                    " frames=" + (guestPageWindow?.Frames ?? 0) + " errors=" + (guestPageWindow?.Errors ?? 0));
+                // Like a guest after the site page: no setup page, only the multiplayer window. Does the world stay?
                 if (FoundationMod.Instance != null) Find.WindowStack.Add(new FoundationWindow(FoundationMod.Instance));
+                if (guestPageWindow != null) Find.WindowStack.TryRemove(guestPageWindow, false);
+                guestPageWindow = null;
                 siteStage = 3; siteOpenedAt = UnityEngine.Time.realtimeSinceStartup;
                 return;
             }
@@ -335,6 +361,52 @@ namespace Multiplayer.Foundation.RimWorld
             if (!quitWhenIdle && Current.ProgramState == ProgramState.Playing) GenScene.GoToMainMenu();
         }
 
+        // SETUP-004: cards with details and portraits of the real starting pawns, through the wire formats like a guest gets
+        // them, drawn on the guest page. The player claims the first pawn so the page shows its own-pawn actions.
+        private static GuestPageTestWindow? OpenGuestPageTest()
+        {
+            try
+            {
+                GameInitData init = Find.GameInitData;
+                var host = new CharacterHost();
+                Protocol.PlayerKey me = Protocol.PlayerKey.Local(Guid.NewGuid()), other = Protocol.PlayerKey.Local(Guid.NewGuid());
+                var keys = new System.Collections.Generic.List<Protocol.PlayerKey> { other, me };
+                Pawn first = init.startingAndOptionalPawns[0];
+                host.Apply(new Protocol.PawnRequest(Protocol.PawnRequestKind.Claim, first.thingIDNumber, 0, "", me), init);
+                Protocol.PawnRoster roster = Protocol.PawnRoster.Read(host.Build(init, keys).ToPayload());
+                var page = new GuestCharacterPage();
+                int images = 0, bytes = 0, largest = 0;
+                foreach (Pawn pawn in init.startingAndOptionalPawns.Take(Protocol.PawnRoster.MaximumCards))
+                {
+                    byte[]? png = CharacterHost.RenderPortrait(pawn);
+                    if (png == null) continue;
+                    page.SetPortrait(Protocol.PawnPortrait.Read(new Protocol.PawnPortrait(pawn.thingIDNumber, png).ToPayload()));
+                    images++; bytes += png.Length; largest = Math.Max(largest, png.Length);
+                }
+                bool details = roster.Cards.All(c => c.Details != null && c.Details.AgeBiological > 0 && (c.Details.First.Length > 0 || c.Details.Nick.Length > 0));
+                Protocol.PawnCardDetails? sample = roster.Cards[0].Details;
+                guestPageOk = images == roster.Cards.Count && page.PortraitCount == images && details;
+                guestPageInfo = "cards=" + roster.Cards.Count + " portraits=" + images + " png=" + bytes / 1024 + "KiB max=" + largest + "B details=" + details +
+                    " sample=\"" + sample?.First + " '" + sample?.Nick + "' " + sample?.Last + ", " + sample?.AgeBiological + "(" + sample?.AgeChronological + "), " +
+                    sample?.Xenotype + " [" + sample?.XenotypeIcon + "], health " + sample?.Health.Count + ", relations " + sample?.Relations.Count +
+                    ", possessions " + sample?.Possessions.Count + "\"";
+                var players = new[]
+                {
+                    new Protocol.PlayerView(Guid.NewGuid(), "Test-Host", false, other),
+                    new Protocol.PlayerView(Guid.NewGuid(), "Test-Gast", false, me)
+                };
+                var window = new GuestPageTestWindow(page, roster, players, me);
+                Find.WindowStack.Add(window);
+                return window;
+            }
+            catch (Exception error)
+            {
+                guestPageOk = false; guestPageInfo = "error " + error.Message;
+                Log.Error("Multiplayer Foundation world self-test: guest page FAIL " + error);
+                return null;
+            }
+        }
+
         // SETUP-004: the host's pawn logic on real starting pawns generated by vanilla. True when every check passed.
         private static bool RunPawnTest()
         {
@@ -456,6 +528,46 @@ namespace Multiplayer.Foundation.RimWorld
                 cleanupWhenIdle = siteStage == 0;
                 quitWhenIdle = Environment.GetCommandLineArgs().Any(a => a == "-mpQuitAfterSelfTest");
             }
+        }
+    }
+
+    /// <summary>SETUP-004 self-test: the guest's character page in a window; counts drawn frames and drawing errors.</summary>
+    internal sealed class GuestPageTestWindow : Window
+    {
+        private readonly GuestCharacterPage page;
+        private readonly Protocol.PawnRoster roster;
+        private readonly Protocol.PlayerView[] players;
+        private readonly Protocol.PlayerKey me;
+        private int? chosen;
+        internal int Frames, Errors;
+
+        internal GuestPageTestWindow(GuestCharacterPage page, Protocol.PawnRoster roster, Protocol.PlayerView[] players, Protocol.PlayerKey me)
+        {
+            this.page = page; this.roster = roster; this.players = players; this.me = me;
+            doCloseX = false; closeOnCancel = false; closeOnAccept = false;
+        }
+
+        public override UnityEngine.Vector2 InitialSize => new UnityEngine.Vector2(
+            UnityEngine.Mathf.Min(Page.StandardSize.x, UI.screenWidth - 24f), UnityEngine.Mathf.Min(Page.StandardSize.y, UI.screenHeight - 24f));
+
+        public override void DoWindowContents(UnityEngine.Rect inRect)
+        {
+            try
+            {
+                page.Draw(inRect, roster, players, me, false, "Fertig: 0/2 · Warte auf: Test-Host, Test-Gast", ref chosen, _ => { }, _ => { }, () => { });
+                Frames++;
+            }
+            catch (Exception error)
+            {
+                if (Errors++ == 0) Log.Error("Multiplayer Foundation world self-test: guest page draw FAIL " + error);
+                Text.Font = GameFont.Small; Text.Anchor = UnityEngine.TextAnchor.UpperLeft; UnityEngine.GUI.color = UnityEngine.Color.white;
+            }
+        }
+
+        public override void PostClose()
+        {
+            base.PostClose();
+            page.Clear();
         }
     }
 }

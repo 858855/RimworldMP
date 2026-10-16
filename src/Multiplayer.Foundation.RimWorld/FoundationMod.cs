@@ -80,7 +80,9 @@ namespace Multiplayer.Foundation.RimWorld
         private byte[] lastRosterPayload = System.Array.Empty<byte>();
         private PawnRoster? pawnRoster;
         private int? chosenPawnId;
-        private string renameText = "";
+        private readonly GuestCharacterPage guestPage = new GuestCharacterPage();
+        // Host: the look each portrait was last sent with, by pawn (CharacterHost.PortraitKey).
+        private readonly Dictionary<int, string> sentPortraits = new Dictionary<int, string>();
         private static readonly AccessTools.FieldRef<Page_ConfigureStartingPawns, int> CurPawnIndex =
             AccessTools.FieldRefAccess<Page_ConfigureStartingPawns, int>("curPawnIndex");
         // SETUP-005: the host starts the vanilla game once the server is in Generating, saves it and sends the save;
@@ -896,90 +898,10 @@ namespace Multiplayer.Foundation.RimWorld
             if (lobby == null || client == null || lobby.Phase != SetupPhase.Characters)
             { Widgets.Label(inRect, "Keine Figurenwahl aktiv."); return; }
             PlayerView? me = lobby.Players.FirstOrDefault(p => p.Id == client.SessionId);
-            PlayerKey? myKey = me?.Key;
-            Widgets.Label(new Rect(inRect.x, inRect.y, inRect.width, 28f), "Figurenwahl – " + DoneLine());
             if (pawnRoster == null) { Widgets.Label(new Rect(inRect.x, inRect.y + 34f, inRect.width, 28f), "Warte auf die Figuren des Hosts …"); return; }
-            PawnCard? myPawn = pawnRoster.Cards.FirstOrDefault(c => c.Selected && c.Owner == myKey);
-            if (chosenPawnId == null || pawnRoster.Cards.All(c => c.PawnId != chosenPawnId))
-                chosenPawnId = (myPawn ?? pawnRoster.Cards.FirstOrDefault())?.PawnId;
-            float top = inRect.y + 34f, bottom = inRect.yMax - 44f;
-            // Left: starting group and left-behind pawns.
-            Rect list = new Rect(inRect.x, top, 290f, bottom - top);
-            Widgets.DrawMenuSection(list);
-            float y = list.y + 8f;
-            foreach (bool selected in new[] { true, false })
-            {
-                Widgets.Label(new Rect(list.x + 8f, y, list.width - 16f, 24f), selected ? "Startgruppe" : "Zurückgelassen");
-                y += 26f;
-                foreach (PawnCard card in pawnRoster.Cards.Where(c => c.Selected == selected))
-                {
-                    string ownerName = card.Owner == null ? "frei" : lobby.Players.FirstOrDefault(p => p.Key == card.Owner)?.Name ?? "?";
-                    if (card.PawnId == chosenPawnId) GUI.color = new Color(1f, 0.85f, 0.45f);
-                    else if (card.Owner == myKey && myKey != null) GUI.color = new Color(0.55f, 0.9f, 0.55f);
-                    if (Widgets.ButtonText(new Rect(list.x + 8f, y, list.width - 16f, 28f), card.ShortName + " – " + ownerName)) chosenPawnId = card.PawnId;
-                    GUI.color = Color.white;
-                    y += 31f;
-                }
-                y += 6f;
-            }
-            // Right: the chosen pawn's card and what this player may do with it.
-            PawnCard? chosen = pawnRoster.Cards.FirstOrDefault(c => c.PawnId == chosenPawnId);
-            Rect detail = new Rect(list.xMax + 10f, top, inRect.width - list.width - 10f, bottom - top);
-            Widgets.DrawMenuSection(detail);
-            if (chosen != null) DrawPawnCard(chosen, myKey, myPawn, detail.ContractedBy(10f));
-            // Bottom: done and chat.
-            bool myDone = me?.Ready ?? false;
-            if (Widgets.ButtonText(new Rect(inRect.x, inRect.yMax - 36f, 160f, 32f), myDone ? "Nicht fertig" : "Fertig", true, true, myDone || myPawn != null))
-                Send(MessageType.PlayerReadyChanged, LobbyPayloads.Bool(!myDone));
-            if (myPawn == null) Widgets.Label(new Rect(inRect.x + 170f, inRect.yMax - 32f, 320f, 28f), "Erst eine Figur der Startgruppe übernehmen.");
-            if (Widgets.ButtonText(new Rect(inRect.xMax - 150f, inRect.yMax - 36f, 150f, 32f), "Chat / Lobby")) OpenWindow();
-        }
-
-        private void DrawPawnCard(PawnCard card, PlayerKey? myKey, PawnCard? myPawn, Rect rect)
-        {
-            float y = rect.y;
-            void Line(string text, float gap = 2f)
-            {
-                float h = Text.CalcHeight(text, rect.width);
-                Widgets.Label(new Rect(rect.x, y, rect.width, h), text);
-                y += h + gap;
-            }
-            Line(card.Name, 4f);
-            Line(card.Summary);
-            if (card.Childhood.Length > 0) Line("Kindheit: " + card.Childhood);
-            if (card.Adulthood.Length > 0) Line("Erwachsen: " + card.Adulthood);
-            if (card.Traits.Count > 0) Line("Merkmale: " + string.Join(", ", card.Traits));
-            if (card.Incapable.Count > 0) Line("Unfähig zu: " + string.Join(", ", card.Incapable));
-            if (card.Health.Count > 0) Line("Gesundheit: " + string.Join(", ", card.Health));
-            y += 4f;
-            float column = (rect.width - 10f) / 2f;
-            for (int i = 0; i < card.Skills.Count; i++)
-            {
-                var (skill, level, passion) = card.Skills[i];
-                string text = skill + ": " + (level == 255 ? "–" : level.ToString()) + (passion == 2 ? " ++" : passion == 1 ? " +" : "");
-                Widgets.Label(new Rect(rect.x + (i % 2) * (column + 10f), y + (i / 2) * 22f, column, 22f), text);
-            }
-            y += ((card.Skills.Count + 1) / 2) * 22f + 10f;
-            bool mine = card.Owner == myKey && myKey != null;
-            float x = rect.x;
-            void Button(string label, PawnRequest request)
-            {
-                if (Widgets.ButtonText(new Rect(x, y, 150f, 30f), label))
-                    SendBackground(new WireMessage(MessageType.PawnRequest, requestId++, request.ToPayload()));
-                x += 158f;
-            }
-            if (card.Selected && card.Owner == null && myPawn == null) Button("Übernehmen", new PawnRequest(PawnRequestKind.Claim, card.PawnId));
-            if (mine)
-            {
-                Button("Neu würfeln", new PawnRequest(PawnRequestKind.Reroll, card.PawnId));
-                Button("Freigeben", new PawnRequest(PawnRequestKind.Release, card.PawnId));
-                y += 38f; x = rect.x;
-                renameText = Widgets.TextField(new Rect(x, y, 200f, 30f), renameText);
-                x += 208f;
-                if (renameText.Trim().Length > 0) Button("Umbenennen", new PawnRequest(PawnRequestKind.Rename, card.PawnId, 0, renameText.Trim()));
-            }
-            if (!card.Selected && card.Owner == null && myPawn != null)
-                Button("Mit meiner Figur tauschen", new PawnRequest(PawnRequestKind.Swap, myPawn.PawnId, card.PawnId));
+            guestPage.Draw(inRect, pawnRoster, lobby.Players, me?.Key, me?.Ready ?? false, DoneLine(), ref chosenPawnId,
+                request => SendBackground(new WireMessage(MessageType.PawnRequest, requestId++, request.ToPayload())),
+                done => Send(MessageType.PlayerReadyChanged, LobbyPayloads.Bool(done)), OpenWindow);
         }
 
         private void ConfirmAbort()
@@ -1264,8 +1186,26 @@ namespace Multiplayer.Foundation.RimWorld
             if (lobby == null) return;
             characterHost.EnsurePawnCount(init, lobby.Players.Count);
             byte[] payload = characterHost.Build(init, lobby.Players.Select(p => p.Key).ToList()).ToPayload();
-            if (payload.SequenceEqual(lastRosterPayload)) return;
-            if (SendBackground(new WireMessage(MessageType.PawnRoster, requestId++, payload))) lastRosterPayload = payload;
+            if (!payload.SequenceEqual(lastRosterPayload) && SendBackground(new WireMessage(MessageType.PawnRoster, requestId++, payload)))
+                lastRosterPayload = payload;
+            PublishPortraits(init);
+        }
+
+        // SETUP-004, host: each pawn's portrait for the guests' page, again when its look changed. Two per call keep frames smooth.
+        private void PublishPortraits(GameInitData init)
+        {
+            if (lobby == null || lobby.Players.Count < 2) return;
+            int drawn = 0;
+            foreach (Pawn pawn in init.startingAndOptionalPawns.Take(PawnRoster.MaximumCards))
+            {
+                string key = CharacterHost.PortraitKey(pawn);
+                if (sentPortraits.TryGetValue(pawn.thingIDNumber, out string sent) && sent == key) continue;
+                if (drawn++ >= 2) { nextMirrorAt = 0f; return; } // the rest next frame
+                byte[]? png = CharacterHost.RenderPortrait(pawn);
+                if (png == null) { sentPortraits[pawn.thingIDNumber] = key; continue; } // cannot be drawn: the page shows the card without it
+                if (SendBackground(new WireMessage(MessageType.PawnPortrait, requestId++, new PawnPortrait(pawn.thingIDNumber, png).ToPayload())))
+                    sentPortraits[pawn.thingIDNumber] = key;
+            }
         }
 
         // SETUP-002, host: prepares and sends the generated world; true once every guest loaded it with the same fingerprint.
@@ -1326,7 +1266,8 @@ namespace Multiplayer.Foundation.RimWorld
 
         private void ResetCharacters()
         {
-            characterHost.Clear(); lastRosterPayload = System.Array.Empty<byte>(); pawnRoster = null; chosenPawnId = null; renameText = "";
+            characterHost.Clear(); lastRosterPayload = System.Array.Empty<byte>(); pawnRoster = null; chosenPawnId = null;
+            guestPage.Clear(); sentPortraits.Clear();
             Find.WindowStack.TryRemove(typeof(CharacterSelectionWindow), false);
         }
 
@@ -1643,6 +1584,9 @@ namespace Multiplayer.Foundation.RimWorld
                             break;
                         case MessageType.PawnRoster:
                             pawnRoster = PawnRoster.Read(message.Payload);
+                            break;
+                        case MessageType.PawnPortrait:
+                            guestPage.SetPortrait(PawnPortrait.Read(message.Payload));
                             break;
                         case MessageType.PawnRequest:
                             PawnRequest pawnRequest = PawnRequest.Read(message.Payload);
