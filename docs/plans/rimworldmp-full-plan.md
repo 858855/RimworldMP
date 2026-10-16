@@ -10,6 +10,7 @@
 > - **Task register:** every milestone in §10 has an entry with the same ID in `docs/ai/TASKS.yaml` (status `planned`).
 > - **Owner decision 2026-10-15 (ADR 0013):** full multiplayer runs on the **Steam listen host with invites**, not on the dedicated server. Read every "server" below as the `FoundationServer` embedded in the host's game. Dedicated-server rows and host migration are out of scope.
 > - **Owner decision 2026-10-15 (ADR 0015):** site selection is **not a vote**. Every player places a flag as a suggestion; only the host chooses. Character selection continues only when **every player is done**; the host cannot force-start. §6.1–§6.3 below are updated.
+> - **Owner decision 2026-10-16 (ADR 0031): two game modes**, chosen once when the lobby is created and never changed later: **Coop** (one shared colony, as this plan describes; in-game events decided by the host or, in the *Democracy* variant, by vote with the host as tie-breaker; setup always by the host) and **Factions** (every player gets an own faction and colony, picks ideoligion and site; relation chosen by the host; a player window switches the view to other colonies; world events such as the gravship reach every player). Coop comes first; tasks MODE-001, VOTE-001, FACTION-001, FACTION-002.
 > - **Correction (ADR 0014, XFER-001):** §6.4's window of 32 chunks would overflow Steam's send buffer and `SteamPeerStream`'s 1 MiB queue. The implemented window is 6 chunks, acknowledged after every chunk.
 
 ---
@@ -84,7 +85,7 @@ GitHub repo roadmap (`docs/roadmap.md`): 0.2 extensible messages and sessions ·
 - Steam P2P, IP/TCP and the dedicated server
 
 **Out of scope for 1.0** (later phases)
-- Several player factions or colonies in one world, diplomacy between players, PvP (local roadmap phases 5–6)
+- ~~Several player factions or colonies in one world~~ now planned as the **Factions** mode (ADR 0031), after Coop. Diplomacy changes in game and PvP remain open
 - Separate time per map ("async time")
 - RimWorld 1.7
 - Mixed game versions

@@ -1348,3 +1348,94 @@ tasks:
   branch: null
   evidence: []
   plan_ref: docs/plans/rimworldmp-full-plan.md
+- id: MODE-001
+  title: 'Spielmodus beim Erstellen der Lobby (Coop Host, Coop Demokratie, Fraktionen)'
+  goal: 'Der Host wählt den Modus einmalig beim Erstellen; er ist danach nicht änderbar und steht im Spielstand.'
+  description: 'ADR 0031. Koordinator-Seite: Protokoll, Server-Regeln, Lobbyzustand und -liste. Spielseite: Auswahl im Lobby-Fenster, Anzeige, Speichern in MultiplayerSession.'
+  priority: high
+  components:
+  - protocol
+  - lobby_core
+  - listen_host
+  - rimworld_adapter
+  depends_on:
+  - START-001
+  acceptance:
+  - 'Modus und Unteroptionen werden beim Erstellen festgelegt und sind danach nicht änderbar'
+  - 'Lobbyzustand und Lobbyliste zeigen den Modus allen Spielern'
+  - 'Ungültige Kombinationen werden abgelehnt'
+  - 'Start im Fraktionsmodus wird abgelehnt, solange FACTION-001 nicht fertig ist'
+  - 'Beim Laden kommt der Modus aus dem Spielstand'
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: null
+  evidence: []
+  plan_ref: docs/decisions/0031-game-modes.md
+- id: VOTE-001
+  title: 'Coop-Demokratie: Abstimmung über Ereignisse im Spiel'
+  goal: 'Im Modus Coop-Demokratie entscheiden alle per Abstimmung über Ereignisse im Spiel; der Host entscheidet bei Gleichstand.'
+  description: 'ADR 0031. Abstimmung als Lockstep-Befehl mit gemeinsamer Pause; Ergebnis wirkt bei allen am selben Tick.'
+  priority: medium
+  components:
+  - session_core
+  - rimworld_adapter
+  - protocol
+  depends_on:
+  - MODE-001
+  - SYNC-004
+  - SYNC-007
+  acceptance:
+  - 'Ereignis mit Wahlmöglichkeit pausiert für alle und öffnet eine Abstimmung'
+  - 'Mehrheit gewinnt; bei Gleichstand entscheidet der Host'
+  - 'Ergebnis wird in allen Spielen am selben Tick ausgeführt'
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: null
+  evidence: []
+  plan_ref: docs/decisions/0031-game-modes.md
+- id: FACTION-001
+  title: 'Fraktionsmodus: Einrichtung je Spieler'
+  goal: 'Jeder Spieler erhält eine eigene Fraktion, wählt Ideologie und Startort selbst; gestartet wird, wenn alle fertig sind.'
+  description: 'ADR 0031. Szenario, Erzähler und Welt wählt der Host [A]; Fraktionsbeziehung wählt der Host beim Erstellen.'
+  priority: medium
+  components:
+  - lobby_core
+  - rimworld_adapter
+  - protocol
+  depends_on:
+  - MODE-001
+  - SETUP-005
+  acceptance:
+  - 'Je Spieler eine Spielerfraktion mit eigener Ideologie und eigenem Startort'
+  - 'Start erst, wenn alle Spieler fertig sind'
+  - 'Fraktionsbeziehung entspricht der Wahl beim Erstellen'
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: null
+  evidence: []
+  plan_ref: docs/decisions/0031-game-modes.md
+- id: FACTION-002
+  title: 'Fraktionsmodus: getrennte Kolonien, Spieler-Fenster, Weltereignisse für alle'
+  goal: 'Jede Fraktion spielt ihre eigene Kolonie; ein einklappbares Spieler-Fenster wechselt die Ansicht zu anderen Kolonien; Weltereignisse wie das Gravship gehen an alle.'
+  description: 'ADR 0031. Trennung aller an Faction.OfPlayer hängenden Bereiche je Fraktion; Ansichtswechsel rein lokal.'
+  priority: medium
+  components:
+  - rimworld_adapter
+  - session_core
+  depends_on:
+  - FACTION-001
+  - SYNC-004
+  acceptance:
+  - 'Jeder steuert nur seine Fraktion; Zonen, Forschung, Arbeitsplan und Koloniewert sind je Fraktion getrennt'
+  - 'Spieler-Fenster wechselt die Ansicht zu einer anderen Kolonie und zurück, ohne Desync'
+  - 'Weltereignisse wie das Gravship erreichen alle Spieler'
+  - 'Zwei Fraktionen bleiben 30 Minuten synchron'
+  implementation: planned
+  verification: not_tested
+  integration: not_submitted
+  branch: null
+  evidence: []
+  plan_ref: docs/decisions/0031-game-modes.md
