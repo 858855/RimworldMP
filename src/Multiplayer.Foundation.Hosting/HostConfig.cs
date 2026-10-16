@@ -16,6 +16,10 @@ public class HostConfig
     public string LogLevel { get; set; } = "Information";
     /// <summary>Debug only: the host may start the shared setup alone (one player). Off by default.</summary>
     public bool AllowSoloStart { get; set; }
+    /// <summary>ADR 0035: TCP players must prove their player key with a signed Hello. Steam connections are exempt.</summary>
+    public bool RequireKeyProof { get; set; }
+    /// <summary>How far a key proof's timestamp may differ from this host's clock.</summary>
+    public int KeyProofMaxSkewSeconds { get; set; } = 600;
 
     public IPAddress Validate(bool allowEphemeralPort)
     {
@@ -31,6 +35,8 @@ public class HostConfig
             throw new InvalidDataException("HeartbeatIntervalSeconds must be 1-300.");
         if (ClientTimeoutSeconds <= HeartbeatIntervalSeconds || ClientTimeoutSeconds > 900)
             throw new InvalidDataException("ClientTimeoutSeconds must exceed heartbeat interval and be <=900.");
+        if (KeyProofMaxSkewSeconds < 30 || KeyProofMaxSkewSeconds > 3600)
+            throw new InvalidDataException("KeyProofMaxSkewSeconds must be 30-3600.");
         if (LogLevel is not ("Debug" or "Information" or "Warning" or "Error"))
             throw new InvalidDataException("Unsupported LogLevel.");
         return address;

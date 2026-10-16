@@ -131,7 +131,8 @@ await Run("player key and hello", () =>
     Equal(false, default(PlayerKey).IsValid);
     Throws<ArgumentOutOfRangeException>(() => PlayerKey.Steam(0));
     Throws<ArgumentOutOfRangeException>(() => PlayerKey.Local(Guid.Empty));
-    var (name, key) = LobbyPayloads.ReadHello(LobbyPayloads.Hello("Alice", steam));
+    var (name, key, noProof) = LobbyPayloads.ReadHello(LobbyPayloads.Hello("Alice", steam));
+    Equal(true, noProof == null);
     Equal("Alice", name); Equal(steam, key);
     Equal(local, LobbyPayloads.ReadHello(LobbyPayloads.Hello("Bob", local)).Key);
     Throws<ProtocolException>(() => LobbyPayloads.Hello("Alice", default));
@@ -301,6 +302,42 @@ await Run("game mode (ADR 0031)", () =>
     Equal(LobbyMode.Factions(FactionRelation.Hostile), LobbyPayloads.ReadState(LobbyPayloads.State(view)).Mode);
     var listed = LobbyPayloads.ReadList(LobbyPayloads.List(new[] { new LobbySummary(Guid.NewGuid(), "R", "H", 1, 4, SetupPhase.Lobby, null, LobbyMode.CoopDemocracy) }));
     Equal(LobbyMode.CoopDemocracy, listed[0].Mode);
+    return Task.CompletedTask;
+});
+await Run("key proof, password and list flag (ADR 0035)", () =>
+{
+    using var rsa = System.Security.Cryptography.RSA.Create(2048);
+    var pub = rsa.ExportParameters(false);
+    PlayerKey key = PlayerKey.Local(Guid.NewGuid());
+    long now = 1_800_000_000;
+    byte[] nonce = Enumerable.Range(1, 16).Select(i => (byte)i).ToArray();
+    byte[] signature = rsa.SignData(HelloProof.SignedBytes("Alice", key, now, nonce), System.Security.Cryptography.HashAlgorithmName.SHA256,
+        System.Security.Cryptography.RSASignaturePadding.Pkcs1);
+    var proof = new HelloProof(pub.Modulus!, pub.Exponent!, now, nonce, signature);
+    Equal(true, proof.Verify("Alice", key));
+    Equal(false, proof.Verify("Bob", key));                                              // name is signed
+    Equal(false, proof.Verify("Alice", PlayerKey.Local(Guid.NewGuid())));                // player key is signed
+    byte[] tampered = (byte[])signature.Clone(); tampered[10] ^= 1;
+    Equal(false, new HelloProof(pub.Modulus!, pub.Exponent!, now, nonce, tampered).Verify("Alice", key));
+    Equal(false, new HelloProof(pub.Modulus!, pub.Exponent!, now + 1, nonce, signature).Verify("Alice", key));   // timestamp is signed
+    Equal(false, new HelloProof(pub.Modulus!, pub.Exponent!, now, new byte[16], signature).Verify("Alice", key));  // nonce is signed
+    var (name, sameKey, carried) = LobbyPayloads.ReadHello(LobbyPayloads.Hello("Alice", key, proof));
+    Equal("Alice", name); Equal(key, sameKey); Equal(true, carried!.Verify("Alice", key));
+    Equal(HelloProof.FingerprintText(proof.Fingerprint()), HelloProof.FingerprintText(carried.Fingerprint()));
+    using var small = System.Security.Cryptography.RSA.Create(1024);
+    var weak = small.ExportParameters(false);
+    Throws<ProtocolException>(() => new HelloProof(weak.Modulus!, weak.Exponent!, now, nonce, new byte[128]));      // 1024 bit refused
+    Throws<ProtocolException>(() => new HelloProof(pub.Modulus!, pub.Exponent!, now, nonce, new byte[100]));        // wrong signature size
+
+    Guid lobby = Guid.NewGuid();
+    Equal((lobby, (string?)null), LobbyPayloads.ReadJoin(LobbyPayloads.GuidValue(lobby)));                  // old JoinLobby still valid
+    Equal((lobby, (string?)"geheim"), LobbyPayloads.ReadJoin(LobbyPayloads.Join(lobby, "geheim")));
+    Throws<ProtocolException>(() => LobbyPayloads.Join(lobby, "bad\npassword"));
+    Throws<ProtocolException>(() => LobbyPayloads.Join(lobby, new string('x', 65)));
+    Equal("geheim", LobbyPayloads.ReadCreate(LobbyPayloads.Create("Room", 4, null, "geheim")).Password);
+    Equal(true, LobbyPayloads.ReadCreate(LobbyPayloads.Create("Room", 4)).Password == null);
+    var listed = LobbyPayloads.ReadList(LobbyPayloads.List(new[] { new LobbySummary(lobby, "R", "H", 1, 4, passwordRequired: true) }));
+    Equal(true, listed[0].PasswordRequired);
     return Task.CompletedTask;
 });
 Console.WriteLine($"PASS: {passed} protocol test groups");

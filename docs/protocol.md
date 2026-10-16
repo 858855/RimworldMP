@@ -141,3 +141,19 @@ Bei einem Desync speichert der Host an der aktuellen Stelle einen Snapshot für 
 ## Abstimmung (Codes 76–79, ADR 0034)
 
 Nur im Modus Coop-Demokratie. Das Spiel des Hosts öffnet eine Abstimmung, wenn ein Ereignis eine Wahl verlangt; die Zeit pausiert für alle, Fortsetzen ist bis zum Ende gesperrt. Jeder aktive Spieler stimmt ab und kann umstimmen. Ende: alle aktiven haben abgestimmt, oder der Host beendet (Nichtabstimmende enthalten). Die Mehrheit gewinnt; bei Gleichstand die Option des Hosts, wenn sie gleichauf liegt, sonst bleibt es offen bzw. das Beenden wird abgelehnt. Das Ergebnis kommt als geplanter Befehl `VoteResult` (Art 4), damit alle Spiele es an derselben Stelle anwenden.
+
+## IP-Lobbys: Passwort und Schlüsselbindung (ADR 0035)
+
+Ohne neue Codes, jeweils als optionale Erweiterung am Ende:
+- **Hello:** Nachweis aus öffentlichem RSA-Schlüssel (2048–4096 Bit), Zeitstempel, 16 Byte Zufallswert und Signatur über Kontext, `PlayerKey`, Name, Zeitstempel und Zufallswert.
+- **CreateLobby:** optionales Passwort.
+- **JoinLobby:** nach der Lobby-ID das Passwort.
+- **Lobbyliste:** je Lobby ein Kennzeichen „Passwort nötig“.
+
+Prüfung des Hosts bei TCP-Verbindungen:
+- Zeitstempel ±10 Minuten, gültige Signatur, keine Wiederholung.
+- Bindung des Schlüssels an die Kennung beim ersten Kontakt.
+- Danach wird ein anderer Schlüssel oder ein fehlender Nachweis für diese Kennung abgelehnt (Code 3).
+- `RequireKeyProof` verlangt den Nachweis von allen TCP-Spielern.
+
+Steam-Verbindungen sind ausgenommen. Kein TLS.

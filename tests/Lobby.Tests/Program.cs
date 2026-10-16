@@ -271,6 +271,18 @@ modes.Join(cg, coopRoom); modes.Ready(ch, true); modes.Ready(cg, true);
 LobbyView democracy = modes.AdvanceSetup(ch, SetupPhase.Scenario).State!;
 Assert(democracy.Phase == SetupPhase.Scenario && democracy.Mode == LobbyMode.CoopDemocracy, "Coop starts and keeps its mode");
 Console.WriteLine("PASS: game mode fixed at creation, shown in state and list, Factions start refused for now");
+// ADR 0035: lobby password, checked before anything else; the list shows that one is needed.
+var locked = new LobbyRegistry(8);
+Guid lh = Guid.NewGuid(), lg = Guid.NewGuid();
+locked.AddMember(lh, "Host", PlayerKey.Local(Guid.NewGuid())); locked.AddMember(lg, "Guest", PlayerKey.Local(Guid.NewGuid()));
+Guid lockedRoom = locked.Create(lh, "Locked", 4, null, "geheim").State!.Id;
+Assert(locked.List().Single().PasswordRequired, "list shows the password requirement");
+Expect(3, () => locked.Join(lg, lockedRoom));
+Expect(3, () => locked.Join(lg, lockedRoom, "falsch"));
+Expect(3, () => locked.Join(lg, lockedRoom, "geheim2"));
+Assert(locked.Join(lg, lockedRoom, "geheim").State!.Players.Count == 2, "right password joins");
+Console.WriteLine("PASS: lobby password: missing and wrong refused, right one joins, list flags it");
+
 
 static PawnRoster RosterFor(params PlayerKey[] owners) => new PawnRoster(owners.Select((owner, i) => new PawnCard(100 + i, true, owner,
     "Pawn " + i, "P" + i, "Age 30", "", "", Array.Empty<string>(), Array.Empty<(string, byte, byte)>(),

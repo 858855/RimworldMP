@@ -1336,11 +1336,16 @@ tasks:
   acceptance:
   - 'Mindestens Lobby-Passwort und Schlüsselbindung'
   - 'Ein gefälschter PlayerKey wird abgelehnt'
-  implementation: planned
-  verification: not_tested
+  implementation: in_progress
+  verification: tests_passed
   integration: not_submitted
-  branch: null
-  evidence: []
+  branch: claude/ip-password
+  base_branch: main
+  base_commit: 8f7c32f
+  evidence:
+  - docs/verification/2026-10-16-ip-lobby-security.md
+  - docs/decisions/0035-ip-lobby-password-and-key-pinning.md
+  blocker: 'Protokoll und Server fertig und getestet; Abnahme (gefälschte Kennung abgelehnt) Ende zu Ende erfüllt. Fehlt Spielseite (Codex): PlayerIdentity erzeugen und speichern, Passwortfeld, RequireKeyProof für IP-Lobbys, Bindungen speichern.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: REL-001
   title: 'Version 1.0 veröffentlichen'

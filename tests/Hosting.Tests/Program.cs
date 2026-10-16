@@ -610,6 +610,72 @@ await using (var voteHost = await ListenHost.StartAsync("127.0.0.1", 0, "Host", 
     Assert(hostView is { Open: false, Result: 1 } && guestView is { Open: false, Result: 1 }, "both see the closed vote with its result");
 }
 Console.WriteLine("PASS: democracy vote over the network: host opens, no resuming meanwhile, both vote, same result at the same point in both games");
+// SEC-001 (ADR 0035) end to end: key pinning makes a spoofed player key fail; replays, stale proofs and missing proofs too.
+var aliceId = PlayerIdentity.Create(); var malloryId = PlayerIdentity.Create(); var secHostId = PlayerIdentity.Create();
+PlayerKey aliceKey = PlayerKey.Local(Guid.NewGuid()), secHostKey = PlayerKey.Local(Guid.NewGuid());
+await using (var secured = await ListenHost.StartAsync("127.0.0.1", 0, "Host", "Secure Room", 4, secHostKey,
+    password: "geheim", identity: secHostId))
+{
+    LobbyView securedRoom = LobbyPayloads.ReadState((await ReceiveAsync(secured.Client, MessageType.LobbyStateUpdate)).Payload);
+    Assert(secured.Pins.IsPinned(secHostKey), "the host's own key is pinned");
+    async Task<LobbyClient> Connect(string name, PlayerKey key, PlayerIdentity? who) =>
+        await LobbyClient.ConnectAsync("127.0.0.1", secured.Port, name, TimeSpan.FromSeconds(4), CancellationToken.None, key, who);
+    async Task<string> Refused(string name, PlayerKey key, PlayerIdentity? who) =>
+        (await ExpectAsync<ProtocolException>(() => Connect(name, key, who))).Message;
+
+    LobbyClient alice = await Connect("Alice", aliceKey, aliceId);
+    Assert(secured.Pins.IsPinned(aliceKey), "first contact pins Alice's key");
+    // Password: the list flags it; missing and wrong are refused; the right one joins.
+    await alice.SendAsync(MessageType.LobbyListRequest, 1100, Array.Empty<byte>());
+    Assert(LobbyPayloads.ReadList((await ReceiveAsync(alice, MessageType.LobbyListResponse)).Payload).Single().PasswordRequired, "list shows the lock");
+    Assert(await ErrorCodeAsync(alice, MessageType.JoinLobby, 1101, LobbyPayloads.GuidValue(securedRoom.Id)) == 3, "no password refused");
+    Assert(await ErrorCodeAsync(alice, MessageType.JoinLobby, 1102, LobbyPayloads.Join(securedRoom.Id, "falsch")) == 3, "wrong password refused");
+    Assert((await StateAsync(alice, MessageType.JoinLobby, 1103, LobbyPayloads.Join(securedRoom.Id, "geheim"))).Players.Count == 2, "right password joins");
+    await alice.DisconnectAsync();
+    alice.Dispose();
+    await Task.Delay(300);
+
+    // The acceptance criterion of SEC-001: someone else claiming Alice's key is refused.
+    Assert((await Refused("Alice", aliceKey, malloryId)).Contains("bound to another identity"), "spoofed player key with another key pair refused");
+    Assert((await Refused("Alice", aliceKey, null)).Contains("requires proof"), "spoofed player key without proof refused");
+    using (LobbyClient back = await Connect("Alice", aliceKey, aliceId)) Assert(back.IsConnected, "the real Alice is accepted again");
+    await Task.Delay(300);
+
+    // Replay: the same signed Hello a second time is refused. A stale timestamp is refused.
+    byte[] recorded = LobbyPayloads.Hello("Alice", aliceKey, aliceId.Prove("Alice", aliceKey, PlayerIdentity.UnixNow));
+    async Task<WireMessage?> RawHello(byte[] payload)
+    {
+        using var raw = await NetworkConnection.ConnectAsync("127.0.0.1", secured.Port, TimeSpan.FromSeconds(4));
+        await raw.SendAsync(new WireMessage(MessageType.Hello, 1, payload));
+        return await raw.ReceiveAsync();
+    }
+    Assert((await RawHello(recorded))!.Type == MessageType.HandshakeAccepted, "first use of the proof accepted");
+    await Task.Delay(300);
+    WireMessage? replayed = await RawHello(recorded);
+    Assert(replayed!.Type == MessageType.HandshakeRejected && LobbyPayloads.ReadString(replayed.Payload.Skip(1).ToArray(), 256).Contains("already used"),
+        "replayed proof refused");
+    WireMessage? stale = await RawHello(LobbyPayloads.Hello("Alice", aliceKey, aliceId.Prove("Alice", aliceKey, PlayerIdentity.UnixNow - 3600)));
+    Assert(stale!.Type == MessageType.HandshakeRejected, "proof from an hour ago refused");
+
+    // Pins survive into another game through Export/Import.
+    var carried = new PlayerKeyPinStore(); carried.Import(secured.Pins.Export());
+    await using var nextGame = await ListenHost.StartAsync("127.0.0.1", 0, "Host", "Next Game", 4, secHostKey, identity: secHostId, pins: carried);
+    Assert((await ExpectAsync<ProtocolException>(() => LobbyClient.ConnectAsync("127.0.0.1", nextGame.Port, "Alice", TimeSpan.FromSeconds(4),
+        CancellationToken.None, aliceKey, malloryId))).Message.Contains("bound to another identity"), "imported pins keep protecting Alice");
+}
+await using (var strict = await ListenHost.StartAsync("127.0.0.1", 0, "Host", "Strict Room", 4, PlayerKey.Local(Guid.NewGuid()),
+    identity: PlayerIdentity.Create(), requireKeyProof: true))
+{
+    Assert((await ExpectAsync<ProtocolException>(() => LobbyClient.ConnectAsync("127.0.0.1", strict.Port, "Plain", TimeSpan.FromSeconds(4))))
+        .Message.Contains("Key proof required"), "required mode refuses TCP players without proof");
+    using var steamOk = new SteamLikeLink();
+    PlayerKey steamOkKey = PlayerKey.Steam(76561198000000130UL);
+    Assert(strict.AttachConnection(NetworkConnection.FromDuplexStream(steamOk.A), steamOkKey), "Steam-like link attached");
+    using LobbyClient steamPlayer = await LobbyClient.ConnectOverStreamAsync(steamOk.B, "SteamPlayer", TimeSpan.FromSeconds(4), CancellationToken.None, steamOkKey);
+    Assert(steamPlayer.IsConnected, "Steam-verified players need no key proof");
+}
+Console.WriteLine("PASS: IP lobby security: password, key pinned on first contact, spoofed key refused (with or without proof), replay and stale proofs refused, pins carried over, required mode, Steam exempt");
+
 
 // SETUP-001: the host's page mirror reaches guests only while setup runs, and only from the host.
 await using (var mirrorHost = await ListenHost.StartAsync("127.0.0.1", 0, "Host", "Mirror Room", 4, PlayerKey.Steam(76561198000000070UL)))

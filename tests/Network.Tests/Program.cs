@@ -13,7 +13,7 @@ Task server = Task.Run(async () =>
     using var connection = NetworkConnection.FromAcceptedClient(accepted);
     WireMessage hello = await connection.ReceiveAsync() ?? throw new Exception("missing Hello");
     Assert(hello.Type == MessageType.Hello && hello.RequestId == 1, "Hello envelope");
-    var (helloName, helloKey) = LobbyPayloads.ReadHello(hello.Payload);
+    var (helloName, helloKey, _) = LobbyPayloads.ReadHello(hello.Payload);
     Assert(helloName == "Alice" && helloKey.IsValid, "Hello name and player key");
     var reply = new PayloadWriter();
     reply.WriteGuid(session); reply.WriteUInt16(2);
@@ -226,6 +226,20 @@ static TransferSim SimulateTransfer(byte[] data, Func<WireMessage, WireMessage?>
 }
 
 static WireMessage? Filter(Func<WireMessage, WireMessage?>? filter, WireMessage message) => filter == null ? message : filter(message);
+
+// ADR 0035: a player's key pair signs the Hello; stored and restored, it proves the same key.
+PlayerIdentity identity = PlayerIdentity.Create();
+Assert(identity.Modulus.Length == 256, "2048-bit key pair");
+PlayerKey proofKey = PlayerKey.Steam(76561198000000001UL);
+HelloProof fresh = identity.Prove("Alice", proofKey, PlayerIdentity.UnixNow);
+Assert(fresh.Verify("Alice", proofKey) && !fresh.Verify("Mallory", proofKey), "identity signs and the signature binds the name");
+HelloProof sameSecond = identity.Prove("Alice", proofKey, fresh.UnixSeconds);
+Assert(!sameSecond.Signature.SequenceEqual(fresh.Signature), "two proofs in the same second differ, so a quick reconnect is no replay");
+PlayerIdentity restored = PlayerIdentity.FromBytes(identity.ToBytes());
+HelloProof again = restored.Prove("Alice", proofKey, PlayerIdentity.UnixNow);
+Assert(again.Verify("Alice", proofKey) && again.Fingerprint().SequenceEqual(fresh.Fingerprint()), "stored and restored identity proves the same key");
+Assert(!PlayerIdentity.Create().Prove("Alice", proofKey, PlayerIdentity.UnixNow).Fingerprint().SequenceEqual(fresh.Fingerprint()), "another key pair has another fingerprint");
+Console.WriteLine("PASS: player identity: 2048-bit key pair, signature bound to name, store and restore");
 
 static void Assert(bool condition, string name)
 {

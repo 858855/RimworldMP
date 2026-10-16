@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Sicherheit für IP-Lobbys (Arbeitsbranch `claude/ip-password`, SEC-001)
+
+- Lobbys können ein Passwort haben; die Lobbyliste zeigt ein Schloss.
+- Niemand kann sich über IP als ein anderer Spieler ausgeben. Jeder Spieler hat ein eigenes Schlüsselpaar und unterschreibt seine Anmeldung. Der Host merkt sich beim ersten Kontakt, welcher Schlüssel zu wem gehört, und weist danach jeden ab, der dieselbe Kennung mit einem anderen oder ohne Schlüssel behauptet. Über Steam gilt das ohnehin schon.
+- Im Spiel noch nicht aktiv: Schlüssel erzeugen und speichern sowie das Passwortfeld gehören zur Spielseite.
+
 ### Abstimmung im Coop-Demokratie-Modus (Arbeitsbranch `claude/vote`, VOTE-001)
 
 - Verlangt ein Ereignis eine Entscheidung, etwa ein Wanderer will beitreten, öffnet der Host eine Abstimmung. Die Zeit hält an, bis entschieden ist. Die Mehrheit gewinnt, bei Gleichstand der Host. Ist jemand nicht am Rechner, kann der Host vorzeitig beenden; wer nicht abgestimmt hat, gilt als enthalten.

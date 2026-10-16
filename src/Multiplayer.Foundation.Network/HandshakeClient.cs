@@ -24,7 +24,7 @@ namespace Multiplayer.Foundation.Network
     {
         /// <param name="playerKey">Persistent identity; without it a throwaway key is used, which is only fit for tests.</param>
         public static async Task<HandshakeResult> ConnectAsync(string host, int port, string playerName,
-            TimeSpan timeout, CancellationToken cancellationToken = default, PlayerKey? playerKey = null)
+            TimeSpan timeout, CancellationToken cancellationToken = default, PlayerKey? playerKey = null, PlayerIdentity? identity = null)
         {
             ValidateName(playerName);
             using (var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
@@ -35,7 +35,7 @@ namespace Multiplayer.Foundation.Network
                 {
                     connection = await NetworkConnection.ConnectAsync(host, port, timeout, deadline.Token)
                         .ConfigureAwait(false);
-                    return await PerformAsync(connection, playerName, KeyOrThrowaway(playerKey), deadline.Token).ConfigureAwait(false);
+                    return await PerformAsync(connection, playerName, KeyOrThrowaway(playerKey), identity, deadline.Token).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
                 {
@@ -51,7 +51,7 @@ namespace Multiplayer.Foundation.Network
         }
 
         public static async Task<HandshakeResult> ConnectAsync(NetworkConnection connection, string playerName,
-            TimeSpan timeout, CancellationToken cancellationToken = default, PlayerKey? playerKey = null)
+            TimeSpan timeout, CancellationToken cancellationToken = default, PlayerKey? playerKey = null, PlayerIdentity? identity = null)
         {
             if (connection == null) throw new ArgumentNullException(nameof(connection));
             if (timeout <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(timeout));
@@ -60,7 +60,7 @@ namespace Multiplayer.Foundation.Network
             using (var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
             {
                 deadline.CancelAfter(timeout);
-                try { return await PerformAsync(connection, playerName, KeyOrThrowaway(playerKey), deadline.Token).ConfigureAwait(false); }
+                try { return await PerformAsync(connection, playerName, KeyOrThrowaway(playerKey), identity, deadline.Token).ConfigureAwait(false); }
                 catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
                 { connection.Dispose(); throw new TimeoutException("Handshake timed out."); }
                 catch { connection.Dispose(); throw; }
@@ -75,9 +75,11 @@ namespace Multiplayer.Foundation.Network
         }
 
         private static async Task<HandshakeResult> PerformAsync(NetworkConnection connection, string playerName,
-            PlayerKey playerKey, CancellationToken cancellationToken)
+            PlayerKey playerKey, PlayerIdentity? identity, CancellationToken cancellationToken)
         {
-            await connection.SendAsync(new WireMessage(MessageType.Hello, 1, LobbyPayloads.Hello(playerName, playerKey)), cancellationToken)
+            // ADR 0035: with an identity the Hello proves the player key; required by hosts that pin keys.
+            HelloProof? proof = identity?.Prove(playerName, playerKey, PlayerIdentity.UnixNow);
+            await connection.SendAsync(new WireMessage(MessageType.Hello, 1, LobbyPayloads.Hello(playerName, playerKey, proof)), cancellationToken)
                 .ConfigureAwait(false);
             WireMessage? reply = await connection.ReceiveAsync(cancellationToken).ConfigureAwait(false);
             if (reply == null) throw new ProtocolException("Server closed during handshake.");

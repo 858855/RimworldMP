@@ -10,7 +10,8 @@
 - **C3 erledigt (Koordinator-Seite), Branch `claude/vote` auf `claude/resync`, ADR 0034:** Abstimmungen nur in Coop-Demokratie; Host öffnet und beendet; gemeinsame Pause, Fortsetzen gesperrt; Mehrheit, Host bei Gleichstand, Enthaltung; Ergebnis als `ScheduledKind.VoteResult` (4); Codes 76–79. Gemeinsame System-Pause für Desync und Abstimmung.
 - **Nummernbereich 71–79 ist ausgeschöpft.** C4 (`SEC-001`, Lobby-Passwort) kommt ohne neue Codes aus (Erweiterung von `CreateLobby`/`JoinLobby`); sonst neuen Bereich mit dem Benutzer abstimmen.
 - **Gemergt nach `main` (2026-10-16, Freigabe des Benutzers):** C1, C2 und C3 per Fast-Forward. Die Branches `claude/save-join`, `claude/resync` und `claude/vote` sind danach entfernt.
-- **Nächste Aufgabe:** C4 `SEC-001` auf `claude/ip-password`.
+- **C4 erledigt (Protokoll und Server), Branch `claude/ip-password`, ADR 0035:** Lobby-Passwort; Schlüsselbindung per signiertem Hello (RSA-2048, Zeitstempel, Zufallswert) mit Bindung beim ersten Kontakt, Wiederholungsschutz und Pflicht-Modus; Steam ausgenommen. Keine neuen Codes.
+- **Alle Aufgaben C1–C4 der Claude-Bahn sind erledigt.** Neue Aufgaben verteilt der Benutzer.
 - **Wünsche an Codex:**
   - Tick-Treiber nach ADR 0030:
     - Tick c+1 nur, wenn `LockstepClient.MayRunTick(c)` wahr ist; vorher und in jedem Frame während der Pause `TakeCommandsAt(c)`.
@@ -39,4 +40,11 @@
     - Spieler stimmen mit `VoteCast` ab.
     - `ScheduledKind.VoteResult` kommt über `TakeCommandsAt`: `LockstepPayloads.ReadVoteResultData` liefert Nummer, Option und Schlüssel. Das Ereignis an dieser Stelle mit dieser Option ausführen.
     - Im Modus Coop-Host trifft der Host die Wahl über einen normalen Spielbefehl; Gäste dürfen dort nicht wählen (Rechte, `SYNC-005`).
+  - **IP-Sicherheit (ADR 0035)**, alles Spielseite:
+    - Einmal `PlayerIdentity.Create()`, `ToBytes()` in den Mod-Einstellungen speichern (lokal; privater Schlüssel, nie versenden), beim Start `PlayerIdentity.FromBytes`.
+    - Bei jedem Verbinden als `identity` an `LobbyClient.ConnectAsync` bzw. `ListenHost.StartAsync` übergeben.
+    - Passwortfeld beim Erstellen (`ListenHost.StartAsync(..., password:)`) und Beitreten (`LobbyPayloads.Join(id, password)`); Schloss nach `LobbySummary.PasswordRequired` anzeigen.
+    - Für IP-Lobbys `requireKeyProof: true` setzen, sobald die Identität überall mitgegeben wird.
+    - `ListenHost.Pins.Export()` mit dem Multiplayer-Spielstand speichern und beim Fortsetzen über den Parameter `pins` wieder einspielen.
+    - Mono: `RSA`-APIs sind laut Metadaten vorhanden; bitte im Spiel bestätigen, dass `PlayerIdentity.Create` 2048 Bit liefert und `Prove` funktioniert.
 

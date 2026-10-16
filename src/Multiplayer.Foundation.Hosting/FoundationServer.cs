@@ -23,14 +23,19 @@ public sealed class FoundationServer : IAsyncDisposable
     private Task? acceptTask;
     private int pendingConnections;
 
-    public FoundationServer(HostConfig config)
+    /// <param name="pins">Key pins to start from, e.g. restored from a save (ADR 0035); a new store otherwise.</param>
+    public FoundationServer(HostConfig config, PlayerKeyPinStore? pins = null)
     {
         this.config = config ?? throw new ArgumentNullException(nameof(config));
+        Pins = pins ?? new PlayerKeyPinStore();
         lobbies = new LobbyRegistry(config.MaxPlayersPerLobby, config.AllowSoloStart ? (byte)1 : (byte)2);
         lockstep = new LockstepHost((to, message) => { if (peers.TryGetValue(to, out Peer? target)) target.Outbox?.Enqueue(message); });
     }
     public int BoundPort => listener == null ? 0 : ((IPEndPoint)listener.LocalEndpoint).Port;
     public int ConnectedClients => peers.Count;
+    /// <summary>Which public key belongs to which player key on this host (ADR 0035). Export it to keep it across games.</summary>
+    public PlayerKeyPinStore Pins { get; }
+    private readonly ConcurrentDictionary<string, long> usedProofs = new();
     public int ActiveTransfers => transfers.ActiveTransfers;
     public bool AcceptsIPv4 { get; private set; }
     public bool AcceptsIPv6 { get; private set; }
@@ -154,11 +159,16 @@ public sealed class FoundationServer : IAsyncDisposable
             { await RejectAsync(connection, 1, "Expected Hello.", serverToken).ConfigureAwait(false); return; }
             string name;
             PlayerKey key;
-            try { (name, key) = LobbyPayloads.ReadHello(hello.Payload); }
+            HelloProof? proof;
+            try { (name, key, proof) = LobbyPayloads.ReadHello(hello.Payload); }
             catch (ProtocolException)
             { await RejectAsync(connection, 1, "Invalid Hello.", serverToken).ConfigureAwait(false); return; }
             if (verifiedKey != null && key != verifiedKey.Value)
             { await RejectAsync(connection, 3, "Player key does not match the verified identity.", serverToken).ConfigureAwait(false); return; }
+            // Steam vouches for its connections (ADR 0016); TCP players prove their key themselves (ADR 0035).
+            string? refusal = verifiedKey == null ? CheckKeyProof(name, key, proof) : null;
+            if (refusal != null)
+            { await RejectAsync(connection, 3, refusal, serverToken).ConfigureAwait(false); return; }
             try { lobbies.AddMember(sessionId, name, key); }
             catch (LobbyRuleException error)
             { await RejectAsync(connection, error.Code, error.Message, serverToken).ConfigureAwait(false); return; }
@@ -240,10 +250,11 @@ public sealed class FoundationServer : IAsyncDisposable
                 break;
             case MessageType.CreateLobby:
                 var create = LobbyPayloads.ReadCreate(message.Payload);
-                await PublishAsync(lobbies.Create(peer.Id, create.Name, create.Capacity, create.Mode), null, token, message.RequestId).ConfigureAwait(false);
+                await PublishAsync(lobbies.Create(peer.Id, create.Name, create.Capacity, create.Mode, create.Password), null, token, message.RequestId).ConfigureAwait(false);
                 break;
             case MessageType.JoinLobby:
-                LobbyChange joined = lobbies.Join(peer.Id, LobbyPayloads.ReadGuid(message.Payload));
+                var joining = LobbyPayloads.ReadJoin(message.Payload);
+                LobbyChange joined = lobbies.Join(peer.Id, joining.LobbyId, joining.Password);
                 await PublishAsync(joined, MessageType.PlayerJoined, token, message.RequestId).ConfigureAwait(false);
                 if (joined.State?.Phase == SetupPhase.Playing)
                     lockstep.AddJoiner(joined.State.Id, peer.Id, joined.State.Players.Single(p => p.Id == peer.Id).Key);
@@ -466,6 +477,24 @@ public sealed class FoundationServer : IAsyncDisposable
     { if (payload.Length != 0) throw new ProtocolException("Unexpected payload."); }
     private static Task RejectAsync(NetworkConnection connection, byte code, string reason, CancellationToken token)
         => connection.SendAsync(new WireMessage(MessageType.HandshakeRejected, 1, LobbyPayloads.Error(code, reason)), token);
+    // ADR 0035: a valid, fresh, unused signature; the first proven key for a player key is pinned, others are refused.
+    private string? CheckKeyProof(string name, PlayerKey key, HelloProof? proof)
+    {
+        if (proof == null)
+        {
+            if (config.RequireKeyProof) return "Key proof required.";
+            return Pins.IsPinned(key) ? "This player key requires proof." : null;
+        }
+        long now = (long)(DateTime.UtcNow - DateTime.UnixEpoch).TotalSeconds;
+        if (Math.Abs(now - proof.UnixSeconds) > config.KeyProofMaxSkewSeconds) return "Key proof is too old or from the future.";
+        if (!proof.Verify(name, key)) return "Invalid key proof.";
+        foreach (var used in usedProofs) if (used.Value < now) usedProofs.TryRemove(used.Key, out _);
+        string id;
+        using (var sha = System.Security.Cryptography.SHA256.Create()) id = HelloProof.FingerprintText(sha.ComputeHash(proof.Signature));
+        if (!usedProofs.TryAdd(id, now + config.KeyProofMaxSkewSeconds)) return "Key proof was already used.";
+        return Pins.BindOrMatch(key, proof.Fingerprint()) ? null : "Player key is bound to another identity.";
+    }
+
     private Guid LobbyOf(Peer peer) => lobbies.ChatRecipients(peer.Id).LobbyId;
     public int ActiveSessions => lockstep.ActiveSessions;
 

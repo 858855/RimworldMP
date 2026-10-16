@@ -26,13 +26,16 @@ namespace Multiplayer.Foundation.Hosting
         /// <summary>Debug: this host's server lets it start the shared setup alone.</summary>
         public bool AllowSoloStart { get; private set; }
         public int Port => server.BoundPort;
+        /// <summary>Key pins of this host (ADR 0035); export them to keep them for the next game.</summary>
+        public PlayerKeyPinStore Pins => server.Pins;
         public bool AcceptsIPv4 => server.AcceptsIPv4;
         public bool AcceptsIPv6 => server.AcceptsIPv6;
         public bool AttachConnection(NetworkConnection connection, PlayerKey? verifiedKey = null) =>
             server.AttachConnection(connection, verifiedKey);
 
         public static async Task<ListenHost> StartAsync(string bindAddress, int port, string playerName,
-            string lobbyName, byte capacity, PlayerKey? playerKey = null, bool allowSoloStart = false, LobbyMode? mode = null)
+            string lobbyName, byte capacity, PlayerKey? playerKey = null, bool allowSoloStart = false, LobbyMode? mode = null,
+            string? password = null, PlayerIdentity? identity = null, PlayerKeyPinStore? pins = null, bool requireKeyProof = false)
         {
             if (string.IsNullOrWhiteSpace(playerName) || playerName.Length > 40 || playerName.Any(char.IsControl))
                 throw new ArgumentException("Player name must have 1-40 characters.", nameof(playerName));
@@ -41,16 +44,16 @@ namespace Multiplayer.Foundation.Hosting
             if (capacity < 2 || capacity > 64)
                 throw new ArgumentOutOfRangeException(nameof(capacity));
             var config = new HostConfig { BindAddress = bindAddress, Port = port,
-                MaxPlayersPerLobby = capacity, AllowSoloStart = allowSoloStart };
-            var server = new FoundationServer(config);
+                MaxPlayersPerLobby = capacity, AllowSoloStart = allowSoloStart, RequireKeyProof = requireKeyProof };
+            var server = new FoundationServer(config, pins);
             LobbyClient? client = null;
             try
             {
                 await server.StartAsync().ConfigureAwait(false);
                 client = await LobbyClient.ConnectAsync(server.LoopbackAddress.ToString(), server.BoundPort, playerName,
-                    TimeSpan.FromSeconds(5), CancellationToken.None, playerKey).ConfigureAwait(false);
+                    TimeSpan.FromSeconds(5), CancellationToken.None, playerKey, identity).ConfigureAwait(false);
                 await client.SendAsync(MessageType.CreateLobby, 2,
-                    LobbyPayloads.Create(lobbyName, capacity, mode)).ConfigureAwait(false);
+                    LobbyPayloads.Create(lobbyName, capacity, mode, password)).ConfigureAwait(false);
                 return new ListenHost(server, client, bindAddress) { AllowSoloStart = allowSoloStart };
             }
             catch

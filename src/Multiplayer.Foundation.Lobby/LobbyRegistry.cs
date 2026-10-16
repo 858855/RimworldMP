@@ -54,7 +54,7 @@ namespace Multiplayer.Foundation.Lobby
             lock (gate)
                 return rooms.Values.OrderBy(r => r.Name, StringComparer.Ordinal).ThenBy(r => r.Id)
                     .Select(r => new LobbySummary(r.Id, r.Name, members[r.Host].Name, (byte)r.Members.Count, r.Capacity, r.Phase,
-                        members[r.Host].Mods, r.Mode)).ToArray();
+                        members[r.Host].Mods, r.Mode, r.Password != null)).ToArray();
         }
 
         /// <summary>MOD-001: stores a member's mod summary; returns the lobby change when the member is in a lobby.</summary>
@@ -101,7 +101,7 @@ namespace Multiplayer.Foundation.Lobby
         }
 
         /// <param name="mode">Fixed for the lobby's lifetime; there is no way to change it later (ADR 0031).</param>
-        public LobbyChange Create(Guid actor, string name, byte capacity, LobbyMode? mode = null)
+        public LobbyChange Create(Guid actor, string name, byte capacity, LobbyMode? mode = null, string? password = null)
         {
             ValidateName(name);
             lock (gate)
@@ -109,18 +109,20 @@ namespace Multiplayer.Foundation.Lobby
                 Member member = GetMember(actor); RequireFree(member);
                 if (capacity < 2 || capacity > maximumCapacity) throw new LobbyRuleException(6, "Invalid lobby capacity.");
                 if (rooms.Count >= 128) throw new LobbyRuleException(7, "Lobby limit reached.");
-                var room = new Room(Guid.NewGuid(), name, actor, capacity, mode ?? LobbyMode.CoopHost); room.Members.Add(actor);
+                var room = new Room(Guid.NewGuid(), name, actor, capacity, mode ?? LobbyMode.CoopHost) { Password = password }; room.Members.Add(actor);
                 rooms.Add(room.Id, room); member.Room = room.Id;
                 return Change(room, actor);
             }
         }
 
-        public LobbyChange Join(Guid actor, Guid lobbyId)
+        public LobbyChange Join(Guid actor, Guid lobbyId, string? password = null)
         {
             lock (gate)
             {
                 Member member = GetMember(actor); RequireFree(member);
                 Room room = GetRoom(lobbyId);
+                // ADR 0035: checked first, so a wrong password reveals nothing about the lobby's state.
+                if (room.Password != null && !SameText(room.Password, password)) throw new LobbyRuleException(3, "Wrong lobby password.");
                 // JOIN-001: a running game accepts joiners; the setup phases in between stay locked (ADR 0032).
                 if (room.Phase != SetupPhase.Lobby && room.Phase != SetupPhase.Playing) throw new LobbyRuleException(6, "Setup in progress.");
                 if (room.Members.Count >= room.Capacity) throw new LobbyRuleException(5, "Lobby is full.");
@@ -385,6 +387,14 @@ namespace Multiplayer.Foundation.Lobby
         { if (!rooms.TryGetValue(id, out Room? room)) throw new LobbyRuleException(4, "Lobby not found."); return room; }
         private Room GetCurrentRoom(Member member)
         { if (member.Room == null) throw new LobbyRuleException(6, "Not in a lobby."); return GetRoom(member.Room.Value); }
+        // Constant-time comparison: the time taken does not reveal how much of a guessed password was right.
+        private static bool SameText(string expected, string? given)
+        {
+            if (given == null) return false;
+            int difference = expected.Length ^ given.Length;
+            for (int i = 0; i < expected.Length; i++) difference |= expected[i] ^ (i < given.Length ? given[i] : 0);
+            return difference == 0;
+        }
         private Room GetHostedRoom(Guid actor)
         {
             Room room = GetCurrentRoom(GetMember(actor));
@@ -467,6 +477,7 @@ namespace Multiplayer.Foundation.Lobby
         {
             public Room(Guid id, string name, Guid host, byte capacity, LobbyMode mode) { Id = id; Name = name; Host = host; Capacity = capacity; Mode = mode; }
             public LobbyMode Mode { get; }
+            public string? Password { get; set; }
             public Guid Id { get; }
             public string Name { get; }
             public Guid Host { get; set; }

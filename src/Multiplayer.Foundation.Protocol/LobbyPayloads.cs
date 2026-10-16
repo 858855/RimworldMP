@@ -48,11 +48,13 @@ namespace Multiplayer.Foundation.Protocol
     public sealed class LobbySummary
     {
         public LobbySummary(Guid id, string name, string hostName, byte playerCount, byte capacity, SetupPhase phase = SetupPhase.Lobby,
-            ModManifestSummary? hostMods = null, LobbyMode? mode = null)
+            ModManifestSummary? hostMods = null, LobbyMode? mode = null, bool passwordRequired = false)
         {
             Id = id; Name = name; HostName = hostName; PlayerCount = playerCount; Capacity = capacity; Phase = phase; HostMods = hostMods;
-            Mode = mode ?? LobbyMode.CoopHost;
+            Mode = mode ?? LobbyMode.CoopHost; PasswordRequired = passwordRequired;
         }
+        /// <summary>Joining needs the lobby password (ADR 0035); the password itself is never listed.</summary>
+        public bool PasswordRequired { get; }
         /// <summary>Game mode, so players see Coop or Factions before joining.</summary>
         public LobbyMode Mode { get; }
         /// <summary>Host's mod checksum, mod count and game version, so joiners see a mismatch before joining.</summary>
@@ -105,10 +107,41 @@ namespace Multiplayer.Foundation.Protocol
                 throw new ProtocolException("Chat message must contain printable text.");
         }
 
-        public static byte[] Hello(string playerName, PlayerKey key)
-        { var writer = new PayloadWriter(); writer.WriteString(playerName, 160); key.Write(writer); return writer.ToArray(); }
-        public static (string Name, PlayerKey Key) ReadHello(byte[] bytes)
-        { var reader = new PayloadReader(bytes); string name = reader.ReadString(160); PlayerKey key = PlayerKey.Read(reader); reader.EnsureComplete(); return (name, key); }
+        /// <param name="proof">Optional key proof for IP connections (ADR 0035); appended so older Hellos stay valid.</param>
+        public static byte[] Hello(string playerName, PlayerKey key, HelloProof? proof = null)
+        {
+            var writer = new PayloadWriter(); writer.WriteString(playerName, 160); key.Write(writer);
+            proof?.Write(writer);
+            return writer.ToArray();
+        }
+        public static (string Name, PlayerKey Key, HelloProof? Proof) ReadHello(byte[] bytes)
+        {
+            var reader = new PayloadReader(bytes); string name = reader.ReadString(160); PlayerKey key = PlayerKey.Read(reader);
+            HelloProof? proof = reader.Remaining > 0 ? HelloProof.Read(reader) : null;
+            reader.EnsureComplete(); return (name, key, proof);
+        }
+
+        public const int MaximumPasswordChars = 64;
+        /// <summary>JoinLobby: the lobby ID, then the password if the lobby has one (ADR 0035).</summary>
+        public static byte[] Join(Guid lobbyId, string? password = null)
+        {
+            var writer = new PayloadWriter(); writer.WriteGuid(lobbyId);
+            if (password != null) { ValidatePassword(password); writer.WriteString(password); }
+            return writer.ToArray();
+        }
+        public static (Guid LobbyId, string? Password) ReadJoin(byte[] bytes)
+        {
+            var reader = new PayloadReader(bytes); Guid id = reader.ReadGuid();
+            string? password = reader.Remaining > 0 ? reader.ReadString() : null;
+            reader.EnsureComplete();
+            if (password != null) ValidatePassword(password);
+            return (id, password);
+        }
+        private static void ValidatePassword(string password)
+        {
+            if (password.Length == 0 || password.Length > MaximumPasswordChars || password.Any(char.IsControl))
+                throw new ProtocolException("Password must have 1-64 printable characters.");
+        }
 
         public static byte[] String(string value, int maxBytes = 160)
         { var writer = new PayloadWriter(); writer.WriteString(value, maxBytes); return writer.ToArray(); }
@@ -131,17 +164,23 @@ namespace Multiplayer.Foundation.Protocol
         public static byte[] Error(byte code, string reason)
         { var writer = new PayloadWriter(); writer.WriteByte(code); writer.WriteString(reason); return writer.ToArray(); }
         /// <param name="mode">Chosen once here and never changed (ADR 0031); default Coop with host decisions.</param>
-        public static byte[] Create(string name, byte capacity, LobbyMode? mode = null)
+        /// <param name="password">Optional; joiners must then send it (ADR 0035).</param>
+        public static byte[] Create(string name, byte capacity, LobbyMode? mode = null, string? password = null)
         {
             var writer = new PayloadWriter(); writer.WriteString(name, 160); writer.WriteByte(capacity);
             (mode ?? LobbyMode.CoopHost).Write(writer);
+            writer.WriteBool(password != null);
+            if (password != null) { ValidatePassword(password); writer.WriteString(password); }
             return writer.ToArray();
         }
-        public static (string Name, byte Capacity, LobbyMode Mode) ReadCreate(byte[] bytes)
+        public static (string Name, byte Capacity, LobbyMode Mode, string? Password) ReadCreate(byte[] bytes)
         {
             var reader = new PayloadReader(bytes); string name = reader.ReadString(160); byte capacity = reader.ReadByte();
-            LobbyMode mode = LobbyMode.Read(reader); reader.EnsureComplete();
-            return (name, capacity, mode);
+            LobbyMode mode = LobbyMode.Read(reader);
+            string? password = reader.ReadBool() ? reader.ReadString() : null;
+            reader.EnsureComplete();
+            if (password != null) ValidatePassword(password);
+            return (name, capacity, mode, password);
         }
         public static byte[] State(LobbyView state)
         {
@@ -191,6 +230,7 @@ namespace Multiplayer.Foundation.Protocol
                 writer.WriteGuid(lobby.Id); writer.WriteString(lobby.Name, 160); writer.WriteString(lobby.HostName, 160);
                 writer.WriteByte(lobby.PlayerCount); writer.WriteByte(lobby.Capacity); writer.WriteByte((byte)lobby.Phase);
                 writer.WriteBool(lobby.HostMods != null); lobby.HostMods?.Write(writer); lobby.Mode.Write(writer);
+                writer.WriteBool(lobby.PasswordRequired);
             }
             return writer.ToArray();
         }
@@ -204,8 +244,8 @@ namespace Multiplayer.Foundation.Protocol
                 Guid id = reader.ReadGuid(); string name = reader.ReadString(160), host = reader.ReadString(160);
                 byte players = reader.ReadByte(), capacity = reader.ReadByte(); SetupPhase phase = SetupPayloads.ReadPhase(reader);
                 ModManifestSummary? mods = reader.ReadBool() ? ModManifestSummary.Read(reader) : null;
-                LobbyMode mode = LobbyMode.Read(reader);
-                lobbies.Add(new LobbySummary(id, name, host, players, capacity, phase, mods, mode));
+                LobbyMode mode = LobbyMode.Read(reader); bool passwordRequired = reader.ReadBool();
+                lobbies.Add(new LobbySummary(id, name, host, players, capacity, phase, mods, mode, passwordRequired));
             }
             reader.EnsureComplete(); return lobbies;
         }
