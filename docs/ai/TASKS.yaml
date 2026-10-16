@@ -1391,7 +1391,8 @@ tasks:
   - SYNC-004
   - SYNC-007
   acceptance:
-  - 'Ereignis mit Wahlmöglichkeit pausiert für alle und öffnet eine Abstimmung'
+  - 'Ereignis mit Wahlmöglichkeit (z. B. Wanderer will beitreten, Quest annehmen) pausiert für alle und öffnet eine Abstimmung'
+  - 'Keine Frist: Abstimmung endet, wenn alle verbundenen Spieler abgestimmt haben; getrennte Spieler zählen nicht'
   - 'Mehrheit gewinnt; bei Gleichstand entscheidet der Host'
   - 'Ergebnis wird in allen Spielen am selben Tick ausgeführt'
   implementation: planned
@@ -1436,7 +1437,9 @@ tasks:
   acceptance:
   - 'Jeder steuert nur seine Fraktion; Zonen, Forschung, Arbeitsplan und Koloniewert sind je Fraktion getrennt'
   - 'Spieler-Fenster wechselt die Ansicht zu einer anderen Kolonie und zurück, ohne Desync'
-  - 'Weltereignisse wie das Gravship erreichen alle Spieler'
+  - 'Jede Fraktion erhält Weltereignisse und Quests wie das Gravship als eigene Kopie'
+  - 'Jeder Spieler darf pausieren; die Pause gilt für alle Kolonien'
+  - 'Fraktionsbeziehung kann sich im Spiel ändern; Übersicht der Beziehungen (Gestaltung später)'
   - 'Zwei Fraktionen bleiben 30 Minuten synchron'
   implementation: planned
   verification: not_tested

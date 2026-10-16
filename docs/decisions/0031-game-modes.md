@@ -26,9 +26,13 @@
   2. Coop spielbar machen (Plan §7).
   3. Fraktionsmodus.
 - **Aufteilung** (ADR 0030): Protokoll, Server-Regeln und Lobbyzustand macht die Koordinator-Seite. Die Auswahl im Lobby-Fenster, die Anzeige in der Lobbyliste und das Speichern des Modus im Spielstand (`MultiplayerSession`) macht die Spielseite.
-- **Offene Fragen an den Benutzer:**
-  - Gravship und andere Weltereignisse im Fraktionsmodus: Kopie je Fraktion oder ein gemeinsames Ereignis?
-  - Pause im Fraktionsmodus: darf jeder pausieren?
-  - Fraktionsbeziehung im Spiel änderbar?
-  - Demokratie: Welche Ereignisse genau, und gibt es eine Abstimmungsfrist?
+- **Antworten des Benutzers (2026-10-16):**
+  1. **Gravship im Fraktionsmodus:** Jede Fraktion erhält ihr **eigenes** Gravship. Allgemein werden Weltereignisse und Quests dieser Art je Fraktion gestellt, nicht einmal für alle.
+  2. **Pause im Fraktionsmodus:** **Jeder darf pausieren**, auch wenn damit die anderen Kolonien mit anhalten.
+  3. **Fraktionsbeziehung:** Sie **darf sich im Spiel ändern**. Gewünscht ist dafür eine Übersicht; deren Gestaltung wird später bei der Umsetzung entschieden.
+  4. **Demokratie:** **Keine Frist.** Abgestimmt wird, wenn im Coop ein Ereignis eine Entscheidung verlangt, z. B. ein Wanderer will beitreten oder eine Quest annehmen.
+     - [A] Während der Abstimmung ist das Spiel für alle pausiert (gemeinsame Pause, Plan §7.6).
+     - [A] Die Abstimmung endet, wenn alle verbundenen Spieler abgestimmt haben; die Mehrheit gewinnt, bei Gleichstand der Host.
+     - [A] Getrennte Spieler zählen nicht mit.
+     - **Offen:** Was geschieht, wenn ein verbundener Spieler nicht abstimmt? Ohne Frist würde das Spiel bis dahin stehen. Möglich wäre etwa, dass der Host die Abstimmung beenden kann.
 - **Rollback:** ADR zurückziehen; ohne Moduswahl gilt Coop mit Host-Entscheid.
