@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Gemeinsames Vorschaupaket für den späteren Spieltest (`codex/manual-test-candidate`, PKG-002)
+
+- X1, X4 und X5 liegen zusammen in einem installierbaren RimWorld-1.6-ZIP. Build, Archivinhalt und Prüfsumme wurden geprüft. Gameplay, Spiel-UI und Zwei-Rechner-Verbindung sind weiterhin ungetestet; X4 bleibt ein Zwischenstand.
+
+### Erster Spielbefehl (Arbeitsbranch `codex/command-pipeline`, X4)
+
+- Draft/Undraft aus dem Spiel-UI wird als geplanter Befehl mit Karten- und Pawn-ID gesendet und an der gemeinsamen Tickgrenze ausgeführt. Fehlt die Figur beim Ausführen, wird der Befehl protokolliert und ausgelassen. Codec-Roundtrip und Mod-Build bestanden; das Verhalten in zwei laufenden RimWorld-Clients ist noch nicht geprüft. Weitere Spielaktionen bleiben offen.
+- Forbid/Unforbid verwendet nun denselben Befehlsweg mit Karten- und Thing-ID. Der Codec und die lokale 1.6-API wurden geprüft; die tatsächliche Erfassung im laufenden Spiel bleibt offen.
+- Ein einfacher Goto-Auftrag wird mit Zielzelle, JobTag und Queue-Flag geordnet übertragen. Noch nicht kodierte Spieleraufträge werden in der gemeinsamen Sitzung abgewiesen, damit sie nicht nur lokal wirken. Bewegung und Pfadsuche sind im Spiel weiterhin ungeprüft.
+
+### Spielmodus und IP-Identität im Spiel (Arbeitsbranch `codex/mode-ui`, MODE-001)
+
+- Der Host kann beim Erstellen den Spielmodus wählen; Lobbyliste und Lobby zeigen ihn an. Der Modus wird im gemeinsamen Spielstand gespeichert.
+- IP-Hosts können ein Lobby-Passwort vergeben. IP-Spieler weisen ihre lokal gespeicherte Kennung mit einem Schlüssel nach; der Host merkt sich die Zuordnung.
+- Der Lobby-Browser hat für Modus, Passwort und längere Spielerlisten einen scrollbaren Bereich.
+- Der Fraktionsstart bleibt gesperrt. Mod-Build und spielunabhängige Netzwerkprüfungen gelangen; Bedienung und Save/Load im laufenden Spiel sind offen.
+
 ### Zeitgrenze beim Laden (Arbeitsbranch `claude/snapshot-timeout`)
 
 - Lädt ein beitretender oder zu reparierender Spieler den Spielstand des Hosts nicht binnen drei Minuten, wartet die Partie nicht mehr auf ihn. Er wird aus Spiel und Lobby genommen und kann sofort neu beitreten; die anderen spielen weiter.

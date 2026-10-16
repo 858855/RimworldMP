@@ -11,9 +11,11 @@ using RimWorld.Planet;
 using Multiplayer.Foundation.Hosting;
 using Multiplayer.Foundation.Lobby;
 using Multiplayer.Foundation.Protocol;
+using ProtocolFactionRelation = Multiplayer.Foundation.Protocol.FactionRelation;
 using Steamworks;
 using UnityEngine;
 using Verse;
+using Verse.AI;
 
 namespace Multiplayer.Foundation.RimWorld
 {
@@ -39,12 +41,17 @@ namespace Multiplayer.Foundation.RimWorld
         private string status = "Nicht verbunden";
         private string lobbyName = "Colony";
         private string lobbyCapacity = "4";
+        private int modeChoice;
+        private string hostPassword = "";
+        private string joinPassword = "";
+        private float nextPinCheckAt;
         private int listPage;
         private uint requestId = 2;
         private readonly List<LobbyChatView> chatMessages = new List<LobbyChatView>();
         private string chatInput = "";
         private Vector2 chatScroll;
         private Vector2 connectionScroll;
+        private Vector2 lobbyScroll;
         private readonly GameObject updateObject;
         // MOD-001: own manifest, built once in the background, sent once per connection.
         private Task<ModManifest>? manifestTask;
@@ -149,9 +156,14 @@ namespace Multiplayer.Foundation.RimWorld
             if (pendingJoinSnapshot != null && !joinSnapshotReady) return false;
             MultiplayerSession? session = MultiplayerSession.ForCurrentGame;
             if (session?.Active != true || session.SessionId != lobby.Id.ToString("N")) return false;
+            if (session.Mode != lobby.Mode)
+            {
+                status = "Spielstand und Lobby haben unterschiedliche Spielmodi.";
+                return false;
+            }
             JoinSnapshot? join = pendingJoinSnapshot;
             tickDriver = new SessionTickDriver(lobby.Id, client!.SessionId,
-                manager.TicksGame - (join?.Boundary ?? 0), SaveAtBoundary, join);
+                manager.TicksGame - (join?.Boundary ?? 0), SaveAtBoundary, ExecuteGameCommand, join);
             pendingJoinSnapshot = null;
             joinSnapshotReady = false;
             try
@@ -196,6 +208,48 @@ namespace Multiplayer.Foundation.RimWorld
             catch (Exception error) { throw new InvalidOperationException("Speichern an der Tickgrenze fehlgeschlagen.", error); }
             status = "Gemeinsamer Spielstand wird gespeichert …";
         }
+
+        internal bool CaptureDraft(Pawn pawn, bool drafted)
+        {
+            if (!SharedGame || lobby?.Phase != SetupPhase.Playing || GameCommandCodec.Executing ||
+                Event.current == null) return true;
+            if (tickDriver == null || tickDriver.Faulted || pawn.Map == null)
+            { status = "Draft-Befehl konnte nicht gesendet werden."; return false; }
+            byte[] data = GameCommandCodec.Draft(pawn.Map.uniqueID, pawn.thingIDNumber, drafted);
+            if (!SendBackground(LockstepClient.CommandMessage(data)))
+                status = "Draft-Befehl konnte nicht gesendet werden.";
+            return false;
+        }
+
+        internal bool CaptureForbidden(Thing thing, bool forbidden)
+        {
+            if (!SharedGame || lobby?.Phase != SetupPhase.Playing || GameCommandCodec.Executing ||
+                Event.current == null) return true;
+            if (tickDriver == null || tickDriver.Faulted || thing.Map == null)
+            { status = "Forbid-Befehl konnte nicht gesendet werden."; return false; }
+            byte[] data = GameCommandCodec.Forbid(thing.Map.uniqueID, thing.thingIDNumber, forbidden);
+            if (!SendBackground(LockstepClient.CommandMessage(data)))
+                status = "Forbid-Befehl konnte nicht gesendet werden.";
+            return false;
+        }
+
+        internal bool CaptureOrderedJob(Pawn pawn, Job job, JobTag? tag, bool queued, out bool accepted)
+        {
+            accepted = false;
+            if (!SharedGame || lobby?.Phase != SetupPhase.Playing || GameCommandCodec.Executing ||
+                Event.current == null) return true;
+            if (tickDriver == null || tickDriver.Faulted || pawn.Map == null)
+            { status = "Spielauftrag konnte nicht gesendet werden."; return false; }
+            if (job == null || job.def != JobDefOf.Goto || job.targetA.HasThing)
+            { status = "Dieser Spielauftrag ist noch nicht für Multiplayer verfügbar."; return false; }
+            byte[] data = GameCommandCodec.Goto(pawn.Map.uniqueID, pawn.thingIDNumber,
+                job.targetA.Cell, tag, queued);
+            accepted = SendBackground(LockstepClient.CommandMessage(data));
+            if (!accepted) status = "Spielauftrag konnte nicht gesendet werden.";
+            return false;
+        }
+
+        private static void ExecuteGameCommand(ScheduledCommand command) => GameCommandCodec.Execute(command);
 
         private void PollScheduledSave()
         {
@@ -430,7 +484,7 @@ namespace Multiplayer.Foundation.RimWorld
             if (client == null)
             {
                 Rect viewport = new Rect(x, y, width, statusY - y - 8f);
-                Widgets.BeginScrollView(viewport, ref connectionScroll, new Rect(0f, 0f, width - 18f, 600f));
+                Widgets.BeginScrollView(viewport, ref connectionScroll, new Rect(0f, 0f, width - 18f, 720f));
                 float contentY = 0f, contentWidth = width - 18f;
                 Widgets.Label(new Rect(0f, contentY, 110f, 26f), "Spielername");
                 settings.PlayerName = Widgets.TextField(new Rect(112f, contentY, contentWidth - 112f, 26f), settings.PlayerName);
@@ -440,6 +494,8 @@ namespace Multiplayer.Foundation.RimWorld
                 TooltipHandler.TipRegion(soloRect, "Gilt beim nächsten Hosten. Der Host darf dann ohne Mitspieler starten, " +
                     "um die Spieleinrichtung allein zu testen.");
                 contentY += 40f;
+                DrawModeChoice(0f, ref contentY, contentWidth);
+                contentY += 10f;
                 DrawSteamSection(0f, ref contentY, contentWidth);
                 contentY += 12f;
                 DrawIpSection(0f, ref contentY, contentWidth);
@@ -451,6 +507,28 @@ namespace Multiplayer.Foundation.RimWorld
             }
             Widgets.DrawMenuSection(new Rect(x, statusY, width, 42f));
             Widgets.Label(new Rect(x + 10f, statusY + 7f, width - 20f, 30f), "Status: " + status);
+        }
+
+        private LobbyMode SelectedMode => modeChoice == 1 ? LobbyMode.CoopDemocracy :
+            modeChoice == 2 ? LobbyMode.Factions(ProtocolFactionRelation.Allied) :
+            modeChoice == 3 ? LobbyMode.Factions(ProtocolFactionRelation.Neutral) :
+            modeChoice == 4 ? LobbyMode.Factions(ProtocolFactionRelation.Hostile) : LobbyMode.CoopHost;
+
+        private static string ModeText(LobbyMode mode) => mode.Mode == GameMode.Coop
+            ? mode.Decisions == CoopDecisions.Democracy ? "Koop · Demokratie" : "Koop · Host entscheidet"
+            : mode.Relation == ProtocolFactionRelation.Allied ? "Fraktionen · verbündet" :
+              mode.Relation == ProtocolFactionRelation.Neutral ? "Fraktionen · neutral" : "Fraktionen · verfeindet";
+
+        private void DrawModeChoice(float x, ref float y, float width)
+        {
+            Widgets.Label(new Rect(x, y, 100f, 26f), "Spielmodus");
+            if (Widgets.ButtonText(new Rect(x + 105f, y, width - 105f, 28f), ModeText(SelectedMode)))
+                modeChoice = (modeChoice + 1) % 5;
+            y += 31f;
+            Widgets.Label(new Rect(x + 105f, y, width - 105f, 28f),
+                modeChoice >= 2 ? "Fraktionen: Spielstart noch nicht verfügbar." :
+                "Der Modus wird beim Erstellen der Lobby festgelegt.");
+            y += 32f;
         }
 
         private void DrawSteamSection(float x, ref float y, float width)
@@ -487,7 +565,7 @@ namespace Multiplayer.Foundation.RimWorld
 
         private void DrawIpSection(float x, ref float y, float width)
         {
-            Widgets.DrawMenuSection(new Rect(x, y, width, 260f));
+            Widgets.DrawMenuSection(new Rect(x, y, width, 300f));
             float inner = x + 12f, innerWidth = width - 24f, line = y + 8f;
             Widgets.Label(new Rect(inner, line, innerWidth, 28f), "2 · Per IP verbinden oder direkt hosten");
             line += 32f;
@@ -506,6 +584,9 @@ namespace Multiplayer.Foundation.RimWorld
             line += 31f;
             Widgets.CheckboxLabeled(new Rect(inner, line, Mathf.Min(420f, innerWidth), 26f),
                 "Port am Router automatisch öffnen (UPnP)", ref settings.UseUpnp);
+            line += 31f;
+            Widgets.Label(new Rect(inner, line, 105f, 26f), "Lobby-Passwort");
+            hostPassword = GUI.PasswordField(new Rect(inner + 105f, line, innerWidth - 105f, 26f), hostPassword, '*', 64);
             line += 37f;
             bool idle = connecting == null && hosting == null && action == null;
             if (idle && Widgets.ButtonText(new Rect(inner, line, 220f, 32f), "Per IP verbinden")) Connect();
@@ -514,7 +595,7 @@ namespace Multiplayer.Foundation.RimWorld
             Widgets.Label(new Rect(inner, line, innerWidth, 43f),
                 "Für Internet-Spieler muss TCP-Port " + settings.Port +
                 " am Router weitergeleitet sein – per UPnP automatisch oder manuell. Steam benötigt das nicht.");
-            y += 260f;
+            y += 300f;
         }
 
         private void DrawConnected(float x, ref float y, float width, float statusY)
@@ -541,9 +622,14 @@ namespace Multiplayer.Foundation.RimWorld
             float rightWidth = width - leftWidth - 12f;
             float panelHeight = Mathf.Max(180f, statusY - y - 8f);
             Widgets.DrawMenuSection(new Rect(x, y, leftWidth, panelHeight));
-            float leftY = y + 12f;
-            if (lobby == null) DrawBrowser(x + 12f, ref leftY, leftWidth - 24f);
-            else DrawLobby(x + 12f, ref leftY, leftWidth - 24f);
+            Rect leftViewport = new Rect(x + 12f, y + 12f, leftWidth - 24f, panelHeight - 24f);
+            Widgets.BeginScrollView(leftViewport, ref lobbyScroll,
+                new Rect(0f, 0f, leftViewport.width - 18f,
+                    Mathf.Max(840f, (lobby?.Players.Count ?? 0) * 30f + 500f)));
+            float leftY = 0f;
+            if (lobby == null) DrawBrowser(0f, ref leftY, leftViewport.width - 18f);
+            else DrawLobby(0f, ref leftY, leftViewport.width - 18f);
+            Widgets.EndScrollView();
             DrawChat(new Rect(rightX, y, rightWidth, panelHeight));
         }
 
@@ -592,21 +678,31 @@ namespace Multiplayer.Foundation.RimWorld
             { status = "Ungültiger Port"; return; }
             if (!HostEndpoint.TryParse(settings.ServerAddress, port, out string host, out port))
             { status = "Ungültige Serveradresse"; return; }
+            PlayerIdentity identity;
+            try { identity = LocalIdentity(); }
+            catch (Exception error) { status = error.Message; return; }
             status = "Verbindung wird aufgebaut";
             connecting = LobbyClient.ConnectAsync(host, port, settings.PlayerName.Trim(), TimeSpan.FromSeconds(10),
-                System.Threading.CancellationToken.None, CurrentPlayerKey());
+                System.Threading.CancellationToken.None, settings.LocalKey, identity);
         }
 
-        // SteamID when Steam runs, otherwise a key created once and stored in the mod settings (ADR 0016).
-        private PlayerKey CurrentPlayerKey()
+        private PlayerIdentity LocalIdentity()
+        {
+            bool changed = settings.EnsureLocalPlayerKey();
+            PlayerIdentity identity = settings.GetOrCreateIdentity(out bool created);
+            if (changed || created) WriteSettings();
+            return identity;
+        }
+
+        // Only Steam's authenticated transport may claim a Steam PlayerKey (ADR 0016/0035).
+        private PlayerKey SteamPlayerKey()
         {
             if (steam != null)
             {
                 CSteamID own = SteamUser.GetSteamID();
                 if (own.IsValid()) return PlayerKey.Steam((ulong)own);
             }
-            if (settings.EnsureLocalPlayerKey()) WriteSettings();
-            return settings.LocalKey;
+            throw new InvalidOperationException("Steam-Identität ist nicht verfügbar.");
         }
 
         private void HostLobby()
@@ -618,9 +714,15 @@ namespace Multiplayer.Foundation.RimWorld
             string name = lobbyName.Trim();
             if (name.Length == 0 || name.Length > 40 || name.Any(char.IsControl))
             { status = "Lobbyname muss 1–40 druckbare Zeichen haben"; return; }
+            if (!ValidPassword(hostPassword)) { status = "Passwort: 1–64 druckbare Zeichen oder leer"; return; }
+            PlayerIdentity identity;
+            Multiplayer.Foundation.Server.PlayerKeyPinStore pins;
+            try { identity = LocalIdentity(); pins = settings.LoadPins(); }
+            catch (Exception error) { status = error.Message; return; }
             status = "Lokale Lobby startet";
             hosting = ListenHost.StartAsync(settings.HostBindAddress.Trim(), port,
-                settings.PlayerName.Trim(), name, capacity, CurrentPlayerKey(), settings.AllowSoloStart);
+                settings.PlayerName.Trim(), name, capacity, settings.LocalKey, settings.AllowSoloStart,
+                SelectedMode, OptionalPassword(hostPassword), identity, pins, requireKeyProof: true);
         }
 
         private void HostSteamLobby()
@@ -633,13 +735,16 @@ namespace Multiplayer.Foundation.RimWorld
             { status = "Lobbyname muss 1–40 druckbare Zeichen haben"; return; }
             status = "Steam-Lobby startet";
             steamHostStarting = true;
-            hosting = StartSteamHostAsync(steam, settings.PlayerName.Trim(), name, capacity, CurrentPlayerKey(), settings.AllowSoloStart);
+            try { hosting = StartSteamHostAsync(steam, settings.PlayerName.Trim(), name, capacity,
+                SteamPlayerKey(), settings.AllowSoloStart, SelectedMode); }
+            catch (Exception error) { steamHostStarting = false; status = error.Message; }
         }
 
         private static async Task<ListenHost> StartSteamHostAsync(SteamLobbyBridge bridge,
-            string playerName, string name, byte capacity, PlayerKey playerKey, bool allowSoloStart)
+            string playerName, string name, byte capacity, PlayerKey playerKey, bool allowSoloStart, LobbyMode mode)
         {
-            ListenHost host = await ListenHost.StartAsync("127.0.0.1", 0, playerName, name, capacity, playerKey, allowSoloStart);
+            ListenHost host = await ListenHost.StartAsync("127.0.0.1", 0, playerName, name, capacity,
+                playerKey, allowSoloStart, mode);
             try { await bridge.StartHostingAsync(host, name, capacity); return host; }
             catch { await host.DisposeAsync(); throw; }
         }
@@ -664,6 +769,7 @@ namespace Multiplayer.Foundation.RimWorld
         private void Disconnect()
         {
             if (client == null) return;
+            SavePins();
             LobbyClient old = client;
             client = null; lobby = null; available = Array.Empty<LobbySummary>(); chatMessages.Clear();
             ResetTransfers();
@@ -680,6 +786,16 @@ namespace Multiplayer.Foundation.RimWorld
             status = "Nicht verbunden";
         }
 
+        private static bool ValidPassword(string password) => password.Length <= LobbyPayloads.MaximumPasswordChars &&
+            !password.Any(char.IsControl);
+
+        private static string? OptionalPassword(string password) => password.Length == 0 ? null : password;
+
+        private void SavePins()
+        {
+            if (hosted != null && settings.UpdatePins(hosted.Pins)) WriteSettings();
+        }
+
         private void DrawBrowser(float x, ref float y, float width)
         {
             if (Widgets.ButtonText(new Rect(x, y, 140f, 30f), "Aktualisieren"))
@@ -691,6 +807,10 @@ namespace Multiplayer.Foundation.RimWorld
             Widgets.Label(new Rect(x, y, 110f, 26f), "Plätze");
             lobbyCapacity = Widgets.TextField(new Rect(x + 110f, y, width - 110f, 26f), lobbyCapacity);
             y += 34f;
+            DrawModeChoice(x, ref y, width);
+            Widgets.Label(new Rect(x, y, 110f, 26f), "Lobby-Passwort");
+            hostPassword = GUI.PasswordField(new Rect(x + 110f, y, width - 110f, 26f), hostPassword, '*', 64);
+            y += 34f;
             if (Widgets.ButtonText(new Rect(x, y, 140f, 30f), "Lobby erstellen"))
             {
                 if (byte.TryParse(lobbyCapacity, out byte capacity) && capacity >= 2 && capacity <= 64)
@@ -698,28 +818,43 @@ namespace Multiplayer.Foundation.RimWorld
                     string name = lobbyName.Trim();
                     if (name.Length == 0 || name.Length > 40 || name.Any(char.IsControl))
                         status = "Lobbyname muss 1–40 druckbare Zeichen haben";
-                    else Send(MessageType.CreateLobby, LobbyPayloads.Create(name, capacity));
+                    else if (!ValidPassword(hostPassword)) status = "Passwort: 1–64 druckbare Zeichen oder leer";
+                    else Send(MessageType.CreateLobby, LobbyPayloads.Create(name, capacity, SelectedMode,
+                        OptionalPassword(hostPassword)));
                 }
                 else status = "Plätze müssen zwischen 2 und 64 liegen";
             }
             y += 42f;
             Widgets.Label(new Rect(x, y, width, 27f), "Verfügbare Lobbys: " + available.Count);
             y += 30f;
+            if (available.Any(room => room.PasswordRequired))
+            {
+                Widgets.Label(new Rect(x, y, 110f, 26f), "Beitrittspasswort");
+                joinPassword = GUI.PasswordField(new Rect(x + 125f, y, width - 125f, 26f), joinPassword, '*', 64);
+                y += 32f;
+            }
             int start = listPage * 5;
             foreach (LobbySummary room in available.Skip(start).Take(5))
             {
-                Rect roomRect = new Rect(x, y, width - 110f, 28f);
+                Rect roomRect = new Rect(x, y, width - 110f, 25f);
                 bool locked = room.Phase != SetupPhase.Lobby;
-                Widgets.Label(roomRect, room.Name + " – " + room.HostName + " (" + room.PlayerCount + "/" + room.Capacity + ")" +
-                    (!locked ? "" : room.Phase == SetupPhase.Playing ? " [Spiel läuft]" : " [Einrichtung]") + ModsHint(room.HostMods));
+                Widgets.Label(roomRect, (room.PasswordRequired ? "[Passwort] " : "") + room.Name + " – " +
+                    room.HostName + " (" + room.PlayerCount + "/" + room.Capacity + ")" + ModsHint(room.HostMods));
+                Widgets.Label(new Rect(x, y + 23f, width - 110f, 25f), ModeText(room.Mode) +
+                    (!locked ? "" : room.Phase == SetupPhase.Playing ? " · Spiel läuft" : " · Einrichtung"));
                 if (room.HostMods != null)
                     TooltipHandler.TipRegion(roomRect, "Host: " + room.HostMods.GameVersion + ", " + room.HostMods.ModCount +
                         " Mods, Prüfsumme " + room.HostMods.ShortHash + "\nDu: " +
                         (manifestSummary == null ? "Mod-Prüfung läuft …" : manifestSummary.GameVersion + ", " +
                         manifestSummary.ModCount + " Mods, Prüfsumme " + manifestSummary.ShortHash));
-                if (Widgets.ButtonText(new Rect(x + width - 105f, y, 100f, 28f), "Beitreten", true, true, !locked))
-                    Send(MessageType.JoinLobby, LobbyPayloads.GuidValue(room.Id));
-                y += 33f;
+                if (Widgets.ButtonText(new Rect(x + width - 105f, y + 9f, 100f, 28f), "Beitreten", true, true, !locked))
+                {
+                    if (room.PasswordRequired && (joinPassword.Length == 0 || !ValidPassword(joinPassword)))
+                        status = "Für diese Lobby ein gültiges Passwort eingeben.";
+                    else Send(MessageType.JoinLobby, LobbyPayloads.Join(room.Id,
+                        room.PasswordRequired ? joinPassword : null));
+                }
+                y += 53f;
             }
             if (listPage > 0 && Widgets.ButtonText(new Rect(x, y, 100f, 28f), "Zurück")) listPage--;
             if (start + 5 < available.Count && Widgets.ButtonText(new Rect(x + 110f, y, 100f, 28f), "Weiter")) listPage++;
@@ -730,6 +865,10 @@ namespace Multiplayer.Foundation.RimWorld
             if (lobby == null || client == null) return;
             Widgets.Label(new Rect(x, y, width, 28f), lobby.Name + " (" + lobby.Players.Count + "/" + lobby.Capacity + ")");
             y += 33f;
+            Widgets.Label(new Rect(x, y, width, 27f), ModeText(lobby.Mode));
+            y += 30f;
+            if (lobby.Mode.Mode == GameMode.Factions)
+            { Widgets.Label(new Rect(x, y, width, 27f), "Fraktionsstart folgt in einer späteren Version."); y += 30f; }
             if (lobby.Phase != SetupPhase.Lobby) { DrawSetup(x, ref y, width); return; }
             foreach (PlayerView player in lobby.Players)
             {
@@ -1405,7 +1544,7 @@ namespace Multiplayer.Foundation.RimWorld
             if (gameFileName == null)
             {
                 Find.TickManager.CurTimeSpeed = TimeSpeed.Paused;
-                session.Begin(lobby.Id, startPlayers ?? lobby.Players.Select(p => (p.Key, p.Name)).ToList(),
+                session.Begin(lobby.Id, lobby.Mode, startPlayers ?? lobby.Players.Select(p => (p.Key, p.Name)).ToList(),
                     startOwners ?? new Dictionary<int, PlayerKey>(), GameFingerprint.Colonists().Select(p => p.thingIDNumber).ToList());
                 gameFileName = GameCodec.FileNameFor(lobby.Name);
                 saveStartedUtc = DateTime.UtcNow;
@@ -1889,6 +2028,8 @@ namespace Multiplayer.Foundation.RimWorld
 
         private void UpdateNetwork()
         {
+            if (hosted != null && Time.realtimeSinceStartup >= nextPinCheckAt)
+            { nextPinCheckAt = Time.realtimeSinceStartup + 1f; SavePins(); }
             if (hosting != null && hosting.IsCompleted)
             {
                 try

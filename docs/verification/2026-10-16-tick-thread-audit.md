@@ -1,0 +1,17 @@
+# X1 / VER-001: Threads und Jobs im RimWorld-1.6-Tickpfad
+
+- **Quelle:** lokale Linux-Installation, `Version.txt` = `1.6.4871 rev598`; `RimWorldLinux_Data/Managed/Assembly-CSharp.dll`, SHA-256 `082db1dd4f7f1d0b72960d7e1beead8fbfe6957200e8627f65bda0dbbe1dd8f8`.
+- **Methode:** Reflection/IL-Aufrufauflösung mit einem temporären .NET-10-Prüfprogramm, Start bei `TickManager.TickManagerUpdate` und `DoSingleTick`, direkte Aufrufe bis Tiefe 10. Aufgerufen mit `/home/fabiok/.local/share/dotnet-rimworldmp/dotnet run --project /tmp/rimworld-api-inspect/Inspect.csproj --no-restore`; Exit 0. 6.278 direkt erreichbare Methoden wurden besucht. Keine RimWorld-Instanz wurde gestartet.
+
+| System | Belegte Aufrufkette ab `DoSingleTick` | Paralleltechnik / Grenze |
+|---|---|---|
+| Karten-Pfadsuche | `MapPreTick → PathFinderTick → PathFinderMapData.GatherData` | `System.Threading.Tasks.Parallel.ForEach` (zwei Aufrufstellen). |
+| Karten-Pfadsuche | `MapPreTick → PathFinderTick → ScheduleBatchedPathJobs` und `ScheduleGridJobs → ScheduleGridJob` | `Unity.Jobs.IJobExtensions.Schedule`, `IJobParallelForExtensions.Schedule`, `ScheduleBatchedJobs`. `ForceCompleteScheduledJobs` ruft `JobHandle.CompleteAll` auf. |
+| Welt-Pfadsuche / Fraktionsnähe | `WorldTick → FactionManagerTick → CheckSettlementProximityGoodwillChange → AppendProximityGoodwillOffsets → WorldGrid.TraversalDistanceBetween → PlanetLayer.GetClosestTile_NewTemp → FastTileFinder.Closest` | `IJobParallelForExtensions.Schedule` und `JobHandle.Complete`; `FastTileFinder.RegenerateCache` nutzt `Parallel.For`. Die Kette ist bedingt durch Spielzustand. |
+| Autosave | `AutosaverTick → LongEventHandler.QueueLongEvent` | Ein asynchrones Ereignis wird eingereiht; `LongEventHandler.UpdateCurrentAsynchronousEvent` startet einen `Thread`. In der Multiplayer-Phase unterdrückt die Spielseite den Vanilla-Autosave, sofern ihr Patch aktiv ist; Laufzeit noch offen. |
+
+**Weitere Scheduler in derselben Assembly, ohne belegte direkte Kette vom untersuchten Tick-Einstieg:** `GlowGrid.GlowGridUpdate_First` (Unity-Job), `DynamicDrawManager.ComputeCulledThings` und `.DrawSilhouettes` (Unity-Jobs), `FastTileFinder.Query` (Unity-Job). Render-/Update-Pfade können neben Ticks laufen. Für Region-Methoden fand der Scan keine direkte Job-Scheduling-Stelle; `RegionCostCalculator.RegionMedianPathCost` setzt `Verse.Rand` mit `PushState`/`Seed`/`PopState` selbst. Das ist **kein** Nachweis, dass Region-Rebuilds stets einthreadig sind.
+
+**Risiko für X3/DET-001:** `SessionRandom` aktiviert Zählung mit `[ThreadStatic]` nur im aufrufenden Spielthread. Ziehungen in Jobs oder `Parallel`-Delegates liegen außerhalb dieses Scopes. Die IL-Prüfung fand in den direkt benannten `PathFinder`-/`FastTileFinder`-Scheduler-Methoden keinen `Rand`-Aufruf; sie beweist weder, dass ihre Worker-Codepfade kein `Rand` nutzen, noch dass Ergebnisse unabhängig von Ausführungsreihenfolge sind. Vor einer Determinismus-Zusage sind Worker-Implementierungen, virtuelle Tick-Methoden und Mods zu instrumentieren oder parallele Pfade kontrolliert zu serialisieren; anschließend zwei Instanzen über 60.000 Ticks vergleichen (`DET-001`).
+
+**Grenze:** Statische Auflösung verfolgt keine virtuellen Overrides wie `Thing.Tick`/`MapComponentTick`, keine Harmony-Patches und keinen nativen Unity-Job-Code. Sie belegt die genannten Scheduler-Aufrufe, aber keine vollständige Laufzeit-Threadliste und keinen Desync.

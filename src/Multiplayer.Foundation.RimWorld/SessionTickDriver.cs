@@ -12,6 +12,7 @@ namespace Multiplayer.Foundation.RimWorld
     {
         private readonly LockstepClient lockstep;
         private readonly Action<ScheduledCommand> saveAtBoundary;
+        private readonly Action<ScheduledCommand> executeGameCommand;
         private readonly Queue<ScheduledCommand> boundaryCommands = new Queue<ScheduledCommand>();
         private readonly Guid localSession;
         private readonly int landingTicksGame;
@@ -25,10 +26,12 @@ namespace Multiplayer.Foundation.RimWorld
         private int currentTick;
 
         internal SessionTickDriver(Guid lobbyId, Guid localSession, int landingTicksGame, Action<ScheduledCommand> saveAtBoundary,
+            Action<ScheduledCommand> executeGameCommand,
             JoinSnapshot? join = null)
         {
             LobbyId = lobbyId; this.localSession = localSession;
             this.landingTicksGame = landingTicksGame; this.saveAtBoundary = saveAtBoundary;
+            this.executeGameCommand = executeGameCommand;
             lockstep = join == null ? new LockstepClient() : LockstepClient.ForJoin(join);
             random = new SessionRandom(lobbyId);
             catchingUp = join != null;
@@ -74,7 +77,11 @@ namespace Multiplayer.Foundation.RimWorld
             {
                 ScheduledCommand command = boundaryCommands.Dequeue();
                 if (command.Kind == ScheduledKind.Game)
-                    Stop("Ein Spielbefehl ist eingetroffen, aber der Ausführer (SYNC-002) fehlt noch.");
+                {
+                    random.BeginCommand(completed, command.Sequence);
+                    try { executeGameCommand(command); }
+                    finally { random.End(); }
+                }
                 else if (command.Kind == ScheduledKind.Save)
                 {
                     savePending = true;

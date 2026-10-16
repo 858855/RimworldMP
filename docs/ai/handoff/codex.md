@@ -1,8 +1,20 @@
 # Übergabe Codex (Spielseite)
 
+- **Aktueller Branch:** `codex/manual-test-candidate` von `codex/command-pipeline` @ `f91655a`, mit X1 @ `2068ea3` und X5 @ `017f24e` als Cherry-Picks. Gemeinsames Vorschau-ZIP unter `releases/RimWorldMultiplayerFoundation-0.2.0-preview-f04cb14-rw1.6.zip`, SHA-256 und Prüfergebnisse in `docs/verification/2026-10-16-manual-test-candidate.md`. Kein RimWorld-Spielprozess gestartet, kein Push/Merge.
+- **Nächster konkreter Schritt:** X4 auf `codex/command-pipeline` fortsetzen; vor dem späteren Test ein neues Paket aus dem finalen Review-Stand bauen. Das aktuelle ZIP ist WIP und nur lokal. Testprompts: `docs/verification/TEST_PROMPTS_FABIO_SVEN.md`.
+- **X4 / 2026-10-16:** `codex/command-pipeline` auf `main` @ `b4255c6` rebasiert. Draft/Undraft, Forbid/Unforbid und einfaches Goto mit Karten-/Objekt-ID, gemeinsamem `GameReferenceCodec` und Harmony-GUI-Capture gebaut; andere UI-Aufträge werden gesperrt. Echter Zwei-Client-Lauf und Pfadsuche-Determinismus offen. Nächster Schritt: weitere stabile Referenztypen und Ordered Jobs/Designatoren nach Plan §7.3. ADR 0043, `docs/verification/2026-10-16-command-pipeline-first-action.md`. Kein Push/Merge ohne passende Freigabe.
+- **X1:** `codex/ver-tickpath` @ `2068ea3` nach Rebase auf `main` @ `b4255c6`; der statische 1.6-Thread-Audit liegt unter `docs/verification/2026-10-16-tick-thread-audit.md`. Die Assembly belegt parallele Karten- und Weltpfadsuche sowie einen möglichen asynchronen Autosave-Pfad. Kein Laufzeit-Threadtrace, noch nicht gemergt.
 - **Bahn:** siehe `docs/ai/ASSIGNMENTS.md`. Branch-Präfix `codex/`, ADR 0040–0049, Nachrichtencodes 80–95. Arbeitsverzeichnis `/mnt/Arbeit/Git Projekte/RimworldMP`.
-- **Nächste Aufgaben:** X1 `VER-001` (Thread-Liste des 1.6-Tickpfads), danach X4 `SYNC-002` (Befehlserfassung). Siehe `ASSIGNMENTS.md`.
+- **Nächste Aufgaben:** X4 `SYNC-002` auf lokalem `codex/command-pipeline` vervollständigen. X1 `VER-001` und X5 `MODE-001` liegen auf separaten lokalen Branches; `codex/manual-test-candidate` vereint sie zur Paketprüfung. RimWorld-Spieltests warten auf Fabio und Sven. Siehe `ASSIGNMENTS.md`.
 - **Koordinator:** Claude C1–C3 sind seit `8f7c32f` auf `main`. `claude/save-join`, `claude/resync` und `claude/vote` sind gelöscht; für Snapshot-Ladefehler bleibt eine zeitliche Abbruchregel zu prüfen.
+
+## X5 – Spielmodus und IP-Identität (2026-10-16)
+
+- **Branch/Basis:** `codex/mode-ui` von `origin/main` @ `b4255c6`. Letzten Commit per `git log -1` prüfen. Kein Merge/Push ohne passende Freigabe.
+- **Ziel/Umfang:** MODE-001-Spielseite und der in ADR 0035 angeforderte SEC-001-Spieladapter in `FoundationMod`, `FoundationSettings`, `MultiplayerSession` und `WorldSelfTest`. Kein Koordinator-/Protokollcode, kein Gameplay-Fraktionsmodus.
+- **Ergebnis:** Host wählt Coop/Host, Coop/Demokratie oder Fraktionsbeziehung; Servermodus erscheint in Liste/Lobby und wird im gemeinsamen Save gespeichert. Ältere Saves gelten als Coop/Host; Modusabweichung hält Tick-Treiber an. IP-Verbindungen verwenden gespeicherte lokale Kennung plus RSA-Nachweis; direkter Host verlangt ihn und speichert Key-Pins. Optionales Lobby-Passwort wird abgefragt. Steam-Kennung nur über Steam.
+- **Prüfung:** Mod-Build gegen lokale 1.6.4871-rev598-Assemblies ohne Warnungen; `Protocol.Tests` und `Hosting.Tests` als Konsolenprogramme bestanden. Genaue Befehle und Grenzen: `docs/verification/2026-10-16-codex-mode-ui.md`. RimWorld selbst auf Benutzerwunsch nicht gestartet.
+- **Offen:** UI, RSA unter RimWorld-Mono, tatsächliches Laden des Modus, Zwei-Spieler-Simulation, Windows/Linux-Test. X4 ist ein separater lokaler WIP-Branch. Näheres in ADR 0044 und `docs/reviews/2026-10-16-codex-mode-ui.md`.
 
 ## Aktuell – ADR 0032 auf Spielseite und X3
 

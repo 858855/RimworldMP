@@ -335,6 +335,32 @@ tasks:
   evidence:
   - docs/verification/2026-10-15-installable-mod-zip.md
   - docs/verification/2026-10-15-direct-host.md
+- id: PKG-002
+  title: Gemeinsames Vorschau-ZIP für spätere Tests mit Fabio und Sven
+  goal: X1, X4 und X5 auf einem Arbeitsbranch als identisches RimWorld-1.6-Mod-Paket bereitstellen.
+  description: Lokaler manueller Testkandidat; kein Gameplay-Funktionsnachweis und keine Veröffentlichung.
+  priority: high
+  owner: codex
+  components:
+  - rimworld_adapter
+  - deployment
+  depends_on:
+  - PKG-001
+  acceptance:
+  - X1, X4 und X5 sind auf einem codex-Arbeitsbranch enthalten
+  - Release-Mod baut gegen die lokale RimWorld-1.6-Assembly
+  - ZIP-Struktur und SHA-256 sind geprüft
+  - Noch nicht ausgeführte Spieltests und WIP-Anteile sind dokumentiert
+  implementation: implemented
+  verification: build_passed
+  integration: not_submitted
+  branch: codex/manual-test-candidate
+  base_branch: codex/command-pipeline
+  base_commit: f91655a
+  evidence:
+  - docs/verification/2026-10-16-manual-test-candidate.md
+  - docs/reviews/2026-10-16-manual-test-candidate.md
+  blocker: 'Manuelle RimWorld- und Zwei-Rechner-Tests stehen aus; SYNC-002 ist WIP. Kein Push/Merge ohne dafür geltende Freigabe.'
 - id: HOST-001
   title: Lobby ohne separaten Serverprozess aus der Mod hosten
   goal: Ein Spieler startet die autoritative Lobby direkt im RimWorld-Mod und ein Kollege verbindet sich per LAN-IP.
@@ -577,7 +603,8 @@ tasks:
   - references/verified-apis.md
   - docs/verification/2026-10-15-mod-check-setup-ui.md
   - docs/verification/2026-10-15-world-transfer.md
-  blocker: 'Metadatenteil erledigt; Laufzeit: Welt ohne Karte speichern/laden und Anzeige auf der Startortseite im Hauptmenü nachgewiesen, Größen gemessen (Selbsttest, ADR 0020/0021). Offen: Threads im Tickpfad.'
+  - docs/verification/2026-10-16-tick-thread-audit.md
+  blocker: 'Metadaten und Welt-Selbsttest belegt; direkte Thread-/Job-Aufrufketten im 1.6-Tickpfad statisch erfasst. Virtuelle Tick-Methoden, native Jobs, Mods und Laufzeit-Threadtrace bleiben offen; kein Determinismusnachweis.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: ID-001
   title: 'Persistente Spieleridentität (PlayerKey)'
@@ -960,11 +987,16 @@ tasks:
   acceptance:
   - 'Roundtrip für jeden Typ aus Plan §7.3'
   - 'Fehlende Referenzen werden überall deterministisch zum No-op'
-  implementation: planned
-  verification: not_tested
+  implementation: in_progress
+  verification: build_passed
   integration: not_submitted
-  branch: null
-  evidence: []
+  branch: codex/command-pipeline
+  base_branch: main
+  base_commit: b4255c6
+  evidence:
+  - docs/decisions/0043-command-pipeline-first-action.md
+  - docs/verification/2026-10-16-command-pipeline-first-action.md
+  blocker: 'Draft/Undraft, Forbid/Unforbid und einfaches Goto kodiert; übrige Referenztypen, Ordered Jobs, Designatoren und Zwei-Client-Spieltest fehlen. Pfadsuche bleibt deterministisch ungeprüft.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: SYNC-003
   title: 'Geschwindigkeit und Pause'
@@ -1411,16 +1443,18 @@ tasks:
   - 'Ungültige Kombinationen werden abgelehnt'
   - 'Start im Fraktionsmodus wird abgelehnt, solange FACTION-001 nicht fertig ist'
   - 'Beim Laden kommt der Modus aus dem Spielstand'
-  implementation: in_progress
-  verification: tests_passed
-  integration: merged
-  branch: feat/game-mode
-  base_branch: feat/lockstep-session
-  base_commit: 52a6de1
+  implementation: implemented
+  verification: build_passed
+  integration: ready_for_human_review
+  branch: codex/mode-ui
+  base_branch: main
+  base_commit: b4255c6
   evidence:
   - docs/verification/2026-10-16-game-mode.md
   - docs/decisions/0031-game-modes.md
-  blocker: 'Koordinator-Seite fertig und getestet. Fehlt Spielseite: Auswahl im Lobby-Fenster, Anzeige in der Liste, Modus im Spielstand und beim Laden.'
+  - docs/verification/2026-10-16-codex-mode-ui.md
+  - docs/decisions/0044-mode-and-ip-identity-ui.md
+  blocker: 'Spielseite gebaut; RimWorld-UI und Save/Load im laufenden Spiel auf Wunsch des Benutzers noch nicht geprüft. SEC-001-Spielseite im selben Branch, ohne Änderung am Claude-Aufgabeneintrag.'
   plan_ref: docs/decisions/0031-game-modes.md
 - id: SAVE-003
   title: 'Spielseite für koordiniertes Speichern'

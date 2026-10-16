@@ -153,7 +153,8 @@ namespace Multiplayer.Foundation.RimWorld
                         owners[-1] = b; // a pawn that did not land must not be saved
                         MultiplayerSession? session = MultiplayerSession.ForCurrentGame;
                         Check("component", session != null);
-                        session?.Begin(Guid.NewGuid(), new[] { (a, "Test-Host"), (b, "Test-Gast") }, owners,
+                        session?.Begin(Guid.NewGuid(), Protocol.LobbyMode.CoopHost,
+                            new[] { (a, "Test-Host"), (b, "Test-Gast") }, owners,
                             colonists.Select(p => p.thingIDNumber).ToList());
                         Check("ownersLanded", session != null && session.Owners.Count() == Math.Min(2, colonists.Count));
                         Map map = Find.Maps[0];
