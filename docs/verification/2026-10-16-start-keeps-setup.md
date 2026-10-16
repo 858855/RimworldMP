@@ -47,3 +47,10 @@ In beiden Läufen stammt der einzige weitere Logfehler aus einer alten `Multipla
 ## Einordnung nach AGENTS.md Regel 25
 
 `BUILD_ERFOLGREICH` (0 Warnungen); `IN_GAME_GETESTET` (Selbsttest, ein Prozess, ohne Netz); `MP_ZWEI_CLIENTS_GETESTET`: nein.
+
+## Benutzer-Lauf allein (Debug), 2026-10-16 18:35
+
+- Bestätigt: Der Start läuft ohne `InitGameStart`-Ausnahme. Die gewählten Figuren sind gelandet, und der Spielstand meldet `players 1; owners 1` (vorher `owners 0`).
+- Weitere Logfehler:
+  - Die bekannte `TypeLoadException` aus der alten `Multiplayer.Foundation.Session.dll`.
+  - Beim Beenden eine `InvalidOperationException: Steamworks is not initialized` (`SteamCallbackPump.OnDestroy` → `SteamLobbyBridge.Leave`). Sie kommt, weil Steam schon heruntergefahren ist, und betrifft diesen Fehler nicht.
