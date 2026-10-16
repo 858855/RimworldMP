@@ -30,3 +30,11 @@
   - Der Selbsttest prüft Editor, Anfragen und Seite (PASS).
   - Verifikation: `docs/verification/2026-10-16-guest-page-functions.md`.
   - Die Pause nach der Landung bleibt, bis SYNC-001 da ist.
+- **Gleichlauf, erster Schnitt (2026-10-16, SYNC-001, Branch `feat/sync-lockstep`, Worktree `E:/RimworldMP-sync`, auf `feat/mod-check-setup-ui` @ `5c3f2b7`):**
+  - ADR 0024 vom Besitzer freigegeben. Neues Projekt `Multiplayer.Foundation.Session` (Sequencer, Takt, Flusskontrolle, Hash-Vergleich), Wire-Version 4 (Codes 38–43), Tick-Treiber im Spiel.
+  - Das Spiel startet pausiert; jeder pausiert und setzt fort, der Host wählt die Stufe; Prüfsumme alle 60 Ticks; Knopf „Testmarkierung“.
+  - DET-001-Befunde aus dem Selbsttest, mit Gegenmaßnahmen: Fischschatten- und Geräusch-Zufall isoliert (`LockstepVisualRandPatch`), Tickrate der Figuren unabhängig von der Sicht (`LockstepTickRatePatch`), Pfade sofort (`LockstepPathRequestPatch`, Vorsicht).
+  - Ergebnis: 6 000 Ticks gleich. Über 60 000 Ticks bleibt eine seltene Abweichung im ersten Lauf ab Tick 20 460, Ursache offen.
+  - Werkzeug für die nächste Suche: die Rand-Spur im Selbsttest (`LockstepRandTrace`). Sie nennt die erste abweichende Zufallsziehung mit Aufrufstelle.
+  - Verifikation: `docs/verification/2026-10-16-lockstep-core.md`; Zwei-Spieler-Prüfpunkte: `docs/reviews/2026-10-16-sync-lockstep.md`; Build zum Verteilen: `dist/RimWorldMultiplayerFoundation-sync-lockstep.zip` (nicht im Repo).
+  - Offen: zwei echte Spieler, Rest-Abweichung, SYNC-002 (Spieleraktionen werden noch nicht geteilt).

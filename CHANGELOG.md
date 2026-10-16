@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Gleichlauf, erster Schnitt (Arbeitsbranch `feat/sync-lockstep`, Basis `feat/mod-check-setup-ui`)
+
+- Nach der Landung läuft die Zeit jetzt bei allen Spielern im Gleichschritt. Das gemeinsame Spiel startet pausiert; Leertaste oder ▶ lässt die Zeit für alle laufen.
+- Pausieren und Fortsetzen darf jeder; die Geschwindigkeitsstufe wählt der Host. Auch RimWorlds automatische Pause bei Bedrohungen pausiert für alle. Ultraschnell gibt es im Mehrspieler nicht.
+- Ist ein Spieler langsamer, warten die anderen auf ihn; das Feld oben rechts zeigt, auf wen.
+- Alle 60 Ticks vergleichen die Spieler eine Prüfsumme ihres Spielzustands. Das Feld zeigt „Prüfsummen gleich bis Tick …“ oder eine Abweichung.
+- Knopf **Testmarkierung**: Jeder Spieler sieht die Markierung beim selben Tick.
+- Noch nicht geteilt werden Spieleraktionen wie Bauen, Zeichnen oder Einziehen (SYNC-002). Jede solche Aktion führt zu einer gemeldeten Abweichung.
+- Im Mehrspieler gibt es kein lokales Autospeichern; manuelles Speichern geht weiter.
+- RimWorld läuft während der Sitzung auch ohne Fokus weiter, sonst würde ein Spieler im Hintergrund alle anhalten.
+- Protokoll Wire-Version 4; ältere Builds können nicht mehr verbinden.
+- Behoben für den Gleichlauf: In RimWorld 1.6 liefen zwei Spiele vom selben Stand auseinander. Ursachen waren Fischschatten und Geräusche, die aus dem Spielzufall ziehen, und Figuren, die je nach Sichtbarkeit auf dem Bildschirm verschieden oft ticken. In der Sitzung ziehen Fischschatten und Geräusche jetzt getrennt, alle Figuren ticken gleich oft, und Pfade werden sofort berechnet.
+- Bekannt: Über einen ganzen Spieltag kann noch selten eine Abweichung auftreten; das Feld meldet sie.
+
 ### Mod-Prüfung, Start-Knopf und Seitenspiegel (Arbeitsbranch `feat/mod-check-setup-ui`, Basis `feat/setup-rules`)
 
 - In der Lobby werden Mods, Ladereihenfolge und Mod-Inhalte mit dem Host verglichen; die Spielversion wird nur angezeigt. Abweichende Spieler sind rot markiert und können nicht bereit sein; ein Bericht zeigt die Unterschiede. Die Lobbyliste zeigt vorab, ob die Mods passen.

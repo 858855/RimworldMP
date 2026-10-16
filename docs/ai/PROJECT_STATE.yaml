@@ -14,15 +14,16 @@ target_rimworld_version:
   runtime: Unity/Mono
   game_runtime_tested: true
   other_versions_verified: []
-current_phase: mod_check_start_and_setup_mirror_review_pending
+current_phase: lockstep_core_review_pending
 git:
-  branch: feat/mod-check-setup-ui
-  base_branch: feat/setup-rules
-  base_commit: 5798f95
+  branch: feat/sync-lockstep
+  base_branch: feat/mod-check-setup-ui
+  base_commit: 5c3f2b7
   current_commit_ref: HEAD
   pushed: false
   merged: false
   dependent_branches:
+  - feat/mod-check-setup-ui
   - feat/setup-rules
   - feat/player-key
   - feat/chunk-transfer
@@ -79,11 +80,16 @@ components:
     implementation: implemented
     verification: tests_passed
     integration: merged
+  session_core:
+    implementation: implemented
+    verification: tests_passed
+    integration: not_submitted
   steam_p2p:
     implementation: in_progress
     verification: build_passed
     integration: merged
 verified_capabilities:
+- 'SYNC-001 Selbsttest im Spiel: Tick-Treiber gegen Sequencer im selben Prozess (nie über den Horizont, der langsamste bremst, Pause/Geschwindigkeit beim richtigen Tick); derselbe Spielstand fünfmal geladen, 6 000 Ticks gleich nach drei Determinismus-Gegenmaßnahmen (ADR 0024 Nachtrag). Zwei echte Clients offen.'
 - 'SETUP-002 Selbsttest im Spiel: Welt ohne Karte erzeugt, gespeichert und im Hauptmenü wie ein Gast geladen, Fingerabdruck gleich (5/30/50 % Abdeckung; 50 % = 1,9 MB gzip, Laden 1,75 s).'
 - 'Archiv: 49 Einträge gegen eingebettetes Manifest geprüft.'
 - Drei XML-Beispiele syntaktisch geprüft; kein RimWorld-Laufzeitnachweis.
@@ -152,7 +158,9 @@ active_tasks:
 - SETUP-003
 - SETUP-004
 - SETUP-005
-next_action: 'Zwei-Spieler-Test der ganzen Einrichtung bis zur Landung (Prüfpunkte 1–9 in docs/reviews/2026-10-15-mod-check-setup-ui.md); danach OWN-001 (Besitzanzeige) und SYNC-001 (Gleichlauf).'
+- SYNC-001
+- DET-001
+next_action: 'Zwei-Spieler-Lauf mit dem Gleichlauf (Prüfpunkte 1–9 in docs/reviews/2026-10-16-sync-lockstep.md); danach DET-001 (Rest-Abweichung über 60 000 Ticks, zwei Instanzen) und SYNC-002 (Befehls-Pipeline).'
 documentation_refs:
   tasks: docs/ai/TASKS.yaml
   handoff: docs/ai/SESSION_HANDOFF.md
@@ -206,4 +214,7 @@ documentation_refs:
   character_selection_verification: docs/verification/2026-10-15-character-selection.md
   game_start_decision: docs/decisions/0023-shared-game-start.md
   game_start_verification: docs/verification/2026-10-15-game-start.md
-last_updated: '2026-10-15'
+  lockstep_core_decision: docs/decisions/0024-lockstep-core.md
+  lockstep_core_verification: docs/verification/2026-10-16-lockstep-core.md
+  lockstep_core_review: docs/reviews/2026-10-16-sync-lockstep.md
+last_updated: '2026-10-16'

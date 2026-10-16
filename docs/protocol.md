@@ -1,10 +1,10 @@
-# Protokoll – Wire-Version 3
+# Protokoll – Wire-Version 4
 
 **Implementierungsstand:** Framing und Nutzdaten-Helfer auf `feat/network-protocol`; Server- und Lobby-Semantik sind auf `feat/dedicated-server` implementiert und per TCP getestet. Kein Gameplay-Sync.
 
 ## Frame
 
-Alle Ganzzahlen sind Big Endian. Vier Bytes geben die Body-Länge an (`6..65536`). Der Body enthält `version:u8` (=3), `type:u8`, `requestId:u32` und danach `payload`. TCP-Lesevorgänge dürfen Frames beliebig fragmentieren oder zusammenfassen. Ein einzelner Request erhält eine vom Client gewählte ID; Push-Nachrichten verwenden ID 0. Unbekannte Versionen und Typen werden abgelehnt. Version 2 brachte Chat-Nachrichten, Version 3 den Chunk-Kanal; Versionen sind untereinander nicht kombinierbar.
+Alle Ganzzahlen sind Big Endian. Vier Bytes geben die Body-Länge an (`6..65536`). Der Body enthält `version:u8` (=4), `type:u8`, `requestId:u32` und danach `payload`. TCP-Lesevorgänge dürfen Frames beliebig fragmentieren oder zusammenfassen. Ein einzelner Request erhält eine vom Client gewählte ID; Push-Nachrichten verwenden ID 0. Unbekannte Versionen und Typen werden abgelehnt. Version 2 brachte Chat-Nachrichten, Version 3 den Chunk-Kanal, Version 4 den Gleichlauf (SYNC-001); Versionen sind untereinander nicht kombinierbar.
 
 Strings sind `length:u16` plus strikt gültige UTF-8-Bytes. Allgemeine Strings: höchstens 256 Bytes. Namen werden zusätzlich fachlich auf 1–40 Zeichen und Steuerzeichen geprüft. GUIDs sind 16 Bytes in kanonischer Netzwerkreihenfolge. Listen- und Spieler-Counts sind `u8`; Payloads müssen vollständig gelesen werden, zusätzliche Bytes sind Fehler.
 
@@ -46,6 +46,12 @@ Strings sind `length:u16` plus strikt gültige UTF-8-Bytes. Allgemeine Strings: 
 | 35 | GameReady | C→S | Fingerabdruck des geladenen Startspiels (32 Byte); nur Host, nur in `Generating` |
 | 36 | GameLoaded | C→S | Fingerabdruck des geladenen Startspiels (32 Byte); nur Gäste, nur in `Generating` |
 | 37 | PawnPortrait | C→S→C | Figur `u32`, PNG (`u32`-Länge, 1..49152 Byte); nur Host, nur in `Characters`, an alle anderen |
+| 38 | LockstepCommand | C→S | Art `u16`, Nutzlast (`u32`-Länge, ≤ 32 768 Byte); nur in `Playing` |
+| 39 | ScheduledCommand | S→C | Tick `u32`, `seq` `u32`, Aussteller `PlayerKey`, Art `u16`, Nutzlast; an alle |
+| 40 | TickHorizon | S→C | Horizont `u32`, Geschwindigkeit `u8` (0–3), wartet auf (Session-ID, leer = niemand), dessen Tick `u32`, letzter Tick mit gleichen Prüfsummen `u32` (`0xFFFFFFFF` = keiner) |
+| 41 | ClientTick | C→S | Tick `u32`, Flags `u8` (Bit 0: vanillas Gefahrenbremse aktiv); nur in `Playing` |
+| 42 | StateHash | C→S | Tick `u32`, Hash `u64`; nur in `Playing` |
+| 43 | DesyncDetected | S→C | Tick `u32`, Anzahl `u8` (1–64), Session-IDs der Spieler, die vom Host abweichen |
 
 Listen- und Zustandsupdates sind in `LobbyPayloads.cs` kodiert: Liste mit `count:u8`, je Lobby GUID, Name, Hostname, Spielerzahl und Kapazität; Snapshot mit GUID, Name, Host-GUID, Revision `u64`, Kapazität, Setup-Phase `u8`, optional gewähltes Feld und Spielerarray (Session-GUID, Name, Ready, PlayerKey, optional Fähnchen). Die Liste trägt je Lobby zusätzlich die Phase. Der TCP-Server verwendet diese Payloads; zwei unabhängige TCP-Testclients bestanden die Integrationstests. RimWorld-Client-Kompatibilität ist noch offen. Fehlercodes: `1=InvalidMessage`, `2=VersionMismatch`, `3=Unauthorized`, `4=NotFound`, `5=Capacity`, `6=InvalidState`, `7=ServerBusy`.
 
@@ -114,4 +120,15 @@ Bei 7 und 8 ändert der Host die Generierungsanfrage des Platzes und erzeugt die
 
 ## Gemeinsamer Spielstart (SETUP-005, ADR 0023)
 
-In `Generating` startet der Host das vanilla-Spiel, speichert es, sendet den Spielstand als Chunk-Übertragung der Art `3` und lädt ihn selbst neu. Ab `Generating` meldet `WorldStatus` je Spieler den Spielstand (`1` lädt, `2` passt, `3` weicht ab). `GameLoaded` eines Gastes darf vor `GameReady` kommen und zählt, sobald der Host meldet. `SetupAdvance(Playing)` verlangt `GameReady` und „passt“ bei allen; Abweichung Code 8, fehlende Meldung Code 6. In `Playing` gibt es keinen weiteren Schritt (bis SYNC-001); Bereit ist nicht gültig, Beitritte bleiben gesperrt, `SetupAbort` des Hosts beendet die Sitzung.
+In `Generating` startet der Host das vanilla-Spiel, speichert es, sendet den Spielstand als Chunk-Übertragung der Art `3` und lädt ihn selbst neu. Ab `Generating` meldet `WorldStatus` je Spieler den Spielstand (`1` lädt, `2` passt, `3` weicht ab). `GameLoaded` eines Gastes darf vor `GameReady` kommen und zählt, sobald der Host meldet. `SetupAdvance(Playing)` verlangt `GameReady` und „passt“ bei allen; Abweichung Code 8, fehlende Meldung Code 6. In `Playing` gibt es keinen weiteren Setup-Schritt; dort läuft der Gleichlauf (unten). Bereit ist nicht gültig, Beitritte bleiben gesperrt, `SetupAbort` des Hosts beendet die Sitzung.
+
+## Gleichlauf (SYNC-001, ADR 0024)
+
+Nur in `Playing` (sonst Code 6). Jede Lobby in `Playing` hat einen Sequencer auf dem Server; ein neues Spiel bekommt einen neuen.
+- **Start:** Erst wenn jeder Spieler einen `ClientTick` gemeldet hat. Der Horizont beginnt beim kleinsten gemeldeten Tick, die Geschwindigkeit ist Pause.
+- **Takt:** etwa alle 50 ms. Wartende Befehle bekommen Tick = Horizont + 1 und fortlaufende `seq` und gehen an alle. Danach rückt der Horizont um die verstrichene Zeit × 60/180/360 Ticks je Sekunde vor, höchstens bis zum Tick des langsamsten Spielers + 2 s; gestaute Zeit wird nicht nachgeholt. Nur dieser Takt sendet `ScheduledCommand`, `TickHorizon` und `DesyncDetected`. So kommt jeder Befehl für Tick t vor jedem Horizont ≥ t an.
+- **Ausführung beim Client:** Ein Befehl für Tick t läuft, sobald das Spiel bei t − 1 steht, vor dem Tick t; mehrere in `seq`-Reihenfolge. Ein Befehl für einen schon gelaufenen Tick wird nicht ausgeführt und als Abweichung gemeldet.
+- **Arten:** `1` Geschwindigkeit (Nutzlast `u8` 0–3), `2` Testmarkierung (Text ≤ 64 Byte, ohne Spielwirkung). Ab `16` Spielbefehle, die der Server nicht liest (SYNC-002); bis dahin überall ein No-op.
+- **Regeln für die Geschwindigkeit:** Pausieren und Fortsetzen darf jeder; die Stufe wählt der Host (sonst Code 3). Ein Gast setzt eine Pause mit der letzten Stufe fort. Ein Wunsch ohne Änderung wird verworfen. Meldet ein Spieler die Gefahrenbremse, läuft der Takt mit Normal.
+- **Grenzen:** höchstens 30 Befehle je Sekunde und Spieler (Code 7), Befehl ≤ 32 KiB. Den Aussteller setzt der Server.
+- **Prüfsummen:** beim Start und nach jedem Tick mit `Tick % 60 == 0`. Der Server vergleicht, sobald alle gemeldet haben, mit dem Hash des Hosts. Der letzte gleiche Tick steht im Horizont; die erste Abweichung meldet er einmal mit `DesyncDetected`. Höchstens 64 offene Ticks.

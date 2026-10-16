@@ -911,11 +911,14 @@ tasks:
   acceptance:
   - 'Zwei Instanzen, gleicher Spielstand, keine Eingaben, Rand-Neuseed pro Tick: Hashes über 60000 Ticks gleich'
   - 'Jede Abweichung ist ursächlich geklärt und behebbar, sonst wird der Plan überarbeitet'
-  implementation: planned
-  verification: not_tested
+  implementation: in_progress
+  verification: tests_passed
   integration: not_submitted
-  branch: null
-  evidence: []
+  branch: feat/sync-lockstep
+  evidence:
+  - docs/decisions/0024-lockstep-core.md
+  - docs/verification/2026-10-16-lockstep-core.md
+  blocker: 'Minimum im selben Prozess: 5 × 6 000 Ticks gleich nach drei Gegenmaßnahmen (Fischschatten- und Geräusch-Zufall isoliert, Tickrate unabhängig von der Sicht; Pfade sofort als Vorsicht). Über 60 000 Ticks bleibt eine seltene Abweichung im ersten Lauf ab Tick 20 460, Ursache offen. Zwei Instanzen (TOOL-001) offen.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: SYNC-001
   title: 'Sequencer, Tick-Horizont und Tick-Treiber'
@@ -933,11 +936,15 @@ tasks:
   acceptance:
   - 'Server-Unit-Tests für Reihenfolge und Flusskontrolle'
   - 'Zwei Clients laufen im Lockstep; der langsamste bestimmt das Tempo'
-  implementation: planned
-  verification: not_tested
-  integration: not_submitted
-  branch: null
-  evidence: []
+  implementation: implemented
+  verification: tests_passed
+  integration: ready_for_human_review
+  branch: feat/sync-lockstep
+  evidence:
+  - docs/decisions/0024-lockstep-core.md
+  - docs/verification/2026-10-16-lockstep-core.md
+  - docs/reviews/2026-10-16-sync-lockstep.md
+  blocker: 'Server-Tests für Reihenfolge und Flusskontrolle bestanden (Session.Tests, Hosting.Tests mit echtem Server). Treiber im Selbsttest geprüft (nie über den Horizont, der langsamste bremst, Pause und Geschwindigkeit beim richtigen Tick). Offen: zwei echte Clients (Prüfpunkte in der Review-Unterlage).'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: SYNC-002
   title: 'Befehls-Pipeline und Serializer-Registry'
@@ -972,11 +979,14 @@ tasks:
   acceptance:
   - 'Pause, Geschwindigkeit und Richtlinien mit zwei Clients geprüft'
   - 'Vanilla-Geschwindigkeitstasten werden abgefangen'
-  implementation: planned
-  verification: not_tested
+  implementation: in_progress
+  verification: tests_passed
   integration: not_submitted
-  branch: null
-  evidence: []
+  branch: feat/sync-lockstep
+  evidence:
+  - docs/decisions/0024-lockstep-core.md
+  - docs/verification/2026-10-16-lockstep-core.md
+  blocker: 'Teil aus ADR 0024: Pause und Geschwindigkeit als Befehle, jeder pausiert, der Host wählt die Stufe, vanillas Tasten und Autopause werden Anfrage. Weitere Richtlinien und der Test mit zwei Clients offen.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: SYNC-004
   title: 'Tier-1-Abdeckung (Grundkolonie spielbar)'
@@ -1030,11 +1040,14 @@ tasks:
   - SYNC-001
   acceptance:
   - 'Ein absichtlich erzeugter Desync wird innerhalb von 60 Ticks erkannt'
-  implementation: planned
-  verification: not_tested
+  implementation: in_progress
+  verification: tests_passed
   integration: not_submitted
-  branch: null
-  evidence: []
+  branch: feat/sync-lockstep
+  evidence:
+  - docs/decisions/0024-lockstep-core.md
+  - docs/verification/2026-10-16-lockstep-core.md
+  blocker: 'Minimum aus ADR 0024: Prüfsumme alle 60 Ticks, Vergleich auf dem Server, einmalige Meldung. Getestet mit falschen Prüfsummen (Server-Test, Selbsttest), nicht mit einer echten Zustandsänderung.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: DESYNC-002
   title: 'Desync-Diagnosepaket und Diff-Werkzeug'

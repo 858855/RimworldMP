@@ -55,3 +55,32 @@
 - **Abweichung vom Plan:** DET-001 verlangt zwei Instanzen (TOOL-001). Dieser Schnitt prüft den Determinismus im selben Prozess, mit zwei Ladevorgängen, und live zwischen echten Spielern über die Prüfsumme. Der volle DET-001 bleibt offen.
 - **Risiken:** unentdeckter Nichtdeterminismus in vanilla 1.6 (Threads, Hash-Reihenfolge, Arbeit in `Update` statt `Tick`). Die Prüfsumme zeigt ihn, findet aber nicht die Ursache (DESYNC-002). Langsame PCs bremsen alle. Die 50-ms-Schritte können ruckeln; `TickPacer` glättet sie.
 - **Rollback:** Commits zurücknehmen. Dann gilt wieder der Stand von ADR 0023: pausiert nach der Landung.
+- **Nachtrag 2026-10-16 (Determinismus-Befunde aus dem Selbsttest):**
+  - **Befund:** Derselbe Spielstand, fünfmal im selben Prozess geladen, lief ohne Eingaben auseinander: zuerst nach 2 000 bis 6 000 Ticks, immer zuerst bei wilden Tieren, die anders wanderten.
+  - **Werkzeuge (nur im Selbsttest):**
+    - Aufzeichnung jedes Dings je Prüfsummen-Tick: Welches Ding weicht zuerst ab?
+    - Rand-Spur: Ein Prefix auf `MurmurHash.GetInt` nimmt jede Ziehung mit Aufrufstelle auf und zählt Ziehungen aus anderen Threads. Sie wird zur Laufzeit gepatcht, nur im Selbsttest.
+  - **Ursache 1, Fischschatten:** `FishShadowComponent.MapComponentTick` (neu in 1.6) zieht für Fischschatten-Flecks aus dem Spielzufall, aber nicht bei jedem Spieler gleich. Eine Ziehung mehr verschiebt alle späteren des Ticks.
+  - **Ursache 2, Geräusche:** `SoundStarter.PlayOneShot`, `PlayOneShotOnCamera`, `TrySpawnSustainer` und `SubSustainer.StartSample` ziehen Körnung, Lautstärke und Tonhöhe aus dem Spielzufall. Ob sie spielen, hängt von Kamera und Einstellungen ab.
+  - **Gegenmaßnahme für 1 und 2:** `LockstepVisualRandPatch`: In Lockstep-Ticks laufen diese Methoden in eigenem `Rand.PushState()`/`PopState()`. Die Liste wächst nur mit Befunden aus der Rand-Spur und nur mit rein sicht- oder hörbaren Methoden.
+  - **Ursache 3, Tickrate je Sichtbarkeit:** 1.6 tickt Figuren je nach Sichtbarkeit auf dem eigenen Bildschirm verschieden oft (`Pawn.UpdateRateTicks`; hier 3 bis 15 Ticks, Minimum 1, Maximum 15). Die Arbeit in festen Abständen (Bedürfnisse, Inspirationen …) lief so bei jedem Spieler zu anderen Ticks; die Spur fand eine zusätzliche Inspirationsprüfung bei Tick 17 754.
+  - **Gegenmaßnahme für 3:** `LockstepTickRatePatch`: In einer Sitzung bekommt jede Figur bei jedem Spieler ihr Minimum, als wäre sie immer sichtbar. Das kostet in großen Kolonien Rechenzeit.
+  - **Pfade (Vorsicht, kein Befund):** 1.6 rechnet Pfade in Hintergrund-Jobs. `LockstepPathRequestPatch` beantwortet jede Anfrage in Lockstep-Ticks sofort mit vanillas `FindPathNow`.
+    - Im selben Prozess war das nach den Fixen 1 und 2 nicht nötig (`-mpLockstepAsyncPaths`: auch PASS).
+    - Wann ein Hintergrund-Job fertig ist, hängt aber von der Rechenleistung ab, also zwischen zwei PCs. Der Patch bleibt deshalb an, bis ein Zwei-Spieler-Lauf zeigt, ob er nötig ist.
+    - Fläche und genaues Ziel der Anfrage gibt `FindPathNow` nicht weiter; in allen Läufen hatte keine Anfrage eine Fläche.
+  - **Kein Befund:**
+    - Rand-Ziehungen aus anderen Threads während der Ticks (0; Ziehungen aus anderen Threads gab es nur beim Laden).
+    - Aufteilung der Ticks auf Frames (fest 20 Ticks je Frame änderte nichts).
+    - Kartenupdates je Frame (`Map.MapUpdate`; vor jedem Tick nachgeholt oder nicht, beides PASS). Dieser Versuch wurde wieder entfernt.
+  - **Ergebnis:**
+    - 5 × 6 000 Ticks gleich in jedem geprüften Lauf mit den Gegenmaßnahmen, auch mit Zufall zwischen den Ticks.
+    - Ohne Isolierung FAIL (erste Abweichung bei der Fisch-Ziehung).
+    - 5 × 60 000 Ticks: Die erste Abweichung liegt jetzt bei Tick 20 460, nur im ersten Lauf nach dem Treiber-Teil. Die zwei aufgezeichneten Läufe danach waren über alle 60 000 Ticks gleich, Ziehung für Ziehung.
+    - Die Ursache dieses Rests ist offen (Kandidat: Zustand, der im Prozess vom vorigen Spiel bleibt).
+  - **Grenzen:** ein Prozess, eine Karte, keine Eingaben. Andere sicht- oder hörabhängige Ziehungen (Flecks, Motes, Effecter) können in anderen Lagen auftreten. Die Prüfsumme meldet sie, die Rand-Spur findet sie. Der volle DET-001 (zwei Instanzen) bleibt offen.
+  - **Selbsttest-Schalter:**
+    - `-mpLockstepTicks=N` (Standard 6 000, 0 aus).
+    - `-mpLockstepNoVisualIsolation`, `-mpLockstepVisibleTickRates`, `-mpLockstepAsyncPaths` schalten eine Gegenmaßnahme aus.
+    - `-mpLockstepTicksPerFrame=N` setzt eine feste Frame-Aufteilung.
+  - **Nachweis:** `docs/verification/2026-10-16-lockstep-core.md`.
