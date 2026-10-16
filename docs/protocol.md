@@ -164,3 +164,21 @@ Wer einen Snapshot laden soll (Beitritt oder Resync), muss `SnapshotLoaded` binn
 - Alle erhalten `ResyncGaveUp` (74) mit ihm.
 - Der Koordinator entfernt ihn aus der Sitzung; die anderen setzen nötigenfalls fort.
 - Der Server nimmt ihn aus der Lobby (`LeaveLobby`). Er bleibt verbunden und kann neu beitreten.
+
+## Fraktionsmodus: Erzähler je Fraktion (ADR 0037)
+
+- **Lobbyzustand (11):** Im Fraktionsmodus folgt nach dem Modus ein Block.
+  - Optionen des Hosts: `bool`; dann defName der Schwierigkeit, Anzahl `u8` (1–32), defNames der Erzähler.
+  - Je Spieler in Spielerreihenfolge: Platz (`bool` + `u8`, 0–63, eindeutig), Erzähler (`bool` + defName).
+  - Im Coop fehlt der Block; der Zustand ist byte-gleich wie vorher.
+- **defName:** 1–128 Zeichen aus `[A-Za-z0-9_-]` (`Verse.Def.AllowedDefNamesRegex` in 1.6).
+- **Neue Nachrichten, Codes noch nicht vergeben:**
+
+  | Vorschlag | Typ | Richtung | Nutzdaten |
+  |---|---|---|---|
+  | 96 | FactionOptions | C→S, nur Host, Phase `Storyteller` | defName der Schwierigkeit, Anzahl `u8`, defNames der Erzähler |
+  | 97 | StorytellerChoice | C→S, Phase `Storyteller` | defName des Erzählers |
+
+  Antwort jeweils `LobbyStateUpdate` an alle; Fehler Code 3 (nicht Host) oder 6 (Coop, falsche Phase, Liste fehlt, nicht angeboten).
+- **Bereit/Fertig (14):** gilt im Fraktionsmodus auch in der Phase `Storyteller` und verlangt dort eine Wahl.
+- **Beitritt in `Playing`:** Im Fraktionsmodus nur mit vorhandenem Fraktionsplatz zum `PlayerKey`; sonst Code 6.

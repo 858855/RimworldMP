@@ -340,6 +340,53 @@ await Run("key proof, password and list flag (ADR 0035)", () =>
     Equal(true, listed[0].PasswordRequired);
     return Task.CompletedTask;
 });
+await Run("faction storytellers and shared difficulty (ADR 0037)", () =>
+{
+    var options = new FactionOptions("Rough", new[] { "Cassandra", "Phoebe", "Randy" });
+    var back = FactionOptions.FromPayload(options.ToPayload());
+    Equal("Rough", back.Difficulty); Equal(true, back.SameAs(options)); Equal(true, back.Offers("Phoebe")); Equal(false, back.Offers("phoebe"));
+    Equal("Randy", FactionPayloads.ReadStorytellerChoice(FactionPayloads.StorytellerChoice("Randy")));
+    Equal("Mod_Teller-2", FactionPayloads.ReadStorytellerChoice(FactionPayloads.StorytellerChoice("Mod_Teller-2")));
+    Throws<ProtocolException>(() => new FactionOptions("Rough", Array.Empty<string>()));                         // nothing to choose
+    Throws<ProtocolException>(() => new FactionOptions("Rough", Enumerable.Range(0, 33).Select(i => "T" + i).ToArray()));
+    Throws<ProtocolException>(() => new FactionOptions("Rough", new[] { "Randy", "Randy" }));                   // duplicates
+    Throws<ProtocolException>(() => new FactionOptions("", new[] { "Randy" }));
+    Throws<ProtocolException>(() => new FactionOptions("Rough", new[] { "Rand y" }));                           // not a def name
+    Throws<ProtocolException>(() => FactionPayloads.StorytellerChoice("Ränder"));
+    Throws<ProtocolException>(() => FactionPayloads.StorytellerChoice(new string('a', 129)));
+    Throws<ProtocolException>(() => FactionPayloads.ReadStorytellerChoice(LobbyPayloads.String("bad.name")));
+    var wire = new PayloadWriter(); wire.WriteString("Rough"); wire.WriteByte(0);
+    Throws<ProtocolException>(() => FactionOptions.FromPayload(wire.ToArray()));                                 // empty list on the wire
+
+    PlayerKey hostKey = PlayerKey.Local(Guid.NewGuid()), guestKey = PlayerKey.Local(Guid.NewGuid());
+    var players = new[]
+    {
+        new PlayerView(Guid.NewGuid(), "Host", true, hostKey, factionSlot: 0, storyteller: "Randy"),
+        new PlayerView(Guid.NewGuid(), "Guest", false, guestKey, factionSlot: 1)
+    };
+    var factions = new LobbyView(Guid.NewGuid(), "F", players[0].Id, 7, 4, players, SetupPhase.Storyteller, null,
+        LobbyMode.Factions(FactionRelation.Allied), options);
+    LobbyView read = LobbyPayloads.ReadState(LobbyPayloads.State(factions));
+    Equal(true, read.FactionOptions!.SameAs(options));
+    Equal((byte?)0, read.Players[0].FactionSlot); Equal("Randy", read.Players[0].Storyteller);
+    Equal((byte?)1, read.Players[1].FactionSlot); Equal(null, read.Players[1].Storyteller);
+    Equal(guestKey, read.Players[1].Key); Equal(false, read.Players[1].Ready);
+    var noOptions = new LobbyView(factions.Id, "F", players[0].Id, 7, 4, players, SetupPhase.Scenario, null, factions.Mode);
+    Equal(null, LobbyPayloads.ReadState(LobbyPayloads.State(noOptions)).FactionOptions);
+    // Coop carries no faction block: same bytes as before ADR 0037, and faction fields are left out.
+    var coop = new LobbyView(factions.Id, "C", players[0].Id, 7, 4, players, SetupPhase.Storyteller, null, LobbyMode.CoopHost, options);
+    byte[] coopBytes = LobbyPayloads.State(coop);
+    LobbyView coopRead = LobbyPayloads.ReadState(coopBytes);
+    Equal(null, coopRead.FactionOptions); Equal(null, coopRead.Players[0].FactionSlot); Equal(null, coopRead.Players[0].Storyteller);
+    Equal(coopBytes.Length, LobbyPayloads.State(new LobbyView(factions.Id, "C", players[0].Id, 7, 4,
+        players.Select(p => new PlayerView(p.Id, p.Name, p.Ready, p.Key)).ToArray(), SetupPhase.Storyteller)).Length);
+    var twice = new[] { new PlayerView(Guid.NewGuid(), "A", false, hostKey, factionSlot: 2), new PlayerView(Guid.NewGuid(), "B", false, guestKey, factionSlot: 2) };
+    Throws<ProtocolException>(() => LobbyPayloads.ReadState(LobbyPayloads.State(new LobbyView(factions.Id, "F", twice[0].Id, 7, 4, twice,
+        SetupPhase.Storyteller, null, factions.Mode))));                                                       // one slot per player
+    Throws<ProtocolException>(() => LobbyPayloads.State(new LobbyView(factions.Id, "F", players[0].Id, 7, 4,
+        new[] { new PlayerView(Guid.NewGuid(), "A", false, hostKey, factionSlot: 64) }, SetupPhase.Storyteller, null, factions.Mode)));
+    return Task.CompletedTask;
+});
 Console.WriteLine($"PASS: {passed} protocol test groups");
 
 async Task Run(string name, Func<Task> body)

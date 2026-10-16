@@ -7,11 +7,12 @@
 |---|---|---|
 | **Coop – Host-Entscheid** | eine gemeinsame Kolonie (Plan §2–§7) | Einrichtung und Ereignisse im Spiel: der Host |
 | **Coop – Demokratie** | eine gemeinsame Kolonie | Einrichtung: der Host. **Ereignisse im Spiel** (z. B. Quest annehmen, Flüchtlinge aufnehmen): Abstimmung aller, **der Host entscheidet bei Gleichstand** |
-| **Fraktionen** | jeder Spieler seine eigene Fraktion und Kolonie | jeder für seine Fraktion |
+| **Fraktionen** | jeder Spieler seine eigene Fraktion und Kolonie | jeder für seine Fraktion, auch den Erzähler; Schwierigkeit und Welt der Host (ADR 0037) |
 
 - **Fraktionsmodus im Einzelnen** (Benutzervorgabe):
   - So viele Fraktionen wie Spieler in der Lobby.
-  - Jeder wählt seine **eigene Ideologie** und seinen **eigenen Startort**; gestartet wird, wenn alle fertig sind. Szenario, Erzähler und Welt wählt weiterhin der Host [A].
+  - Jeder wählt seine **eigene Ideologie** und seinen **eigenen Startort**; gestartet wird, wenn alle fertig sind. Szenario und Welt wählt der Host [A].
+  - **Erzähler und Schwierigkeit (Benutzer, 2026-10-16, ADR 0037):** Der Host legt eine gemeinsame Schwierigkeit und die globalen Spiel- und Welteinstellungen fest. **Jeder Spieler wählt für seine Fraktion einen eigenen Erzähler**; Ereignisplanung und -häufigkeit sind je Fraktion getrennt. „Der Host wählt den Erzähler“ gilt nur noch für Coop.
   - Jeder Spieler hat seine **eigene Kolonie auf einer eigenen Karte** der gemeinsamen Welt.
   - **Beziehung der Fraktionen** wählt der Host beim Erstellen: verbündet, neutral oder verfeindet. Ob sie sich im Spiel ändern darf, ist offen.
   - **Spieler-Fenster:** einklappbar, listet alle Spieler und Kolonien. Ein Klick wechselt die **Ansicht** zur Kolonie eines anderen, etwa um bei einem Raid zuzusehen, und zurück zur eigenen. Der Ansichtswechsel ist rein lokal und kein Befehl. Plan §7.4 gilt besonders: Spiellogik darf nie aus der aktuell angezeigten Karte lesen.

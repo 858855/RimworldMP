@@ -1386,7 +1386,7 @@ tasks:
   - 'Ein gefälschter PlayerKey wird abgelehnt'
   implementation: in_progress
   verification: tests_passed
-  integration: not_submitted
+  integration: merged
   branch: claude/ip-password
   base_branch: main
   base_commit: 8f7c32f
@@ -1563,6 +1563,33 @@ tasks:
   branch: null
   evidence: []
   plan_ref: docs/decisions/0031-game-modes.md
+- id: FACTION-004
+  title: 'Fraktionsmodus: Erzähler je Fraktion und gemeinsame Schwierigkeit (Koordinator)'
+  goal: 'Stabile Zuordnung PlayerKey ↔ Fraktionsplatz ↔ StorytellerDef; der Host legt die gemeinsame Schwierigkeit fest, jeder Spieler wählt den Erzähler seiner Fraktion; der Server prüft Auswahl und Fertig.'
+  description: 'ADR 0037, Benutzerentscheidung 2026-10-16. Koordinator-Seite von FACTION-001; die Spielseite (mehrere Erzähler, Anwenden beim Generieren) gehört Codex.'
+  priority: medium
+  owner: claude
+  components:
+  - lobby_core
+  - protocol
+  depends_on:
+  - MODE-001
+  acceptance:
+  - 'Fraktionsplatz je PlayerKey, Host zuerst, stabil bis zum Ende der Partie; Rückkehr in Playing findet den eigenen Platz'
+  - 'Nur der Host setzt Schwierigkeit und Erzählerliste; ein Gast kann die Schwierigkeit nicht ändern'
+  - 'Erzählerwahl nur aus der Host-Liste; Fertig verlangt eine Wahl; Weiter erst, wenn alle gewählt haben und fertig sind'
+  - 'Fraktionsstart bleibt gesperrt, bis Spielseite und Tests fertig sind'
+  implementation: in_progress
+  verification: tests_passed
+  integration: not_submitted
+  branch: claude/faction-storyteller
+  base_branch: main
+  base_commit: d568766
+  evidence:
+  - docs/verification/2026-10-16-faction-storyteller.md
+  - docs/decisions/0037-faction-storytellers-coordinator.md
+  blocker: 'Payloads, Regeln und Tests fertig. Nachrichtencodes für FactionOptions und StorytellerChoice noch nicht vergeben (Vorschlag 96–97 in einem neuen Claude-Bereich 96–111, Zustimmung des Benutzers ausstehend); bis dahin keine Verdrahtung im Server und kein Ende-zu-Ende-Test. Spielseite (Codex) offen.'
+  plan_ref: docs/decisions/0037-faction-storytellers-coordinator.md
 - id: FACTION-002
   title: 'Fraktionsmodus: getrennte Kolonien, Spieler-Fenster, Weltereignisse für alle'
   goal: 'Jede Fraktion spielt ihre eigene Kolonie; ein einklappbares Spieler-Fenster wechselt die Ansicht zu anderen Kolonien; Weltereignisse wie das Gravship gehen an alle.'

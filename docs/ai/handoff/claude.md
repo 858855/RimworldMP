@@ -13,7 +13,43 @@
 - **C4 erledigt (Protokoll und Server), Branch `claude/ip-password`, ADR 0035:** Lobby-Passwort; Schlüsselbindung per signiertem Hello (RSA-2048, Zeitstempel, Zufallswert) mit Bindung beim ersten Kontakt, Wiederholungsschutz und Pflicht-Modus; Steam ausgenommen. Keine neuen Codes.
 - **Alle Aufgaben C1–C4 der Claude-Bahn sind erledigt** und auf `main` (C4 seit `0af2bcc`). Codex' Spielseite ist seit `ff2f178` gemergt.
 - **C5, Branch `claude/snapshot-timeout`, ADR 0036:** Wer einen Snapshot nicht binnen 180 s bestätigt, wird aus Sitzung und Lobby genommen; die anderen setzen fort. Für Codex: bei `ResyncGaveUp` mit eigener Session und `LeaveLobby` „Laden fehlgeschlagen – erneut beitreten“ anzeigen.
+- **C6, Branch `claude/faction-storyteller` von `main` @ `d568766`, ADR 0037, Aufgabe `FACTION-004`:** Fraktionsmodus, Koordinator-Seite der Benutzerentscheidung vom 2026-10-16. **Nicht gepusht, nicht gemergt.**
+  - **Fraktionsplatz:** Beim Start der Einrichtung erhält jeder Spieler einen Platz (Host 0, dann Beitrittsreihenfolge). Der Platz hängt am `PlayerKey` und bleibt bis zum Ende der Partie.
+  - **Phase `Storyteller`:**
+    - Der Host sendet `FactionOptions`: gemeinsame `DifficultyDef` und wählbare `StorytellerDef`s.
+    - Jeder Spieler wählt mit `StorytellerChoice` den Erzähler seiner Fraktion und meldet sich fertig.
+    - Weiter geht es erst, wenn alle gewählt haben und fertig sind.
+  - **Gesperrt:** Der Fraktionsstart bleibt abgelehnt. Nur `new LobbyRegistry(…, factionsSetupEnabled: true)` öffnet ihn, für Tests; der Schalter ist nicht mit `HostConfig` verbunden.
+  - **Offene Codes (Abstimmung nötig, noch nicht belegt):** `FactionOptions` und `StorytellerChoice` brauchen je einen C→S-Code. Vorschlag: neuer Claude-Bereich **96–111**, davon 96 und 97. Begründung:
+    - 71–79 sind voll, 80–95 gehören Codex, 37–63 Sven.
+    - Keine bestehende Nachricht passt (siehe ADR 0037, Datenvertrag).
+    - Bis zur Zustimmung fehlen nur die Verdrahtung in `FoundationServer` und der Ende-zu-Ende-Test.
+  - **Mögliche Konflikte:**
+    - `LobbyPayloads.State`/`ReadState` haben im Fraktionsmodus einen angehängten Block; Coop ist byte-gleich.
+    - `PlayerView` und `LobbyView` haben neue optionale Konstruktor-Parameter am Ende; bestehende Aufrufe bauen unverändert (Mod-Build geprüft).
+    - **Aufgaben-ID:** Codex hat auf `codex/faction-storytellers` (`671adb1`) die Spielseite als `FACTION-003` mit ADR 0045 angelegt. Die Koordinator-Seite heißt deshalb `FACTION-004`; weitere Codex-IDs bitte ab `FACTION-005`.
+    - **ADR 0031:** Beide Branches ändern dieselbe Zeile (Verweis auf 0045 bzw. 0037). Beim zweiten Merge beide Verweise behalten. `CHANGELOG.md` und `CODEMAP.md` ergeben nur einfache Anfügekonflikte.
+    - **Abgleich mit ADR 0045:**
+      - Die Wahl je PlayerKey im Spielstand bitte in Platzreihenfolge ablegen (`PlayerView.FactionSlot`).
+      - Erzähler mit erzwungener anderer Schwierigkeit gar nicht erst in die Host-Liste aufnehmen.
+    - Die Beschreibung von `FACTION-001` (ohne Besitzer) nennt noch „Erzähler wählt der Host“; das gilt nach ADR 0037 nur für Coop.
+  - **Offen für die Benutzer-Entscheidung:** Regel R4 in ADR 0037 (wirken Weltbedingungen nur auf die Karten der auslösenden Fraktion, oder plant sie allein der Erzähler des Hosts für alle?).
 - **Wünsche an Codex:**
+  - **Fraktionsmodus, Erzähler (ADR 0037)**, alles Spielseite:
+    - **Lesen:**
+      - Wahl und Optionen kommen über den Lobbyzustand: `LobbyView.FactionOptions` (Schwierigkeit, Liste), `PlayerView.FactionSlot`, `PlayerView.Storyteller`.
+      - Den Grund für die UI liefert `LobbyRegistry.StorytellerBlockReason(view)`.
+    - **Host:**
+      - In der Phase `Storyteller` die Liste aus `StorytellerDef`s mit `listVisible`, nach `listOrder`, und die gewählte `DifficultyDef` senden (`new FactionOptions(…).ToPayload()`).
+      - Gäste bekommen kein Schwierigkeitsfeld.
+    - **Alle Spieler:** Wahl mit `FactionPayloads.StorytellerChoice(defName)`, dann Fertig über `PlayerReadyChanged` (14).
+    - **Beim Generieren** (Host):
+      - je Platz in aufsteigender Reihenfolge eine Spielerfraktion
+      - je Fraktion eine eigene `Storyteller`-Instanz mit dem gewählten `StorytellerDef` und derselben `Difficulty`
+      - PlayerKey → Fraktion im Spielstand speichern
+    - **`Verse.Game.storyteller`** ist ein einzelnes Feld; die Erzähler je Fraktion brauchen eine eigene Ablage (z. B. `GameComponent`, Regel 13). Sie ticken in Platzreihenfolge.
+    - **Ereignisse:** Zuordnung nach den Regeln R1–R6 in ADR 0037.
+    - **Bis die Codes vergeben sind**, lassen sich `FactionOptions` und `StorytellerChoice` noch nicht senden.
   - Tick-Treiber nach ADR 0030:
     - Tick c+1 nur, wenn `LockstepClient.MayRunTick(c)` wahr ist; vorher und in jedem Frame während der Pause `TakeCommandsAt(c)`.
     - Sitzungstick = `TicksGame − TicksGame` bei der Landung.

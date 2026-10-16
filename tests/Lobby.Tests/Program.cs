@@ -283,6 +283,115 @@ Expect(3, () => locked.Join(lg, lockedRoom, "geheim2"));
 Assert(locked.Join(lg, lockedRoom, "geheim").State!.Players.Count == 2, "right password joins");
 Console.WriteLine("PASS: lobby password: missing and wrong refused, right one joins, list flags it");
 
+// ADR 0037: Factions mode – a faction slot per player key, a storyteller per faction, one shared difficulty from the host.
+var fx = new LobbyRegistry(8, 2, factionsSetupEnabled: true);
+Guid fxHost = Guid.NewGuid(), fxG1 = Guid.NewGuid(), fxG2 = Guid.NewGuid(), fxLate = Guid.NewGuid();
+PlayerKey fxHostKey = PlayerKey.Local(Guid.NewGuid()), fxG1Key = PlayerKey.Local(Guid.NewGuid()), fxG2Key = PlayerKey.Local(Guid.NewGuid());
+fx.AddMember(fxHost, "Host", fxHostKey); fx.AddMember(fxG1, "Guest1", fxG1Key); fx.AddMember(fxG2, "Guest2", fxG2Key);
+fx.AddMember(fxLate, "Late", PlayerKey.Local(Guid.NewGuid()));
+Guid fxRoom = fx.Create(fxHost, "Fraktionen", 4, LobbyMode.Factions(FactionRelation.Allied)).State!.Id;
+fx.Join(fxG1, fxRoom);
+LobbyView fxLobby = fx.Join(fxG2, fxRoom).State!;
+Assert(fxLobby.Players.All(p => p.FactionSlot == null && p.Storyteller == null) && fxLobby.FactionOptions == null, "no factions before setup");
+foreach (Guid id in new[] { fxHost, fxG1, fxG2 }) fx.Ready(id, true);
+LobbyView fxScenario = fx.AdvanceSetup(fxHost, SetupPhase.Scenario).State!;
+byte? SlotIn(LobbyView view, Guid id) => view.Players.Single(p => p.Id == id).FactionSlot;
+string? TellerIn(LobbyView view, Guid id) => view.Players.Single(p => p.Id == id).Storyteller;
+bool ReadyIn(LobbyView view, Guid id) => view.Players.Single(p => p.Id == id).Ready;
+Assert(SlotIn(fxScenario, fxHost) == 0 && SlotIn(fxScenario, fxG1) == 1 && SlotIn(fxScenario, fxG2) == 2, "slots: host first, then joining order");
+var tellers = new FactionOptions("Rough", new[] { "Cassandra", "Phoebe", "Randy" });
+Expect(6, () => fx.SetFactionOptions(fxHost, tellers));                                // not the storyteller step yet
+Expect(6, () => fx.ChooseStoryteller(fxG1, "Randy"));
+LobbyView fxTellerStep = fx.AdvanceSetup(fxHost, SetupPhase.Storyteller).State!;
+Assert(LobbyRegistry.StorytellerBlockReason(fxTellerStep)!.Contains("noch nicht festgelegt"), "reason: host has not set options");
+Expect(6, () => fx.ChooseStoryteller(fxG1, "Randy"));                                  // no list from the host yet
+Expect(6, () => fx.Ready(fxG1, true));                                                 // done needs a choice
+Expect(6, () => fx.AdvanceSetup(fxHost, SetupPhase.WorldParams));
+Expect(3, () => fx.SetFactionOptions(fxG1, new FactionOptions("Peaceful", new[] { "Randy" })));  // a guest cannot set the difficulty
+LobbyView offered = fx.SetFactionOptions(fxHost, tellers).State!;
+Assert(offered.FactionOptions!.SameAs(tellers), "everyone sees the shared difficulty and the list");
+Expect(6, () => fx.ChooseStoryteller(fxG1, "Tutor"));                                  // not offered
+fx.ChooseStoryteller(fxHost, "Cassandra"); fx.Ready(fxHost, true);
+fx.ChooseStoryteller(fxG1, "Randy"); fx.Ready(fxG1, true);
+Expect(6, () => fx.AdvanceSetup(fxHost, SetupPhase.WorldParams));                      // Guest2 has no storyteller
+LobbyView missing = fx.ChooseStoryteller(fxHost, "Cassandra").State!;
+Assert(LobbyRegistry.StorytellerBlockReason(missing) == "Erzähler fehlt: Guest2", "reason names who has no storyteller");
+LobbyView allChosen = fx.ChooseStoryteller(fxG2, "Phoebe").State!;
+Assert(LobbyRegistry.StorytellerBlockReason(allChosen) == "Warte auf: Guest2", "reason names who is not done");
+Expect(6, () => fx.AdvanceSetup(fxHost, SetupPhase.WorldParams));                      // no force-start
+LobbyView switched = fx.ChooseStoryteller(fxG1, "Phoebe").State!;
+Assert(!ReadyIn(switched, fxG1) && ReadyIn(switched, fxHost) && TellerIn(switched, fxG1) == "Phoebe", "a new choice clears only the own done");
+fx.Ready(fxG1, true);
+Assert(ReadyIn(fx.ChooseStoryteller(fxG1, "Phoebe").State!, fxG1), "the same choice again keeps done");
+fx.Ready(fxG2, true);
+LobbyView harder = fx.SetFactionOptions(fxHost, new FactionOptions("Brutal", tellers.Storytellers)).State!;
+Assert(harder.Players.All(p => !p.Ready) && TellerIn(harder, fxG1) == "Phoebe", "a new difficulty clears everyone's done, choices stay");
+var narrow = new FactionOptions("Brutal", new[] { "Cassandra", "Randy" });
+LobbyView narrowed = fx.SetFactionOptions(fxHost, narrow).State!;
+Assert(TellerIn(narrowed, fxG1) == null && TellerIn(narrowed, fxG2) == null && TellerIn(narrowed, fxHost) == "Cassandra",
+    "choices the host no longer offers are dropped");
+Assert(fx.SetFactionOptions(fxHost, new FactionOptions("Brutal", new[] { "Cassandra", "Randy" })).State!.Revision == narrowed.Revision,
+    "the same options again change nothing");
+fx.ChooseStoryteller(fxG1, "Randy"); fx.ChooseStoryteller(fxG2, "Randy");
+LobbyView afterLeave = fx.Leave(fxG2).State!;
+Assert(afterLeave.Players.Count == 2 && SlotIn(afterLeave, fxHost) == 0 && SlotIn(afterLeave, fxG1) == 1, "a departed guest's slot is gone, others keep theirs");
+foreach (Guid id in new[] { fxHost, fxG1 }) fx.Ready(id, true);
+LobbyView fxWorldParams = fx.AdvanceSetup(fxHost, SetupPhase.WorldParams).State!;
+Assert(fxWorldParams.Phase == SetupPhase.WorldParams && LobbyRegistry.StorytellerBlockReason(fxWorldParams) == null &&
+    TellerIn(fxWorldParams, fxG1) == "Randy" && fxWorldParams.FactionOptions!.Difficulty == "Brutal", "all chosen and done: setup continues, choices stay");
+Expect(6, () => fx.ChooseStoryteller(fxG1, "Cassandra"));                              // only in the storyteller step
+Expect(6, () => fx.Ready(fxG1, true));                                                 // done is not used here
+LobbyView fxRead = LobbyPayloads.ReadState(LobbyPayloads.State(fxWorldParams));
+Assert(SlotIn(fxRead, fxG1) == 1 && TellerIn(fxRead, fxHost) == "Cassandra" && fxRead.FactionOptions!.SameAs(narrow), "factions survive the state payload");
+// Through the rest of the setup into the running game.
+fx.AdvanceSetup(fxHost, SetupPhase.WorldTransfer);
+byte[] fxWorld = Enumerable.Repeat((byte)7, 32).ToArray();
+fx.SetHostWorld(fxHost, fxWorld); fx.ReportWorld(fxG1, fxWorld);
+fx.AdvanceSetup(fxHost, SetupPhase.SiteSelection); fx.DecideSite(fxHost, new SiteTile(3, 0));
+fx.AdvanceSetup(fxHost, SetupPhase.Characters);
+fx.SetRoster(fxHost, RosterFor(fxHostKey, fxG1Key)); fx.Ready(fxHost, true); fx.Ready(fxG1, true);
+fx.AdvanceSetup(fxHost, SetupPhase.Generating);
+fx.SetHostGame(fxHost, fxWorld); fx.ReportGame(fxG1, fxWorld);
+LobbyView fxPlaying = fx.AdvanceSetup(fxHost, SetupPhase.Playing).State!;
+Assert(fxPlaying.Phase == SetupPhase.Playing && SlotIn(fxPlaying, fxG1) == 1, "the running game keeps the slots");
+LobbyView gone = fx.Leave(fxG1).State!;
+Assert(gone.Players.Count == 1, "guest left the running game");
+try { fx.Join(fxLate, fxRoom); throw new Exception("FAIL: a new player joined a running Factions game"); }
+catch (LobbyRuleException ex) { Assert(ex.Code == 6 && ex.Message.Contains("no faction"), "a new player has no faction in a running game"); }
+fx.RemoveMember(fxG1); fx.AddMember(fxG1, "Guest1", fxG1Key);                          // reconnect: new session, same key
+LobbyView back = fx.Join(fxG1, fxRoom).State!;
+Assert(SlotIn(back, fxG1) == 1 && TellerIn(back, fxG1) == "Randy", "a returning player finds their faction and storyteller");
+// Coop keeps the host's choice; abort clears every faction; without the test switch Factions still cannot start.
+var coopTellers = new LobbyRegistry(8);
+Guid ctHost = Guid.NewGuid(), ctGuest = Guid.NewGuid();
+coopTellers.AddMember(ctHost, "Host", PlayerKey.Local(Guid.NewGuid())); coopTellers.AddMember(ctGuest, "Guest", PlayerKey.Local(Guid.NewGuid()));
+coopTellers.Join(ctGuest, coopTellers.Create(ctHost, "Coop", 4, LobbyMode.CoopDemocracy).State!.Id);
+coopTellers.Ready(ctHost, true); coopTellers.Ready(ctGuest, true);
+coopTellers.AdvanceSetup(ctHost, SetupPhase.Scenario);
+LobbyView coopStep = coopTellers.AdvanceSetup(ctHost, SetupPhase.Storyteller).State!;
+Assert(coopStep.Players.All(p => p.FactionSlot == null) && LobbyRegistry.StorytellerBlockReason(coopStep) == null, "Coop has no faction slots");
+Expect(6, () => coopTellers.SetFactionOptions(ctHost, tellers));
+Expect(6, () => coopTellers.ChooseStoryteller(ctGuest, "Randy"));
+Expect(6, () => coopTellers.Ready(ctGuest, true));
+Assert(coopTellers.AdvanceSetup(ctHost, SetupPhase.WorldParams).State!.Phase == SetupPhase.WorldParams, "Coop storyteller step needs no choices");
+var abortRegistry = new LobbyRegistry(8, 2, factionsSetupEnabled: true);
+Guid abHost = Guid.NewGuid(), abGuest = Guid.NewGuid();
+abortRegistry.AddMember(abHost, "Host", PlayerKey.Local(Guid.NewGuid())); abortRegistry.AddMember(abGuest, "Guest", PlayerKey.Local(Guid.NewGuid()));
+abortRegistry.Join(abGuest, abortRegistry.Create(abHost, "F", 4, LobbyMode.Factions(FactionRelation.Hostile)).State!.Id);
+abortRegistry.Ready(abHost, true); abortRegistry.Ready(abGuest, true);
+abortRegistry.AdvanceSetup(abHost, SetupPhase.Scenario); abortRegistry.AdvanceSetup(abHost, SetupPhase.Storyteller);
+abortRegistry.SetFactionOptions(abHost, tellers); abortRegistry.ChooseStoryteller(abGuest, "Randy");
+LobbyView reset = abortRegistry.AbortSetup(abHost).State!;
+Assert(reset.Phase == SetupPhase.Lobby && reset.FactionOptions == null && reset.Players.All(p => p.FactionSlot == null && p.Storyteller == null),
+    "abort clears slots, choices and options");
+var locked37 = new LobbyRegistry(8);
+Guid lkHost = Guid.NewGuid(), lkGuest = Guid.NewGuid();
+locked37.AddMember(lkHost, "Host", PlayerKey.Local(Guid.NewGuid())); locked37.AddMember(lkGuest, "Guest", PlayerKey.Local(Guid.NewGuid()));
+locked37.Join(lkGuest, locked37.Create(lkHost, "F", 4, LobbyMode.Factions(FactionRelation.Neutral)).State!.Id);
+locked37.Ready(lkHost, true); locked37.Ready(lkGuest, true);
+Expect(6, () => locked37.AdvanceSetup(lkHost, SetupPhase.Scenario));
+Console.WriteLine("PASS: factions: slot per player key, storyteller per faction, shared difficulty from the host, done rules, Factions start still refused (ADR 0037)");
+
 
 static PawnRoster RosterFor(params PlayerKey[] owners) => new PawnRoster(owners.Select((owner, i) => new PawnCard(100 + i, true, owner,
     "Pawn " + i, "P" + i, "Age 30", "", "", Array.Empty<string>(), Array.Empty<(string, byte, byte)>(),

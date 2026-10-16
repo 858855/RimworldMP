@@ -27,13 +27,18 @@ namespace Multiplayer.Foundation.Lobby
         private readonly Dictionary<Guid, Room> rooms = new Dictionary<Guid, Room>();
         private readonly byte maximumCapacity;
         private readonly byte minimumStartPlayers;
+        private readonly bool factionsSetupEnabled;
 
         /// <param name="minimumStartPlayers">Players needed to start the shared setup: 2 normally, 1 only as a debug option.</param>
-        public LobbyRegistry(byte maximumCapacity, byte minimumStartPlayers = 2)
+        /// <param name="factionsSetupEnabled">
+        /// Tests only: lets a Factions lobby start its setup. Off everywhere else until the game side exists (ADR 0037).
+        /// </param>
+        public LobbyRegistry(byte maximumCapacity, byte minimumStartPlayers = 2, bool factionsSetupEnabled = false)
         {
             if (maximumCapacity < 2 || maximumCapacity > 64) throw new ArgumentOutOfRangeException(nameof(maximumCapacity));
             if (minimumStartPlayers < 1 || minimumStartPlayers > 2) throw new ArgumentOutOfRangeException(nameof(minimumStartPlayers));
             this.maximumCapacity = maximumCapacity; this.minimumStartPlayers = minimumStartPlayers;
+            this.factionsSetupEnabled = factionsSetupEnabled;
         }
 
         public void AddMember(Guid id, string name, PlayerKey key)
@@ -91,6 +96,21 @@ namespace Multiplayer.Foundation.Lobby
             return null;
         }
 
+        /// <summary>
+        /// ADR 0037: first reason why the Factions storyteller step cannot continue yet, or null. Null as well outside that
+        /// step and in Coop. The same rules the server enforces.
+        /// </summary>
+        public static string? StorytellerBlockReason(LobbyView lobby)
+        {
+            if (lobby.Mode.Mode != GameMode.Factions || lobby.Phase != SetupPhase.Storyteller) return null;
+            if (lobby.FactionOptions == null) return "Der Host hat Schwierigkeit und Erzähler noch nicht festgelegt.";
+            string[] missing = lobby.Players.Where(p => !lobby.FactionOptions.Offers(p.Storyteller)).Select(p => p.Name).ToArray();
+            if (missing.Length > 0) return "Erzähler fehlt: " + string.Join(", ", missing);
+            string[] waiting = lobby.Players.Where(p => !p.Ready).Select(p => p.Name).ToArray();
+            if (waiting.Length > 0) return "Warte auf: " + string.Join(", ", waiting);
+            return null;
+        }
+
         public (Guid LobbyId, IReadOnlyList<Guid> Recipients) ChatRecipients(Guid actor)
         {
             lock (gate)
@@ -128,6 +148,9 @@ namespace Multiplayer.Foundation.Lobby
                 if (room.Members.Count >= room.Capacity) throw new LobbyRuleException(5, "Lobby is full.");
                 if (room.Phase == SetupPhase.Playing && StatusOf(room, member) is ModStatus.Checking or ModStatus.Mismatch)
                     throw new LobbyRuleException(8, "Mods do not match the host.");
+                // ADR 0037: a running Factions game has exactly the factions it started with; a player returns to theirs.
+                if (room.Phase == SetupPhase.Playing && room.Mode.Mode == GameMode.Factions && !room.FactionSlots.ContainsKey(member.Key))
+                    throw new LobbyRuleException(6, "This game has no faction for this player.");
                 room.Members.Add(actor); member.Room = room.Id; room.Revision++;
                 return Change(room, actor);
             }
@@ -138,9 +161,13 @@ namespace Multiplayer.Foundation.Lobby
             lock (gate)
             {
                 Member member = GetMember(actor); Room room = GetCurrentRoom(member);
-                // Ready means "ready to start" in the lobby and "done" in character selection; nowhere else.
-                if (room.Phase != SetupPhase.Lobby && room.Phase != SetupPhase.Characters)
+                // Ready means "ready to start" in the lobby and "done" in character selection, and in the Factions mode
+                // also "done" choosing the own storyteller (ADR 0037); nowhere else.
+                bool storytellerStep = room.Phase == SetupPhase.Storyteller && room.Mode.Mode == GameMode.Factions;
+                if (room.Phase != SetupPhase.Lobby && room.Phase != SetupPhase.Characters && !storytellerStep)
                     throw new LobbyRuleException(6, "Ready is not used in this setup step.");
+                if (ready && storytellerStep && (room.FactionOptions == null || !room.FactionOptions.Offers(StorytellerOf(room, member))))
+                    throw new LobbyRuleException(6, "Choose a storyteller before you are done.");
                 // SETUP-004: "done" needs a pawn of your own in the starting group (ADR 0015).
                 if (ready && room.Phase == SetupPhase.Characters && (room.Roster == null || !room.Roster.OwnsSelectedPawn(member.Key)))
                     throw new LobbyRuleException(6, "Take a pawn before you are done.");
@@ -161,6 +188,9 @@ namespace Multiplayer.Foundation.Lobby
             {
                 Member member = GetMember(actor); Room room = GetCurrentRoom(member);
                 member.Room = null; member.Ready = false; member.Flag = null; room.Members.Remove(actor); room.Revision++;
+                // ADR 0037: before the game exists a departed player cannot come back, so no faction is made for them.
+                // From Generating on the faction exists and waits for its player.
+                if (room.Phase < SetupPhase.Generating) { room.FactionSlots.Remove(member.Key); room.Storytellers.Remove(member.Key); }
                 if (room.Members.Count == 0) { rooms.Remove(room.Id); return new LobbyChange(null, Array.Empty<Guid>(), actor); }
                 // Only the host holds the generated setup state, so it ends before the host role moves (plan §6.2).
                 if (room.Host == actor) { ResetSetup(room); room.Host = room.Members[0]; ClearReadyWithoutMatch(room); }
@@ -192,14 +222,22 @@ namespace Multiplayer.Foundation.Lobby
                 switch (room.Phase)
                 {
                     case SetupPhase.Lobby:
-                        // ADR 0031: Coop is built first; the Factions setup does not exist yet (FACTION-001).
-                        if (room.Mode.Mode == GameMode.Factions)
+                        // ADR 0031/0037: Coop is built first; the Factions setup stays refused until its game side exists.
+                        if (room.Mode.Mode == GameMode.Factions && !factionsSetupEnabled)
                             throw new LobbyRuleException(6, "The Factions mode is not available yet.");
                         if (room.Members.Count < minimumStartPlayers) throw new LobbyRuleException(6, "At least 2 players are needed.");
                         // MOD-001: start again checks that every member's mods match the host's.
                         if (room.Members.Any(id => StatusOf(room, members[id]) is ModStatus.Checking or ModStatus.Mismatch))
                             throw new LobbyRuleException(8, "Mods do not match for every player.");
                         RequireEveryoneReady(room, "Not every player is ready.");
+                        break;
+                    case SetupPhase.Storyteller when room.Mode.Mode == GameMode.Factions:
+                        // ADR 0037: the host's shared difficulty, a storyteller of the list for everyone, everyone done.
+                        if (room.FactionOptions == null)
+                            throw new LobbyRuleException(6, "The host has not set the difficulty and storytellers yet.");
+                        if (room.Members.Any(id => !room.FactionOptions.Offers(StorytellerOf(room, members[id]))))
+                            throw new LobbyRuleException(6, "Not every player has chosen a storyteller.");
+                        RequireEveryoneReady(room, "Not every player is done choosing a storyteller.");
                         break;
                     case SetupPhase.WorldTransfer:
                         // SETUP-002: every guest must have loaded the host's world with the same fingerprint.
@@ -224,7 +262,45 @@ namespace Multiplayer.Foundation.Lobby
                             throw new LobbyRuleException(6, "Not every player has loaded the game yet.");
                         break;
                 }
+                if (target == SetupPhase.Scenario && room.Mode.Mode == GameMode.Factions) AssignFactionSlots(room);
                 EnterPhase(room, target);
+                return Change(room, actor);
+            }
+        }
+
+        /// <summary>
+        /// ADR 0037: the host sets the shared difficulty and the storytellers players may choose. A change clears everyone's
+        /// "done" and drops choices no longer offered; sending the same options again changes nothing.
+        /// </summary>
+        public LobbyChange SetFactionOptions(Guid actor, FactionOptions options)
+        {
+            if (options == null) throw new ArgumentNullException(nameof(options));
+            lock (gate)
+            {
+                Room room = GetHostedRoom(actor);
+                RequireStorytellerStep(room);
+                if (options.SameAs(room.FactionOptions)) return Change(room, actor);
+                room.FactionOptions = options;
+                foreach (PlayerKey key in room.Storytellers.Where(entry => !options.Offers(entry.Value)).Select(entry => entry.Key).ToArray())
+                    room.Storytellers.Remove(key);
+                foreach (Guid id in room.Members) members[id].Ready = false;
+                room.Revision++;
+                return Change(room, actor);
+            }
+        }
+
+        /// <summary>ADR 0037: any member, the host included, chooses the storyteller of their own faction from the host's list.</summary>
+        public LobbyChange ChooseStoryteller(Guid actor, string storyteller)
+        {
+            lock (gate)
+            {
+                Member member = GetMember(actor); Room room = GetCurrentRoom(member);
+                RequireStorytellerStep(room);
+                if (room.FactionOptions == null) throw new LobbyRuleException(6, "Wait for the host's storytellers.");
+                if (!room.FactionOptions.Offers(storyteller)) throw new LobbyRuleException(6, "This storyteller is not offered.");
+                if (StorytellerOf(room, member) == storyteller) return Change(room, actor);
+                room.Storytellers[member.Key] = storyteller;
+                member.Ready = false; room.Revision++;
                 return Change(room, actor);
             }
         }
@@ -416,6 +492,21 @@ namespace Multiplayer.Foundation.Lobby
                 if (StatusOf(room, members[id]) is ModStatus.Checking or ModStatus.Mismatch) members[id].Ready = false;
         }
 
+        private static void RequireStorytellerStep(Room room)
+        {
+            if (room.Mode.Mode != GameMode.Factions) throw new LobbyRuleException(6, "In Coop the host chooses the storyteller.");
+            if (room.Phase != SetupPhase.Storyteller) throw new LobbyRuleException(6, "Storytellers are chosen in the storyteller step.");
+        }
+        private static string? StorytellerOf(Room room, Member member) =>
+            room.Storytellers.TryGetValue(member.Key, out string? storyteller) ? storyteller : null;
+        // ADR 0037: host first, then everyone else in joining order. Slots stay with the player key and are never renumbered.
+        private void AssignFactionSlots(Room room)
+        {
+            room.FactionSlots.Clear(); room.Storytellers.Clear(); room.FactionOptions = null;
+            byte slot = 0;
+            foreach (Guid id in new[] { room.Host }.Concat(room.Members.Where(id => id != room.Host)))
+                room.FactionSlots[members[id].Key] = slot++;
+        }
         private void RequireEveryoneReady(Room room, string message)
         { if (room.Members.Any(id => !members[id].Ready)) throw new LobbyRuleException(6, message); }
         // Ready and flags belong to one phase; a lobby "ready" must never count as "done" later.
@@ -427,6 +518,7 @@ namespace Multiplayer.Foundation.Lobby
         private void ResetSetup(Room room)
         {
             room.Phase = SetupPhase.Lobby; room.Site = null; room.HostWorld = null; room.Roster = null; room.HostGame = null;
+            room.FactionSlots.Clear(); room.Storytellers.Clear(); room.FactionOptions = null;
             foreach (Guid id in room.Members)
             {
                 members[id].Ready = false; members[id].Flag = null; members[id].World = null; members[id].PawnHash = null;
@@ -455,10 +547,13 @@ namespace Multiplayer.Foundation.Lobby
         private LobbyChange Change(Room room, Guid actor)
         {
             var players = room.Members.Select(id => new PlayerView(id, members[id].Name, members[id].Ready, members[id].Key,
-                members[id].Flag, StatusOf(room, members[id]), WorldStatusOf(room, members[id]))).ToArray();
+                members[id].Flag, StatusOf(room, members[id]), WorldStatusOf(room, members[id]), SlotOf(room, members[id]),
+                StorytellerOf(room, members[id]))).ToArray();
             return new LobbyChange(new LobbyView(room.Id, room.Name, room.Host, room.Revision, room.Capacity, players,
-                room.Phase, room.Site, room.Mode), room.Members.ToArray(), actor);
+                room.Phase, room.Site, room.Mode, room.FactionOptions), room.Members.ToArray(), actor);
         }
+        private static byte? SlotOf(Room room, Member member) =>
+            room.FactionSlots.TryGetValue(member.Key, out byte slot) ? slot : (byte?)null;
         private sealed class Member
         {
             public Member(Guid id, string name, PlayerKey key) { Id = id; Name = name; Key = key; }
@@ -489,6 +584,10 @@ namespace Multiplayer.Foundation.Lobby
             public byte[]? HostGame { get; set; }
             public PawnRoster? Roster { get; set; }
             public List<Guid> Members { get; } = new List<Guid>();
+            // ADR 0037, Factions mode only: faction slot and storyteller per player key; options from the host.
+            public Dictionary<PlayerKey, byte> FactionSlots { get; } = new Dictionary<PlayerKey, byte>();
+            public Dictionary<PlayerKey, string> Storytellers { get; } = new Dictionary<PlayerKey, string>();
+            public FactionOptions? FactionOptions { get; set; }
         }
     }
 }

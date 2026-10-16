@@ -7,8 +7,12 @@ namespace Multiplayer.Foundation.Protocol
     public sealed class PlayerView
     {
         public PlayerView(Guid id, string name, bool ready, PlayerKey key, SiteTile? flag = null,
-            ModStatus modStatus = ModStatus.Unchecked, WorldStatus worldStatus = WorldStatus.None)
-        { Id = id; Name = name; Ready = ready; Key = key; Flag = flag; ModStatus = modStatus; WorldStatus = worldStatus; }
+            ModStatus modStatus = ModStatus.Unchecked, WorldStatus worldStatus = WorldStatus.None, byte? factionSlot = null,
+            string? storyteller = null)
+        {
+            Id = id; Name = name; Ready = ready; Key = key; Flag = flag; ModStatus = modStatus; WorldStatus = worldStatus;
+            FactionSlot = factionSlot; Storyteller = storyteller;
+        }
         /// <summary>Session ID of this connection; changes on every reconnect.</summary>
         public Guid Id { get; }
         /// <summary>Persistent identity; use this for anything saved.</summary>
@@ -22,15 +26,19 @@ namespace Multiplayer.Foundation.Protocol
         public ModStatus ModStatus { get; }
         /// <summary>SETUP-002: host's world loaded with a matching fingerprint.</summary>
         public WorldStatus WorldStatus { get; }
+        /// <summary>Factions mode (ADR 0037): this player's faction, bound to the player key; null in Coop.</summary>
+        public byte? FactionSlot { get; }
+        /// <summary>Factions mode (ADR 0037): defName of the storyteller chosen for the own faction, or null.</summary>
+        public string? Storyteller { get; }
     }
 
     public sealed class LobbyView
     {
         public LobbyView(Guid id, string name, Guid hostId, ulong revision, byte capacity, IReadOnlyList<PlayerView> players,
-            SetupPhase phase = SetupPhase.Lobby, SiteTile? site = null, LobbyMode? mode = null)
+            SetupPhase phase = SetupPhase.Lobby, SiteTile? site = null, LobbyMode? mode = null, FactionOptions? factionOptions = null)
         {
             Id = id; Name = name; HostId = hostId; Revision = revision; Capacity = capacity; Players = players; Phase = phase; Site = site;
-            Mode = mode ?? LobbyMode.CoopHost;
+            Mode = mode ?? LobbyMode.CoopHost; FactionOptions = factionOptions;
         }
         public Guid Id { get; }
         public string Name { get; }
@@ -43,6 +51,8 @@ namespace Multiplayer.Foundation.Protocol
         public SiteTile? Site { get; }
         /// <summary>Fixed when the lobby was created (ADR 0031).</summary>
         public LobbyMode Mode { get; }
+        /// <summary>Factions mode (ADR 0037): shared difficulty and selectable storytellers, once the host sent them.</summary>
+        public FactionOptions? FactionOptions { get; }
     }
 
     public sealed class LobbySummary
@@ -197,6 +207,19 @@ namespace Multiplayer.Foundation.Protocol
                 writer.WriteByte((byte)player.WorldStatus);
             }
             state.Mode.Write(writer);
+            // ADR 0037: Factions only, appended so a Coop state stays as before.
+            if (state.Mode.Mode == GameMode.Factions)
+            {
+                writer.WriteBool(state.FactionOptions != null); state.FactionOptions?.Write(writer);
+                foreach (PlayerView player in state.Players)
+                {
+                    if (player.FactionSlot >= 64) throw new ProtocolException("Invalid faction slot.");
+                    writer.WriteBool(player.FactionSlot.HasValue);
+                    if (player.FactionSlot.HasValue) writer.WriteByte(player.FactionSlot.Value);
+                    writer.WriteBool(player.Storyteller != null);
+                    if (player.Storyteller != null) DefNames.Write(writer, player.Storyteller);
+                }
+            }
             return writer.ToArray();
         }
         public static LobbyView ReadState(byte[] bytes)
@@ -219,7 +242,22 @@ namespace Multiplayer.Foundation.Protocol
                 players.Add(new PlayerView(playerId, playerName, ready, key, flag, modStatus, worldStatus));
             }
             LobbyMode mode = LobbyMode.Read(reader);
-            reader.EnsureComplete(); return new LobbyView(id, name, host, revision, capacity, players, phase, site, mode);
+            FactionOptions? options = null;
+            if (mode.Mode == GameMode.Factions && reader.Remaining > 0)
+            {
+                options = reader.ReadBool() ? FactionOptions.Read(reader) : null;
+                for (int i = 0; i < players.Count; i++)
+                {
+                    byte? slot = reader.ReadBool() ? reader.ReadByte() : (byte?)null;
+                    if (slot >= 64) throw new ProtocolException("Invalid faction slot.");
+                    string? storyteller = reader.ReadBool() ? DefNames.Read(reader) : null;
+                    PlayerView p = players[i];
+                    players[i] = new PlayerView(p.Id, p.Name, p.Ready, p.Key, p.Flag, p.ModStatus, p.WorldStatus, slot, storyteller);
+                }
+                byte[] slots = players.Where(p => p.FactionSlot.HasValue).Select(p => p.FactionSlot!.Value).ToArray();
+                if (slots.Distinct().Count() != slots.Length) throw new ProtocolException("Faction slots must be distinct.");
+            }
+            reader.EnsureComplete(); return new LobbyView(id, name, host, revision, capacity, players, phase, site, mode, options);
         }
         public static byte[] List(IReadOnlyList<LobbySummary> lobbies)
         {

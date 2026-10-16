@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Fraktionsmodus: Erzähler je Fraktion (Arbeitsbranch `claude/faction-storyteller`, FACTION-004)
+
+- Im Fraktionsmodus wählt jeder Spieler den Erzähler seiner eigenen Fraktion aus einer Liste des Hosts. Der Host legt die gemeinsame Schwierigkeit fest; Gäste können sie nicht ändern. Weiter geht es erst, wenn alle gewählt haben und fertig sind.
+- Jeder Spieler erhält einen festen Fraktionsplatz, der an seiner Kennung hängt. Wer ein laufendes Fraktionsspiel verlässt und zurückkommt, findet seine Fraktion wieder.
+- Im Coop ändert sich nichts. Der Fraktionsstart bleibt gesperrt, bis die Spielseite fertig ist. Die neuen Nachrichten haben noch keine Nummer; im Spiel ist nichts davon sichtbar.
+
 ### Gemeinsames Vorschaupaket für den späteren Spieltest (`codex/manual-test-candidate`, PKG-002)
 
 - X1, X4 und X5 liegen zusammen in einem installierbaren RimWorld-1.6-ZIP. Build, Archivinhalt und Prüfsumme wurden geprüft. Gameplay, Spiel-UI und Zwei-Rechner-Verbindung sind weiterhin ungetestet; X4 bleibt ein Zwischenstand.
