@@ -14,6 +14,11 @@
 - Die Figurenwahl der Mitspieler sieht jetzt aus wie RimWorlds eigene Seite „Charaktere erstellen“:
   - Bilder der Figuren (vom Host gezeichnet), Namensfelder, Alter, Xenotyp, Fertigkeiten mit Leidenschaften, Gesundheit, Beziehungen, Besitz und Team-Fertigkeiten.
   - Übernehmen, Neu würfeln, Tauschen und Umbenennen sitzen in der Seite.
+- Mitspieler haben in der Figurenwahl jetzt alle Möglichkeiten der Host-Seite:
+  - Alle drei Namen ändern; die Änderung bleibt, sobald man das Feld verlässt oder Enter drückt.
+  - Altersstufe und Xenotyp wählen, eigene Xenotypen im Xenotyp-Editor bauen.
+  - Kopfbedeckung und Kleidung ein- und ausblenden.
+  - Tooltips, Fähigkeiten und Info-Knöpfe.
 - In der Charakterwahl übernimmt jeder Spieler eine eigene Figur; er kann sie neu würfeln, mit einer zurückgelassenen tauschen und umbenennen und meldet sich fertig. Erst wenn alle fertig sind, geht es weiter. Die Startgruppe hat mindestens eine Figur je Spieler.
 - Der Host sendet die erzeugte Welt an alle Mitspieler; jeder lädt sie und bestätigt mit einem Fingerabdruck, dass er dieselbe Welt hat. Erst dann geht es zur Startortwahl. Ein Selbsttest (`-mpWorldSelfTest`) prüft Speichern und Laden ohne Mitspieler.
 

@@ -42,7 +42,7 @@ Strings sind `length:u16` plus strikt gültige UTF-8-Bytes. Allgemeine Strings: 
 | 31 | WorldReady | C→S | Welt-Fingerabdruck (32 Byte); nur Host, nur in `WorldTransfer` |
 | 32 | WorldLoaded | C→S | Fingerabdruck der geladenen Welt (32 Byte); nur Gäste, nur in `WorldTransfer` |
 | 33 | PawnRoster | C→S→C | `count:u8` (≤ 24) Figurenkarten; nur Host, nur in `Characters` |
-| 34 | PawnRequest | C→S→C | Art `u8`, Figur `u32`, andere Figur `u32`, Text (≤ 64 Byte), optional `PlayerKey`; nur Gäste, nur in `Characters`, an den Host |
+| 34 | PawnRequest | C→S→C | Art `u8`, Figur `u32`, andere Figur `u32`, Text (≤ 4096 Byte), optional `PlayerKey`; nur Gäste, nur in `Characters`, an den Host |
 | 35 | GameReady | C→S | Fingerabdruck des geladenen Startspiels (32 Byte); nur Host, nur in `Generating` |
 | 36 | GameLoaded | C→S | Fingerabdruck des geladenen Startspiels (32 Byte); nur Gäste, nur in `Generating` |
 | 37 | PawnPortrait | C→S→C | Figur `u32`, PNG (`u32`-Länge, 1..49152 Byte); nur Host, nur in `Characters`, an alle anderen |
@@ -95,11 +95,22 @@ In `WorldTransfer` trägt jeder Spieler im Lobbyzustand zusätzlich `WorldStatus
 Figuren gibt es nur im Spiel des Hosts. Eine Karte in `PawnRoster`: Thing-ID `u32`, Startgruppe `bool`, optional Besitzer (`PlayerKey`), fünf Texte (Name, Kurzname, Kurzbeschreibung, Kindheit, Erwachsenenleben, je ≤ 160 Byte), dann Listen mit `count:u8` (≤ 24): Merkmale, Fertigkeiten (Name, Stufe `u8` mit `255` = unfähig, Leidenschaft `u8`), Unfähigkeiten, Gesundheit. Danach `bool` und, wenn gesetzt, die Details für die Gastseite (2026-10-16):
 - drei Namensteile (je ≤ 64 Byte), Geschlecht `u8`, biologisches und chronologisches Alter (je `u16`);
 - Xenotyp (≤ 64 Byte) und Symbolschlüssel (`x:`+XenotypeDef oder `c:`+XenotypeIconDef, ≤ 96 Byte), Lieblingsfarbe RGBA `u32` (0 = keine);
-- Listen (`count:u8` ≤ 24): Gesundheit (Körperteil, Text), Beziehungen (Art, Name, Meinung `i16`, Gegenmeinung `i16`), Besitz (Name, Anzahl `u32`).
+- Listen (`count:u8` ≤ 24): Gesundheit (Körperteil, Text), Beziehungen (Art, Name, Meinung `i16`, Gegenmeinung `i16`), Besitz (Name, Anzahl `u32`);
+- Altersstufe des Platzes `u8` (DevelopmentalStage), Tooltips für Kindheit und Erwachsenenleben (je ≤ 1024 Byte), Listen (`count:u8` ≤ 24): Merkmal-Tooltips (≤ 1024 Byte, Reihenfolge wie Merkmale), AbilityDef-Namen, ThingDef-Namen des Besitzes (je ≤ 64 Byte).
 
-`PawnPortrait` trägt das Bild einer Figur so, wie das Spiel des Hosts sie zeichnet. Der Host sendet es einmal je Figur und wieder, wenn sich ihr Aussehen ändert. Der Server prüft die Nutzlast und leitet sie nur in `Characters` und nur vom Host weiter (sonst Code 3 bzw. 6). Die Codes 33–37 kamen ohne neue Wire-Version; alte Clients können neue Listen nicht lesen.
+Passt eine Liste mit Tooltips nicht in einen Frame, sendet der Host sie ohne Tooltips.
 
-Der Server leitet die Liste an die Gäste weiter, bildet je Spieler einen SHA-256 über dessen Karten und löscht Fertig, wenn sich der Wert ändert oder der Spieler keine Figur der Startgruppe mehr hat. Fertig in `Characters` verlangt eine eigene Figur der Startgruppe (Code 6). `PawnRequest`-Arten: `1` übernehmen, `2` freigeben, `3` neu würfeln, `4` tauschen, `5` umbenennen. Der Server ersetzt den mitgeschickten `PlayerKey` durch den des Absenders und leitet an den Host; ob eine Anfrage erlaubt ist, entscheidet der Host.
+`PawnPortrait` trägt das Bild einer Figur so, wie das Spiel des Hosts sie zeichnet: Figur `u32`, Ansicht `u8`, dann PNG.
+- Ansicht `0` ist Kleidung ohne Kopfbedeckung (vanillas Voreinstellung); Bit `1` = mit Kopfbedeckung, Bit `2` = ohne Kleidung.
+- Der Host sendet zuerst Ansicht 0 aller Figuren, dann die anderen, und jede wieder, wenn sich das Aussehen ändert. Der Server prüft die Nutzlast und leitet sie nur in `Characters` und nur vom Host weiter (sonst Code 3 bzw. 6). Die Codes 33–37 kamen ohne neue Wire-Version; alte Clients können neue Listen nicht lesen.
+
+Der Server leitet die Liste an die Gäste weiter, bildet je Spieler einen SHA-256 über dessen Karten und löscht Fertig, wenn sich der Wert ändert oder der Spieler keine Figur der Startgruppe mehr hat. Fertig in `Characters` verlangt eine eigene Figur der Startgruppe (Code 6). `PawnRequest`-Arten:
+- `1` übernehmen, `2` freigeben, `3` neu würfeln, `4` tauschen, `5` umbenennen (Spitzname).
+- `6` Namen setzen: Text `Vorname␟Spitzname␟Nachname` (Trenner U+001F).
+- `7` Xenotyp: Text `x:`+XenotypeDef, oder `c:`+Name␟`0|1` vererbbar␟XenotypeIconDef␟Gene durch Komma (≤ 256).
+- `8` Altersstufe: Wert im Feld „andere Figur“.
+
+Bei 7 und 8 ändert der Host die Generierungsanfrage des Platzes und erzeugt die Figur neu wie vanillas Knöpfe unter „Randomize“. Der Server ersetzt den mitgeschickten `PlayerKey` durch den des Absenders und leitet an den Host; ob eine Anfrage erlaubt ist, entscheidet der Host.
 
 ## Gemeinsamer Spielstart (SETUP-005, ADR 0023)
 

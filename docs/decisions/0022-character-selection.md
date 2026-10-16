@@ -24,3 +24,19 @@
   - `GuestCharacterPage` baut die vanilla-Seite nach: Liste mit Bildern, Namensfelder, Karte in drei Spalten, Team-Fertigkeiten, Knöpfe an vanillas Stellen. Texte nimmt sie über vanillas Übersetzungsschlüssel, wo es sie gibt.
   - Verworfen: echte Figuren beim Gast (Scribe der Figuren samt Ideoligion und Verwandten), um vanillas eigene Karte zu nutzen. Zu viele Querverweise, die beim Gast fehlen, und jede Änderung müsste ganze Figuren neu übertragen.
   - Nachweis: `docs/verification/2026-10-16-guest-character-page.md`.
+- **Nachtrag 2026-10-16 (alle Funktionen der Host-Seite):** Der Benutzer wollte beim Gast alle Möglichkeiten der vanilla-Seite. Neue Anfragen:
+  - Alle drei Namen (`6`). Das Feld wird beim Verlassen oder mit Enter übernommen, ohne ✓; vorher kam ein Umbenennen ohne ✓ nie an.
+  - Xenotyp (`7`), auch eigene Xenotypen.
+  - Altersstufe (`8`).
+
+  Der Host setzt bei Xenotyp und Altersstufe die Generierungsanfrage des Platzes und erzeugt neu (`StartingPawnUtility`), so bleiben alle Würfe beim Host.
+
+  Der **Xenotyp-Editor** ist vanillas eigener (`Dialog_CreateXenotype`) und läuft beim Gast. Sein Ergebnis landet in der leeren Generierungsanfrage des Gast-Spiels für den Platz; der Rückruf schickt es als Anfrage `7` an den Host. Gene werden beim Host über Def-Namen aufgelöst.
+
+  Außerdem:
+  - Ansichten „Show headgear/Show apparel“ (vier Bildvarianten vom Host).
+  - Tooltips für Hintergründe und Merkmale (Text vom Host), Fertigkeiten und Xenotyp (aus den Defs des Gastes).
+  - Fähigkeiten-Symbole und Info-Knöpfe beim Besitz.
+  - Fertigkeitsnamen in der Sprache des Gastes.
+
+  Nicht nachgebaut: vanillas Info-Karte der Figur (braucht die Figur), Ziehen zum Umsortieren (Tauschen-Knopf statt dessen). Nachweis: `docs/verification/2026-10-16-guest-page-functions.md`.

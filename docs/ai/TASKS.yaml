@@ -835,8 +835,9 @@ tasks:
   - docs/decisions/0022-character-selection.md
   - docs/verification/2026-10-15-character-selection.md
   - docs/verification/2026-10-16-guest-character-page.md
+  - docs/verification/2026-10-16-guest-page-functions.md
   - docs/reviews/2026-10-15-mod-check-setup-ui.md
-  blocker: 'Serverregeln und Spielseite gebaut und getestet; Host-Logik auf vanilla-Startfiguren im Selbsttest geprüft (ADR 0022). Erster Zwei-Spieler-Lauf 2026-10-16 ging; die Gastseite ist jetzt wie vanilla aufgebaut (Bilder vom Host), im Selbsttest gezeichnet. Offen: zweiter Zwei-Spieler-Lauf mit der neuen Gastseite (Prüfpunkt 8).'
+  blocker: 'Serverregeln und Spielseite gebaut und getestet; Host-Logik auf vanilla-Startfiguren im Selbsttest geprüft (ADR 0022). Erster Zwei-Spieler-Lauf 2026-10-16 ging; die Gastseite ist jetzt wie vanilla aufgebaut (Bilder vom Host) und hat alle Funktionen der Host-Seite (Namen, Xenotyp mit Editor, Altersstufe, Ansichten); im Selbsttest geprüft. Offen: zweiter Zwei-Spieler-Lauf mit der neuen Gastseite (Prüfpunkt 8).'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: SETUP-005
   title: 'Spielstandübertragung und pausierte Landung'

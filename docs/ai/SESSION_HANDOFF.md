@@ -24,3 +24,9 @@
   - Harness-Tests sind grün; der .NET-8-Harness liegt nur im Scratchpad (`net8.0`-Wrapper um die unveränderten Testquellen).
   - Der Selbsttest zeichnet die Seite mit echten Figuren (PASS, Foto `selftest-guest-page.png`).
   - Verifikation: `docs/verification/2026-10-16-guest-character-page.md`.
+- **Gastseite mit allen Host-Funktionen (2026-10-16, nach dem zweiten Zwei-Spieler-Lauf):**
+  - Anfragen 6 (Namen), 7 (Xenotyp, auch eigener) und 8 (Altersstufe). Vanillas Xenotyp-Editor läuft beim Gast.
+  - Vier Bildvarianten, Tooltips, Fähigkeiten, Info-Knöpfe. ADR 0022 hat einen zweiten Nachtrag.
+  - Der Selbsttest prüft Editor, Anfragen und Seite (PASS).
+  - Verifikation: `docs/verification/2026-10-16-guest-page-functions.md`.
+  - Die Pause nach der Landung bleibt, bis SYNC-001 da ist.
