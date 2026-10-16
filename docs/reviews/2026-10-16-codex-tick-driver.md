@@ -1,6 +1,7 @@
 # Review X2 – Spielseitiger Tick-Treiber
 
 - **Aufgaben:** `SYNC-001` und `SYNC-003` (Spielseite); Branch `codex/tick-driver`, Ziel `main`, Basis `e4501df`. Kein Merge ohne ausdrückliche Freigabe.
+- **Feature-Commit:** `0ad1f31` (`feat(rimworld): drive shared ticks from lockstep horizon`); aktuellen Branchverlauf mit `git log main..codex/tick-driver --oneline` prüfen.
 - **Änderung:** Nach der Landung hält der Client den Spieltick am gemeinsamen Horizont an. Pause/Tempo laufen als Koordinator-Anfragen; Overlay zeigt Fortschritt und den langsamsten Spieler. Der alte Dauerpause-Patch lässt freigegebene Ticks durch.
 - **Betroffene Komponenten:** RimWorld-Adapter und Harmony-Tick-Hooks; keine Änderung am Koordinator oder an Nachrichtencodes. `scripts/build-mod.sh`/`scripts/package-mod.py` enthielten `Multiplayer.Foundation.Session.dll` bereits und wurden durch Build/Paketprüfung bestätigt.
 - **Entscheidung:** [ADR 0040](../decisions/0040-rimworld-tick-driver.md). Spielbefehle ohne `SYNC-002` werden ausdrücklich gestoppt; der Hash ist bis X3 unvollständig.

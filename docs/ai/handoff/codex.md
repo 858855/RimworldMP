@@ -6,7 +6,7 @@
 
 ## X2 – Aufgabenvertrag und Ergebnis
 
-- **Branch/Basis:** `codex/tick-driver` von `main`/`e4501df`; `SYNC-001` und `SYNC-003` (Spielseite).
+- **Branch/Basis:** `codex/tick-driver` von `main`/`e4501df`; Feature-Commit `0ad1f31`, letzten Commit per `git log -1 --oneline` prüfen. `SYNC-001` und `SYNC-003` (Spielseite).
 - **Ziel:** Nach der Landung Tick `c+1` erst nach Befehlsübernahme und Freigabe durch `LockstepClient.MayRunTick(c)`; Pause/Tempo über den Koordinator; „Warte auf …“ anzeigen.
 - **Umfang/Nicht-Ziele:** Nur RimWorld-Adapter, eigene Übergabe, ADR 0040 und Prüfnachweis. Kein Koordinator-Code, keine Spielbefehls-Serializer (`SYNC-002`), kein vollständiger Zustands-Hash/Rand (`X3`).
 - **Abhängigkeiten:** `LockstepClient`/ADR 0030 auf `main`; `Playing` und gemeinsamer Save aus `SETUP-005`. `DET-001` bleibt offen.
