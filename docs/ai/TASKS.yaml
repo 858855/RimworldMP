@@ -1634,7 +1634,7 @@ tasks:
   - 'Zwei echte RimWorld-Clients laufen mit unterschiedlichen Storytellern und gleichen Zustands-Hashes'
   implementation: in_progress
   verification: build_passed
-  integration: not_submitted
+  integration: approved
   branch: codex/faction-ui
   base_branch: main
   base_commit: ea065aa
@@ -1643,5 +1643,6 @@ tasks:
   - docs/verification/2026-10-16-faction-storyteller-foundation.md
   - docs/verification/2026-10-16-faction-storyteller-contract.md
   - docs/verification/2026-10-16-faction-storyteller-ui.md
+  - docs/verification/2026-10-16-faction-ui-merge-gate.md
   blocker: 'FACTION-001 erzeugt noch keine getrennten Spielerfraktionen. Vanilla Tick, Ziele und Queue nutzen globalen Storyteller; sichere Mehrfachausführung, Save/Load, UI-Spieltest und Zwei-Client-Test fehlen. Fraktionsstart gesperrt.'
   plan_ref: docs/decisions/0045-faction-storyteller-boundary.md
