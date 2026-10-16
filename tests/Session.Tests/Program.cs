@@ -190,6 +190,10 @@ Console.WriteLine("PASS: ordering under random interleavings (200 runs)");
     }
     Assert(s.Horizon == guestStuck + 120, "at most two seconds ahead of the slowest player (" + s.Horizon + ")");
     Assert(last != null && last.WaitingFor == guest && last.WaitingTick == guestStuck, "the horizon says who holds it back");
+    // short steps (16 ms: less than one tick due) keep naming the slow player while the horizon is held (self-test 2026-10-16)
+    bool named = true;
+    for (int i = 0; i < 30; i++) { now += 16; s.Step(now); named &= s.WaitingFor == guest; }
+    Assert(named && s.Horizon == guestStuck + 120, "held at the limit in every short step");
     s.ReportTick(guest, new ClientTick(s.Horizon, 0));
     int before = s.Horizon;
     now += 50; s.Step(now);

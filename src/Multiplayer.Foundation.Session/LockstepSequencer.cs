@@ -156,12 +156,10 @@ namespace Multiplayer.Foundation.Session
                 if (slowestId != Guid.Empty)
                 {
                     long limit = (long)members[slowestId].Tick!.Value + (long)(ticksPerSecond * MaximumLeadSeconds);
-                    if (wanted > limit)
-                    {
-                        // the slowest player sets the pace: hold back and do not make up the time later
-                        wanted = Math.Max(Horizon, limit); carry = 0;
-                        WaitingFor = slowestId; waitingTick = members[slowestId].Tick!.Value;
-                    }
+                    // the slowest player sets the pace: hold back and do not make up the time later
+                    if (wanted > limit) { wanted = Math.Max(Horizon, limit); carry = 0; }
+                    // held at the limit, whether or not this (short) step had a tick due
+                    if (wanted >= limit) { WaitingFor = slowestId; waitingTick = members[slowestId].Tick!.Value; }
                 }
                 Horizon = (int)Math.Min(int.MaxValue, wanted);
             }
