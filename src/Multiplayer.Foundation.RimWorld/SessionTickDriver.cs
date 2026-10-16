@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Multiplayer.Foundation.Network;
 using Multiplayer.Foundation.Protocol;
@@ -9,17 +10,38 @@ namespace Multiplayer.Foundation.RimWorld
     /// <summary>Game-thread bridge between the vanilla tick loop and ADR 0030's coordinator.</summary>
     internal sealed class SessionTickDriver
     {
-        private readonly LockstepClient lockstep = new LockstepClient();
+        private readonly LockstepClient lockstep;
+        private readonly Action<IReadOnlyList<ScheduledCommand>> saveAtBoundary;
         private readonly int landingTicksGame;
+        private readonly SessionRandom random;
         private int lastHashTick;
+        private readonly int partialHashBoundary;
+        private bool savePending;
+        private bool awaitingResync;
+        private bool catchingUp;
+        private bool tickRandomActive;
+        private int currentTick;
 
-        internal SessionTickDriver(Guid lobbyId, int landingTicksGame)
-        { LobbyId = lobbyId; this.landingTicksGame = landingTicksGame; }
+        internal SessionTickDriver(Guid lobbyId, int landingTicksGame, Action<IReadOnlyList<ScheduledCommand>> saveAtBoundary,
+            JoinSnapshot? join = null)
+        {
+            LobbyId = lobbyId; this.landingTicksGame = landingTicksGame; this.saveAtBoundary = saveAtBoundary;
+            lockstep = join == null ? new LockstepClient() : LockstepClient.ForJoin(join);
+            random = new SessionRandom(lobbyId);
+            catchingUp = join != null;
+            lastHashTick = join?.Boundary ?? 0;
+            partialHashBoundary = join != null && join.Boundary % 60 != 0
+                ? (join.Boundary / 60 + 1) * 60 : -1;
+        }
 
         internal Guid LobbyId { get; }
         internal bool Faulted { get; private set; }
         internal string Failure { get; private set; } = "";
-        internal bool Paused => lockstep.Paused || Faulted;
+        internal bool Paused => lockstep.Paused || Faulted || awaitingResync || savePending;
+        internal bool AwaitingResync => awaitingResync;
+        internal bool CatchingUp => catchingUp;
+        internal bool SavePending => savePending;
+        internal void MarkSynced() => catchingUp = false;
         internal byte Speed => lockstep.Speed;
         internal int Horizon => lockstep.Horizon;
         internal Guid SlowestSession => lockstep.SlowestSession;
@@ -32,7 +54,7 @@ namespace Multiplayer.Foundation.RimWorld
             if (Faulted) return;
             lockstep.Receive(message);
             if (message.Type == MessageType.DesyncDetected)
-                Stop("Abweichender Spielzustand gemeldet; die Sitzung wurde angehalten.");
+                awaitingResync = true;
         }
 
         internal void Stop(string reason) { Faulted = true; Failure = reason; }
@@ -40,20 +62,51 @@ namespace Multiplayer.Foundation.RimWorld
         /// <summary>Called every frame, including while paused, and immediately before each possible tick.</summary>
         internal void TakeAtCurrentBoundary(TickManager manager)
         {
-            if (Faulted) return;
+            if (Faulted || awaitingResync) return;
             int completed = CompletedTick(manager);
             if (completed < 0) { Stop("Spiel-Ticks liegen vor dem gemeinsamen Startwert."); return; }
             var commands = lockstep.TakeCommandsAt(completed);
-            if (commands.Count != 0)
+            if (commands.Any(c => c.Kind == ScheduledKind.Game))
                 Stop("Ein Spielbefehl ist eingetroffen, aber der Ausführer (SYNC-002) fehlt noch.");
+            else if (commands.Any(c => c.Kind != ScheduledKind.Save))
+                Stop("Unbekannte Art eines geplanten Befehls.");
+            else if (commands.Count != 0)
+            {
+                savePending = true;
+                saveAtBoundary(commands);
+            }
         }
+
+        internal void FinishSave() => savePending = false;
 
         internal bool MayRunTick(TickManager manager)
         {
             TakeAtCurrentBoundary(manager);
             int completed = CompletedTick(manager);
-            return !Paused && completed >= 0 && lockstep.MayRunTick(completed);
+            if (Paused || completed < 0 || !lockstep.MayRunTick(completed)) return false;
+            currentTick = completed;
+            random.BeginTick(completed + 1);
+            tickRandomActive = true;
+            return true;
         }
+
+        internal void EndTick(TickManager manager)
+        {
+            AbortTickRandom();
+            if (CompletedTick(manager) != currentTick + 1)
+                Stop("Der Vanilla-Tick wurde trotz Freigabe nicht ausgeführt.");
+        }
+
+        internal void AbortTickRandom()
+        {
+            if (!tickRandomActive) return;
+            tickRandomActive = false;
+            random.End();
+        }
+
+        // SYNC-002 will call these around each ordered gameplay command.
+        internal void BeginCommandRandom(int boundary, ulong sequence) => random.BeginCommand(boundary, sequence);
+        internal void EndCommandRandom() => random.End();
 
         internal WireMessage? Progress(TickManager manager, long nowMs)
         {
@@ -65,28 +118,12 @@ namespace Multiplayer.Foundation.RimWorld
         {
             if (Faulted) return null;
             int completed = CompletedTick(manager);
-            if (completed <= 0 || completed % 60 != 0 || completed == lastHashTick) return null;
+            if (completed <= 0 || completed % 60 != 0 || completed <= lastHashTick) return null;
             lastHashTick = completed;
-            return LockstepClient.HashMessage(completed, CoreHash(manager));
-        }
-
-        /// <summary>Provisional core hash. X3 will expand this to all gameplay state and controlled Rand.</summary>
-        private static ulong CoreHash(TickManager manager)
-        {
-            const ulong offset = 14695981039346656037UL, prime = 1099511628211UL;
-            ulong hash = offset;
-            void Add(int value) { unchecked { hash = (hash ^ (uint)value) * prime; } }
-            Add(manager.TicksGame);
-            foreach (Map map in Find.Maps.OrderBy(m => m.uniqueID))
-            {
-                Add(map.uniqueID);
-                foreach (Pawn pawn in map.mapPawns.FreeColonists.OrderBy(p => p.thingIDNumber))
-                {
-                    Add(pawn.thingIDNumber);
-                    Add(pawn.Position.x); Add(pawn.Position.y); Add(pawn.Position.z);
-                }
-            }
-            return hash;
+            var (draws, valueSum) = random.TakeWindow();
+            // A joiner did not execute the whole first 60-tick window. The coordinator must not compare it.
+            if (completed == partialHashBoundary) return null;
+            return LockstepClient.HashMessage(completed, SessionStateHash.Compute(manager, draws, valueSum));
         }
     }
 }

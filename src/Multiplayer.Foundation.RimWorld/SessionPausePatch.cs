@@ -1,3 +1,4 @@
+using System;
 using HarmonyLib;
 using Verse;
 
@@ -40,6 +41,12 @@ namespace Multiplayer.Foundation.RimWorld
         {
             if (__state) FoundationMod.Instance?.AfterSessionTick(__instance);
         }
+
+        private static Exception? Finalizer(Exception? __exception, bool __state)
+        {
+            if (__state && __exception != null) FoundationMod.Instance?.AbortSessionTick(__exception);
+            return __exception;
+        }
     }
 
     [HarmonyPatch(typeof(TickManager), nameof(TickManager.CurTimeSpeed), MethodType.Setter)]
@@ -58,5 +65,12 @@ namespace Multiplayer.Foundation.RimWorld
         {
             return FoundationMod.Instance?.InterceptSessionToggle() ?? true;
         }
+    }
+
+    /// <summary>The coordinator schedules autosaves at a shared boundary (ADR 0032).</summary>
+    [HarmonyPatch(typeof(global::RimWorld.Autosaver), nameof(global::RimWorld.Autosaver.AutosaverTick))]
+    internal static class SessionAutosavePatch
+    {
+        private static bool Prefix() => FoundationMod.Instance?.SuppressLocalAutosave != true;
     }
 }
