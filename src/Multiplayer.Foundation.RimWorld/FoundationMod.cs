@@ -965,11 +965,17 @@ namespace Multiplayer.Foundation.RimWorld
             y += 31f;
             foreach (PlayerView player in lobby.Players)
             {
-                Widgets.Label(new Rect(x, y, width, 27f), player.Name + (player.Id == lobby.HostId ? " [Host]" : ""));
+                string label = player.Name + (player.Id == lobby.HostId ? " [Host]" : "");
+                if (lobby.Mode.Mode == GameMode.Factions && lobby.Phase == SetupPhase.Storyteller)
+                    label += " · Platz " + (player.FactionSlot?.ToString() ?? "?") + " · " +
+                        StorytellerLabel(player.Storyteller) + (player.Ready ? " · fertig" : " · offen");
+                Widgets.Label(new Rect(x, y, width, 27f), label);
                 y += 27f;
             }
             y += 8f;
             DrawSetupDetails(x, ref y, width);
+            if (lobby.Mode.Mode == GameMode.Factions && lobby.Phase == SetupPhase.Storyteller)
+                DrawFactionStoryteller(x, ref y, width);
             if (lobby.Phase == SetupPhase.SiteSelection && lobby.HostId != client.SessionId && !guestSiteMapActive && guestWorldLoaded)
             {
                 if (Widgets.ButtonText(new Rect(x, y, 200f, 30f), "Weltkarte öffnen")) OpenGuestSiteMap();
@@ -1036,6 +1042,85 @@ namespace Multiplayer.Foundation.RimWorld
             y += infoHeight + 10f;
         }
 
+        private static string StorytellerLabel(string? defName)
+        {
+            if (defName == null) return "Erzähler fehlt";
+            StorytellerDef? definition = DefDatabase<StorytellerDef>.AllDefsListForReading
+                .FirstOrDefault(def => def.defName == defName);
+            return definition?.LabelCap.ToString() ?? defName + " (nicht installiert)";
+        }
+
+        private void DrawFactionStoryteller(float x, ref float y, float width)
+        {
+            if (lobby == null || client == null) return;
+            FactionOptions? options = lobby.FactionOptions;
+            PlayerView? me = lobby.Players.FirstOrDefault(player => player.Id == client.SessionId);
+            string difficulty = options?.Difficulty ?? "noch nicht veröffentlicht";
+            Widgets.Label(new Rect(x, y, width, 26f), "Gemeinsame Schwierigkeit: " + difficulty);
+            y += 29f;
+            if (lobby.HostId == client.SessionId)
+            {
+                Widgets.Label(new Rect(x, y, width, 50f),
+                    "Schwierigkeit auf der RimWorld-Seite wählen, dann die Optionen an alle senden.");
+                y += 53f;
+                if (Widgets.ButtonText(new Rect(x, y, 185f, 30f), "Optionen veröffentlichen")) PublishFactionOptions();
+                y += 36f;
+            }
+            Widgets.Label(new Rect(x, y, width, 26f), "Dein Erzähler: " + StorytellerLabel(me?.Storyteller));
+            y += 29f;
+            if (Widgets.ButtonText(new Rect(x, y, 175f, 30f), "Erzähler wählen", true, true, options != null))
+                OpenFactionStorytellerMenu();
+            bool ready = me?.Ready ?? false;
+            bool chosen = options?.Offers(me?.Storyteller) == true;
+            if (Widgets.ButtonText(new Rect(x + 185f, y, 135f, 30f), ready ? "Nicht fertig" : "Fertig", true, true,
+                me != null && (ready || chosen)))
+                Send(MessageType.PlayerReadyChanged, LobbyPayloads.Bool(!ready));
+            y += 37f;
+            Widgets.Label(new Rect(x, y, width, 50f), LobbyRegistry.StorytellerBlockReason(lobby) ?? "Alle sind fertig.");
+            y += 54f;
+        }
+
+        private void PublishFactionOptions()
+        {
+            if (lobby?.Mode.Mode != GameMode.Factions || lobby.Phase != SetupPhase.Storyteller ||
+                client == null || lobby.HostId != client.SessionId) return;
+            if (SetupMirror.CurrentPage() is not Page_SelectStoryteller page ||
+                SetupMirror.SelectedDifficulty(page) is not DifficultyDef difficulty ||
+                !DefNames.IsValid(difficulty.defName))
+            { status = "Wähle zuerst auf der RimWorld-Seite eine gültige gemeinsame Schwierigkeit."; return; }
+            string[] offered = FactionStorytellerCatalog.AvailableFor(difficulty)
+                .Select(def => def.defName).ToArray();
+            if (offered.Length == 0) { status = "Keine kompatiblen Erzähler installiert."; return; }
+            try
+            {
+                var options = new FactionOptions(difficulty.defName, offered);
+                if (options.SameAs(lobby.FactionOptions)) { status = "Diese Optionen sind bereits veröffentlicht."; return; }
+                Send(MessageType.FactionOptions, options.ToPayload());
+            }
+            catch (ProtocolException error) { status = "Ungültige Erzähler-Optionen: " + error.Message; }
+        }
+
+        private void OpenFactionStorytellerMenu()
+        {
+            if (lobby?.Mode.Mode != GameMode.Factions || lobby.Phase != SetupPhase.Storyteller ||
+                lobby.FactionOptions == null || client == null) return;
+            DifficultyDef? difficulty = DefDatabase<DifficultyDef>.AllDefsListForReading
+                .FirstOrDefault(def => def.defName == lobby.FactionOptions.Difficulty);
+            if (difficulty == null) { status = "Die Schwierigkeit des Hosts ist lokal nicht installiert."; return; }
+            var local = FactionStorytellerCatalog.AvailableFor(difficulty)
+                .ToDictionary(def => def.defName, StringComparer.Ordinal);
+            var choices = new List<FloatMenuOption>();
+            foreach (string name in lobby.FactionOptions.Storytellers)
+            {
+                if (!local.TryGetValue(name, out StorytellerDef? definition)) continue;
+                string selected = name;
+                choices.Add(new FloatMenuOption(definition.LabelCap.ToString(),
+                    () => Send(MessageType.StorytellerChoice, FactionPayloads.StorytellerChoice(selected))));
+            }
+            if (choices.Count == 0) { status = "Kein angebotener Erzähler ist lokal verfügbar."; return; }
+            Find.WindowStack.Add(new FloatMenu(choices));
+        }
+
         private void DrawWorldTransfer(float x, ref float y, float width)
         {
             if (lobby == null || client == null) return;
@@ -1095,8 +1180,29 @@ namespace Multiplayer.Foundation.RimWorld
             bool isHost = lobby != null && client != null && lobby.HostId == client.SessionId;
             if (lobby?.Phase == SetupPhase.SiteSelection)
                 second = isHost ? "Du wählst den Startort. Fähnchen sind Vorschläge." : "Nur der Host wählt. „Weiter“ setzt dein Fähnchen.";
+            if (lobby?.Mode.Mode == GameMode.Factions && lobby.Phase == SetupPhase.Storyteller)
+                second = LobbyRegistry.StorytellerBlockReason(lobby) ?? "Alle haben einen Erzähler gewählt und sind fertig.";
             Widgets.Label(new Rect(inRect.x, inRect.y + 26f, inRect.width, 26f), second);
             float buttonY = inRect.y + 58f;
+            if (lobby?.Mode.Mode == GameMode.Factions && lobby.Phase == SetupPhase.Storyteller)
+            {
+                PlayerView? me = client == null ? null : lobby.Players.FirstOrDefault(p => p.Id == client.SessionId);
+                if (isHost && Widgets.ButtonText(new Rect(inRect.x, buttonY, 160f, 30f), "Optionen senden"))
+                    PublishFactionOptions();
+                if (Widgets.ButtonText(new Rect(inRect.x + 165f, buttonY, 150f, 30f), "Erzähler wählen", true, true,
+                    lobby.FactionOptions != null)) OpenFactionStorytellerMenu();
+                bool ready = me?.Ready ?? false;
+                if (Widgets.ButtonText(new Rect(inRect.x, buttonY + 36f, 105f, 30f), ready ? "Zurück" : "Fertig", true, true,
+                    me != null && (ready || lobby.FactionOptions?.Offers(me.Storyteller) == true)))
+                    Send(MessageType.PlayerReadyChanged, LobbyPayloads.Bool(!ready));
+                if (Widgets.ButtonText(new Rect(inRect.x + 110f, buttonY + 36f, 120f, 30f), "Chat / Lobby")) OpenWindow();
+                Widgets.Label(new Rect(inRect.x, buttonY + 74f, inRect.width, 25f),
+                    "Dein Erzähler: " + StorytellerLabel(me?.Storyteller));
+                Widgets.Label(new Rect(inRect.x, buttonY + 100f, inRect.width, 25f),
+                    "Schwierigkeit: " + (lobby.FactionOptions?.Difficulty ?? "noch offen"));
+                if (isHost && Widgets.ButtonText(new Rect(inRect.x, inRect.yMax - 30f, 140f, 28f), "Abbrechen")) ConfirmAbort();
+                return;
+            }
             if (lobby?.Phase == SetupPhase.SiteSelection)
             {
                 if (Widgets.ButtonText(new Rect(inRect.x, buttonY, 105f, 30f), "Fähnchen hier")) PlaceFlagAtSelection();

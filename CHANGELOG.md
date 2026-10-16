@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fraktions-Storyteller-Auswahl im Spiel (`codex/faction-ui`, FACTION-003)
+
+- Die Spieloberfläche zeigt im Fraktionsmodus die gemeinsame Schwierigkeit, Fraktionsplätze, Erzählerwahl und den Fertig-Status. Der Host veröffentlicht die auf seiner RimWorld-Seite gewählte Schwierigkeit samt kompatibler Erzählerliste; Spieler wählen daraus ihren eigenen Erzähler. Die vorhandenen Servernachrichten 96/97 übertragen die Auswahl.
+- Ungültige Def-Namen werden aus der angebotenen Liste ausgeschlossen. Der Mod baut und die Protokoll-, Lobby- und Hosting-Tests bestehen. Die Bedienung in RimWorld und der Fraktionsstart sind weiterhin ungeprüft beziehungsweise gesperrt.
+
 ### Fraktionsmodus: Erzähler je Fraktion (Arbeitsbranch `claude/faction-storyteller`, FACTION-004)
 
 - Im Fraktionsmodus wählt jeder Spieler den Erzähler seiner eigenen Fraktion aus einer Liste des Hosts. Der Host legt die gemeinsame Schwierigkeit fest; Gäste können sie nicht ändern. Weiter geht es erst, wenn alle gewählt haben und fertig sind.

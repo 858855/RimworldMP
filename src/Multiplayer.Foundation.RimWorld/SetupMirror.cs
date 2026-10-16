@@ -46,6 +46,9 @@ namespace Multiplayer.Foundation.RimWorld
         /// <summary>Top-most open setup page, or null when the host has left the setup pages.</summary>
         internal static Page? CurrentPage() => Find.WindowStack.Windows.OfType<Page>().LastOrDefault();
 
+        /// <summary>Only the host's vanilla storyteller page determines the shared difficulty.</summary>
+        internal static DifficultyDef? SelectedDifficulty(Page_SelectStoryteller page) => DifficultyChoice(page);
+
         /// <summary>Setup phase the page belongs to (plan §6.1).</summary>
         internal static SetupPhase? PhaseOf(Page page)
         {

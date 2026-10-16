@@ -29,7 +29,7 @@ namespace Multiplayer.Foundation.RimWorld
         /// <summary>Only installed, player-visible choices compatible with the host's difficulty.</summary>
         internal static IReadOnlyList<StorytellerDef> AvailableFor(DifficultyDef difficulty) =>
             DefDatabase<StorytellerDef>.AllDefsListForReading
-                .Where(def => def != null && def.listVisible && !def.tutorialMode &&
+                .Where(def => def != null && DefNames.IsValid(def.defName) && def.listVisible && !def.tutorialMode &&
                     (def.forcedDifficulty == null || def.forcedDifficulty == difficulty))
                 .OrderBy(def => def.listOrder).ThenBy(def => def.defName, StringComparer.Ordinal).Take(32).ToList();
     }

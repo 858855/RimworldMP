@@ -1617,7 +1617,7 @@ tasks:
 - id: FACTION-003
   title: 'Storyteller je Fraktion bei gemeinsamer Schwierigkeit (Spielseite)'
   goal: 'Jede Fraktion erhält eine eigene, synchronisierte Ereignisplanung; Schwierigkeit und globale Spielregeln bleiben gemeinsam.'
-  description: 'ADR 0045 ergänzt ADR 0031/0037. Spielstand bindet PlayerKey, FactionSlot, echte Faction.loadID und StorytellerDef; gemeinsamer Host-Schwierigkeitszustand wird geprüft. Mehrfach-Tick und UI fehlen.'
+  description: 'ADR 0045 ergänzt ADR 0031/0037. Spielstand bindet PlayerKey, FactionSlot, echte Faction.loadID und StorytellerDef; gemeinsamer Host-Schwierigkeitszustand wird geprüft. Spiel-UI nutzt den integrierten Claude-Vertrag für Host-Optionen, eigene Wahl und Fertig. Mehrfach-Tick fehlt.'
   priority: high
   owner: codex
   components:
@@ -1635,12 +1635,13 @@ tasks:
   implementation: in_progress
   verification: build_passed
   integration: not_submitted
-  branch: codex/faction-storytellers
+  branch: codex/faction-ui
   base_branch: main
-  base_commit: d568766
+  base_commit: ea065aa
   evidence:
   - docs/decisions/0045-faction-storyteller-boundary.md
   - docs/verification/2026-10-16-faction-storyteller-foundation.md
   - docs/verification/2026-10-16-faction-storyteller-contract.md
-  blocker: 'Claude-Lobbyfelder noch nicht integriert und zwei C→S-Codes/Server-Routing offen; FACTION-001 erzeugt noch keine getrennten Spielerfraktionen. Vanilla Tick, Ziele und Queue nutzen globalen Storyteller; sichere Mehrfachausführung, UI, Save/Load und Zwei-Client-Test fehlen. Fraktionsstart gesperrt.'
+  - docs/verification/2026-10-16-faction-storyteller-ui.md
+  blocker: 'FACTION-001 erzeugt noch keine getrennten Spielerfraktionen. Vanilla Tick, Ziele und Queue nutzen globalen Storyteller; sichere Mehrfachausführung, Save/Load, UI-Spieltest und Zwei-Client-Test fehlen. Fraktionsstart gesperrt.'
   plan_ref: docs/decisions/0045-faction-storyteller-boundary.md
