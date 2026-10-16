@@ -8,4 +8,4 @@
 - **Offen/Risiken:** Kein RimWorld-UI- oder Save/Load-Spieltest. Getrennte Spielerfraktionen und sichere Ereignisziele fehlen; der Fraktionsstart bleibt gesperrt. Weltweite Ereignisse nach ADR 0037 R4 brauchen eine ausdrückliche Regel.
 - **Manuelle Folgeprüfung:** Ist die Host-Bedienung zur Veröffentlichung der Optionen verständlich? Stimmen die angezeigten Wahlen bei zwei Clients überein? Dieser Teilstand ist kein spielbarer Fraktionsmodus.
 - **Menschliche Freigabe:** Benutzeranweisung vom 2026-10-16: „dann push und merge und mach weiter“. Sie gilt für diesen Quellbranch und das Ziel `main`. Die Integration bleibt ein Teilstand der FACTION-003-Aufgabe; sie schaltet den Fraktionsstart nicht frei.
-- **Integrationsstatus:** `approved` vor dem Merge; tatsächlichen Merge-Commit danach auf `main` dokumentieren.
+- **Integrationsstatus:** `merged`. `main` wurde am 2026-10-16 von `ea065aa` per Fast-Forward auf `2cd5f0c` gebracht. FACTION-003 bleibt als technische Aufgabe `in_progress`.

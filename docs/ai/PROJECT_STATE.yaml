@@ -13,7 +13,7 @@ target_rimworld_version:
   runtime: Unity/Mono
   game_runtime_tested: true
   other_versions_verified: []
-current_phase: manual_test_preview_merged_command_pipeline_in_progress
+current_phase: faction_storyteller_ui_merged_gameplay_foundation_in_progress
 git:
   branch: main
   base_branch: null
@@ -117,6 +117,7 @@ verified_capabilities:
 - 'Zeitgrenze für nie geladene Snapshots (ADR 0036) auf main: Säumige werden nach 180 s aus Sitzung und Lobby genommen, die anderen setzen fort; Regeln und Ende zu Ende getestet.'
 - 'X1/X4/X5-Vorschau auf main: statischer Tickpfad-Audit, erste synchronisierte Draft/Forbid/Goto-Befehle und Modus-/IP-Identitäts-UI; Mod-Build ohne Warnungen, acht .NET-Testprojekte und Validator bestanden. ZIP-SHA-256 und Grenzen: docs/verification/2026-10-16-manual-test-candidate-merge.md. Kein Spiel-Laufzeittest dieses Stands.'
 - 'Fraktionsmodus, Koordinator-Seite (FACTION-004, ADR 0037) auf main: Fraktionsplatz je PlayerKey, gemeinsame Schwierigkeit nur vom Host, Erzählerwahl je Spieler über Codes 96/97 (Claude-Bereich 96–111), Fertig-Regeln, Rückkehr findet die eigene Fraktion; Lobby-Kern und Server Ende zu Ende getestet, Coop-Lobbyzustand byte-gleich. Fraktionsstart weiter gesperrt (Test-Schalter intern). Spielseite (FACTION-003) offen. Siehe docs/verification/2026-10-16-faction-storyteller.md.'
+- 'FACTION-003-Teilstand auf main: Spielstand-Zuordnung PlayerKey/Slot/Faction/Storyteller, Fingerabdruck der gemeinsamen Host-Schwierigkeit und UI für Optionen, Wahl und Fertig. Mod-Build ohne Warnungen, alle acht .NET-Testprojekte und Validator bestanden. Kein RimWorld-Spieltest dieses Stands; Fraktionsstart weiter gesperrt. Siehe docs/verification/2026-10-16-faction-ui-merge-gate.md.'
 user_reported_capabilities:
 - 'Allein-Start (Debug-Option) mit den Einrichtungsseiten des Hosts laut Benutzer am 2026-10-15 im Spiel funktionsfähig („works“, Build b0f4df8); Spiegel beim Gast ungeprüft.'
 - 'Mod-Prüfung und Start-Knopf (Fassung feat/lobby-hardening) laut Benutzer am 2026-10-15 mit zwei Spielern funktionsfähig; die auf feat/setup-rules übertragene Fassung ist noch nicht mit zwei Spielern geprüft.'
@@ -138,12 +139,15 @@ known_issues:
 - 'NET-002: echte Internetverbindung, UPnP-Freigabe am echten Router und Mono-Laufzeit im Spiel nicht geprüft.'
 - 'Zusammengeführtes Verbindungsfenster (Steam, IP mit UPnP-Option, Erreichbarkeitsanzeige neben Chat) nur gebaut, nicht im Spiel geprüft.'
 - 'X4 ist trotz Merge nur eine Teilimplementierung: Ordered Jobs/Designatoren, weitere Referenztypen und der Gameplay-Gleichlauf mit zwei RimWorld-Clients sind ungeprüft; parallele Pfadsuche kann Desync verursachen.'
+- 'FACTION-003 ist trotz Merge nur ein Teilstand: getrennte Spielerfraktionen, isolierte Storyteller-Ereignisse, Save/Load und Zwei-Client-Spieltest fehlen; Fraktionsstart gesperrt.'
 blockers:
 - Vollständiger RimWorld-UI-Laufzeittest in dieser Umgebung offen.
 - 1.7-Unterstützung ungeklärt.
 - Umfang und Umgebung des gemeldeten Steam-Verbindungstests noch nicht dokumentiert.
 - Chat mit zwei RimWorld-Clients offen.
 active_tasks:
+- FACTION-001
+- FACTION-003
 - TEST-001
 - SYNC-002
 - STEAM-001
@@ -159,7 +163,7 @@ active_tasks:
 - SETUP-003
 - SETUP-004
 - SETUP-005
-next_action: 'Codex: X4/SYNC-002 vervollständigen, danach SYNC-004; FACTION-003 (Spielseite) auf main mit den Codes 96/97 aus ADR 0037 abgleichen. Danach neues Testpaket für Fabio und Sven nach docs/verification/TEST_PROMPTS_FABIO_SVEN.md. Benutzer: Regel R4 (weltweite Ereignisse im Fraktionsmodus) entscheiden. Claude: keine offene Aufgabe. DET-001 bleibt offen.'
+next_action: 'Codex: FACTION-001 auf neuem Codex-Branch vorbereiten: echte Spielerfraktionen je FactionSlot, Persistenz und Incident-Grenzen anhand lokaler 1.6-Assembly prüfen; Fraktionsstart gesperrt lassen. Claude: SAVE-002-Vertrag zum Fortsetzen der PlayerKey/Slot-Zuordnung prüfen. Benutzerentscheidung zu ADR 0037 R4 (weltweite Ereignisse) offen. Zwei-Client-Spieltest und X4/SYNC-002 bleiben offen.'
 documentation_refs:
   tasks: docs/ai/TASKS.yaml
   handoff: docs/ai/SESSION_HANDOFF.md
@@ -213,4 +217,5 @@ documentation_refs:
   character_selection_verification: docs/verification/2026-10-15-character-selection.md
   game_start_decision: docs/decisions/0023-shared-game-start.md
   game_start_verification: docs/verification/2026-10-15-game-start.md
+  faction_ui_merge_gate: docs/verification/2026-10-16-faction-ui-merge-gate.md
 last_updated: '2026-10-16'

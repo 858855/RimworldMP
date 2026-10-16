@@ -1634,7 +1634,7 @@ tasks:
   - 'Zwei echte RimWorld-Clients laufen mit unterschiedlichen Storytellern und gleichen Zustands-Hashes'
   implementation: in_progress
   verification: build_passed
-  integration: approved
+  integration: merged
   branch: codex/faction-ui
   base_branch: main
   base_commit: ea065aa
