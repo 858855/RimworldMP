@@ -21,6 +21,12 @@
 - Wer andere Mods hat, kann nicht beitreten.
 - Im Spiel noch nicht aktiv: Speichern, Laden und Aufholen gehören zur Spielseite.
 
+### Tick-Treiber (Arbeitsbranch `codex/tick-driver`, X2)
+
+- Nach der gemeinsamen Landung übernimmt der Spielclient den Tick-Horizont des Hosts. Er verarbeitet Befehle auch während einer Pause und lässt einen Tick nur nach Freigabe durch `LockstepClient` zu. Bei fehlendem Ausführer für Spielbefehle stoppt er mit einer Fehlermeldung.
+- Pause und Geschwindigkeit werden als Anfragen an den Koordinator gesendet. Das Spieloverlay zeigt Sitzungstick, Pause und den Spieler, auf dessen Fortschritt gewartet wird. Alle 60 Ticks wird ein vorläufiger Kernhash gemeldet.
+- Der RimWorld-1.6-Mod baut ohne Warnungen; Koordinator- und Client-Tests bestanden. Die Spielbedienung und der Gleichlauf mit zwei RimWorld-Clients sind noch nicht geprüft.
+
 ### Spielmodus (Arbeitsbranch `feat/game-mode`, MODE-001)
 
 - Der Host wählt beim Erstellen der Lobby einmalig den Modus: **Coop** (eine gemeinsame Kolonie; Ereignisse entscheidet der Host oder, als Demokratie, die Mehrheit mit dem Host bei Gleichstand) oder **Fraktionen** (jeder seine eigene Kolonie; Beziehung verbündet, neutral oder verfeindet). Danach lässt er sich nicht mehr ändern.

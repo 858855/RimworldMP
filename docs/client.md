@@ -1,5 +1,9 @@
 # RimWorld-Client 0.1
 
+## Tick-Treiber X2 (`codex/tick-driver`, noch nicht gemergt)
+
+Nach der Landung beginnt die Sitzung bei Tick 0 (Differenz zum geladenen `TicksGame`). Die Zeit startet pausiert. Ein Spieler kann Fortsetzen/Pause anfordern; nur der Host kann die Geschwindigkeit ändern. Der Server ordnet diese Anfragen ein und gibt einen Tick-Horizont vor. Das Spieloverlay zeigt „Pausiert“, „Läuft“ oder „Warte auf …“. Bei fehlender Freigabe, Protokollfehler oder noch nicht ausführbaren Spielbefehlen bleibt die Simulation stehen. Ein vorläufiger Kernhash meldet alle 60 Ticks Karten- und Kolonistenpositionen; vollständige Zustandsprüfung und Rand-Neusaat folgen in X3. Mod-Build und spielunabhängige Koordinatortests bestanden, ein Spieltest mit zwei RimWorld-Clients ist offen. Siehe [ADR 0040](decisions/0040-rimworld-tick-driver.md) und [Prüfung](verification/2026-10-16-codex-tick-driver.md).
+
 **Ziel:** lokal installierter RimWorld-1.6-Build (Unity/Mono). `Version.txt` meldet `1.6.4871 rev598`, der Spielprozess `rev600`; die genaue Runtime-Kompatibilität ist offen. Der Adapter zielt auf `netstandard2.1`, weil die lokale `Assembly-CSharp.dll` und Unity-Module `netstandard` 2.1 referenzieren. Das wurde durch einen Probe-Build und den Release-Mod-Build geprüft. Andere Spielversionen sind nicht getestet.
 
 ## Bedienung
