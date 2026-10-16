@@ -52,6 +52,8 @@ Strings sind `length:u16` plus strikt gültige UTF-8-Bytes. Allgemeine Strings: 
 | 68 | StateHash | C→S | Tick (Vielfaches von 60), Hash `u64` |
 | 69 | DesyncDetected | S→C | Tick, betroffene Spieler |
 | 70 | SessionControl | C→S | Art (1 Pause, 2 Geschwindigkeit), Wert |
+| 71 | JoinSnapshot | S→C | Grenze, Sequenz des Snapshot-Befehls, Host-Session, Horizont, Geschwindigkeit, Pause |
+| 72 | PlayerSynced | S→C | Session-ID des nun aktiven Spielers |
 
 Listen- und Zustandsupdates sind in `LobbyPayloads.cs` kodiert: Liste mit `count:u8`, je Lobby GUID, Name, Hostname, Spielerzahl und Kapazität; Snapshot mit GUID, Name, Host-GUID, Revision `u64`, Kapazität, Setup-Phase `u8`, optional gewähltes Feld und Spielerarray (Session-GUID, Name, Ready, PlayerKey, optional Fähnchen). Die Liste trägt je Lobby zusätzlich die Phase. Der TCP-Server verwendet diese Payloads; zwei unabhängige TCP-Testclients bestanden die Integrationstests. RimWorld-Client-Kompatibilität ist noch offen. Fehlercodes: `1=InvalidMessage`, `2=VersionMismatch`, `3=Unauthorized`, `4=NotFound`, `5=Capacity`, `6=InvalidState`, `7=ServerBusy`.
 
@@ -120,3 +122,7 @@ Codes bewusst ab 64, abseits der fortlaufenden Setup-Codes. Siehe ADR 0030.
 - Fraktionen (2) ohne Entscheidungsregel (0), mit Beziehung verbündet (1), neutral (2) oder verfeindet (3).
 
 Andere Kombinationen sind Protokollfehler. Der Modus ist ab der Erstellung fest; keine Nachricht ändert ihn. Lobbyzustand und Lobbyliste tragen ihn am Ende. Der Start im Fraktionsmodus wird abgelehnt (Code 6), bis die Fraktionseinrichtung existiert.
+
+## Speichern und Beitritt (Codes 71–72, ADR 0032)
+
+Geplante Befehle der Art `Save` (3) lassen alle Spiele an derselben Stelle speichern: automatisch einmal je Spieltag (60 000 Ticks) oder auf Wunsch des Hosts (`SessionControl` Art `Save`). Mit 16 Byte Daten nennt der Befehl einen Beitretenden; der Spielstand des Hosts an dieser Stelle ist dessen Snapshot. Während `Playing` ist der Beitritt mit passenden Mods erlaubt. Der Beitretende erhält `JoinSnapshot` und alle Nachrichten ab der nächsten Sequenz. Er lädt den Snapshot, holt auf, zählt bis dahin nicht zur Flusssteuerung und wird danach aktiv (`PlayerSynced`).

@@ -121,8 +121,11 @@ namespace Multiplayer.Foundation.Lobby
             {
                 Member member = GetMember(actor); RequireFree(member);
                 Room room = GetRoom(lobbyId);
-                if (room.Phase != SetupPhase.Lobby) throw new LobbyRuleException(6, "Setup in progress.");
+                // JOIN-001: a running game accepts joiners; the setup phases in between stay locked (ADR 0032).
+                if (room.Phase != SetupPhase.Lobby && room.Phase != SetupPhase.Playing) throw new LobbyRuleException(6, "Setup in progress.");
                 if (room.Members.Count >= room.Capacity) throw new LobbyRuleException(5, "Lobby is full.");
+                if (room.Phase == SetupPhase.Playing && StatusOf(room, member) is ModStatus.Checking or ModStatus.Mismatch)
+                    throw new LobbyRuleException(8, "Mods do not match the host.");
                 room.Members.Add(actor); member.Room = room.Id; room.Revision++;
                 return Change(room, actor);
             }

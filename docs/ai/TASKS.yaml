@@ -1100,11 +1100,16 @@ tasks:
   acceptance:
   - 'Alle Clients speichern am selben Tick'
   - 'Neues Laden des Provider-Spielstands ergibt gleiche Hashes'
-  implementation: planned
-  verification: not_tested
+  implementation: in_progress
+  verification: tests_passed
   integration: not_submitted
-  branch: null
-  evidence: []
+  branch: claude/save-join
+  base_branch: main
+  base_commit: e4501df
+  evidence:
+  - docs/verification/2026-10-16-save-join.md
+  - docs/decisions/0032-save-and-join-coordinator.md
+  blocker: 'Koordinator-Seite fertig und getestet. Fehlt Spielseite (Codex): speichern beim Speicherbefehl, Snapshot senden und laden, Aufholen mit LockstepClient.ForJoin, Besitz über PlayerKey.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: JOIN-001
   title: 'Beitritt und Reconnect im laufenden Spiel'
@@ -1122,11 +1127,16 @@ tasks:
   acceptance:
   - 'Ein dritter Client tritt bei, holt auf und bleibt 30 Minuten synchron'
   - 'Reconnect stellt den Besitz wieder her'
-  implementation: planned
-  verification: not_tested
+  implementation: in_progress
+  verification: tests_passed
   integration: not_submitted
-  branch: null
-  evidence: []
+  branch: claude/save-join
+  base_branch: main
+  base_commit: e4501df
+  evidence:
+  - docs/verification/2026-10-16-save-join.md
+  - docs/decisions/0032-save-and-join-coordinator.md
+  blocker: 'Koordinator-Seite fertig und getestet. Fehlt Spielseite (Codex): speichern beim Speicherbefehl, Snapshot senden und laden, Aufholen mit LockstepClient.ForJoin, Besitz über PlayerKey.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: SAVE-002
   title: 'Multiplayer-Spielstand aus der Lobby fortsetzen'

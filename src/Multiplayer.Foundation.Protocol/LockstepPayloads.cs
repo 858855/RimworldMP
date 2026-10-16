@@ -7,7 +7,26 @@ namespace Multiplayer.Foundation.Protocol
     {
         Game = 0,
         Pause = 1,
-        Speed = 2
+        Speed = 2,
+        /// <summary>Save here (ADR 0032). Empty data: coordinated save. 16 bytes: snapshot for that joining session.</summary>
+        Save = 3
+    }
+
+    /// <summary>Where a joining game starts (ADR 0032): the host's save after boundary/sequence.</summary>
+    public sealed class JoinSnapshot
+    {
+        public JoinSnapshot(int boundary, ulong sequence, Guid host, int horizon, byte speed, bool paused)
+        {
+            if (boundary < 0 || horizon < boundary) throw new ArgumentOutOfRangeException(nameof(boundary));
+            Boundary = boundary; Sequence = sequence; Host = host; Horizon = horizon; Speed = speed; Paused = paused;
+        }
+        public int Boundary { get; }
+        /// <summary>Sequence of the Save command the snapshot was taken at; the joiner continues with the next one.</summary>
+        public ulong Sequence { get; }
+        public Guid Host { get; }
+        public int Horizon { get; }
+        public byte Speed { get; }
+        public bool Paused { get; }
     }
 
     /// <summary>
@@ -98,6 +117,24 @@ namespace Multiplayer.Foundation.Protocol
             return horizon;
         }
 
+        public static byte[] Join(JoinSnapshot join)
+        {
+            var writer = new PayloadWriter();
+            WriteTick(writer, join.Boundary); writer.WriteUInt64(join.Sequence); writer.WriteGuid(join.Host);
+            WriteTick(writer, join.Horizon); writer.WriteByte(join.Speed); writer.WriteBool(join.Paused);
+            return writer.ToArray();
+        }
+        public static JoinSnapshot ReadJoin(byte[] payload)
+        {
+            var reader = new PayloadReader(payload);
+            int boundary = ReadTick(reader); ulong sequence = reader.ReadUInt64(); Guid host = reader.ReadGuid();
+            int horizon = ReadTick(reader); byte speed = reader.ReadByte(); bool paused = reader.ReadBool();
+            reader.EnsureComplete();
+            if (speed < 1 || speed > MaximumSpeed) throw new ProtocolException("Invalid speed.");
+            if (horizon < boundary) throw new ProtocolException("Horizon before the snapshot.");
+            return new JoinSnapshot(boundary, sequence, host, horizon, speed, paused);
+        }
+
         public static byte[] Tick(int tick) { var writer = new PayloadWriter(); WriteTick(writer, tick); return writer.ToArray(); }
         public static int ReadTickPayload(byte[] payload) { var reader = new PayloadReader(payload); int tick = ReadTick(reader); reader.EnsureComplete(); return tick; }
 
@@ -137,6 +174,7 @@ namespace Multiplayer.Foundation.Protocol
         {
             if (kind == ScheduledKind.Pause) { if (value > 1) throw new ProtocolException("Pause value must be 0 or 1."); return; }
             if (kind == ScheduledKind.Speed) { if (value < 1 || value > MaximumSpeed) throw new ProtocolException("Invalid speed."); return; }
+            if (kind == ScheduledKind.Save) { if (value != 0) throw new ProtocolException("Save takes no value."); return; }
             throw new ProtocolException("Unknown control kind.");
         }
 

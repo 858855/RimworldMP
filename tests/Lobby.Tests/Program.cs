@@ -134,7 +134,9 @@ Assert(landed.Phase == SetupPhase.Playing && landed.Players.All(p => p.WorldStat
 Expect(6, () => setup.ReportGame(g1, game));                                          // only while the game starts
 Expect(6, () => setup.AdvanceSetup(host, (SetupPhase)10));                            // nothing after landing yet
 Expect(6, () => setup.Ready(g1, true));
-Expect(6, () => setup.Join(late, room));                                              // still locked
+// JOIN-001 (ADR 0032): a running game accepts joiners; before it, the lobby stayed locked during setup.
+Assert(setup.Join(late, room).State!.Players.Any(p => p.Id == late), "joining a running game is allowed");
+setup.Leave(late);
 Expect(3, () => setup.AbortSetup(g1));
 LobbyView aborted = setup.AbortSetup(host).State!;
 Assert(aborted.Phase == SetupPhase.Lobby && aborted.Site == null && aborted.Players.All(p => !p.Ready && p.WorldStatus == WorldStatus.None),

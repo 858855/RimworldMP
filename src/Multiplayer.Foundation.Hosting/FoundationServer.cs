@@ -243,7 +243,10 @@ public sealed class FoundationServer : IAsyncDisposable
                 await PublishAsync(lobbies.Create(peer.Id, create.Name, create.Capacity, create.Mode), null, token, message.RequestId).ConfigureAwait(false);
                 break;
             case MessageType.JoinLobby:
-                await PublishAsync(lobbies.Join(peer.Id, LobbyPayloads.ReadGuid(message.Payload)), MessageType.PlayerJoined, token, message.RequestId).ConfigureAwait(false);
+                LobbyChange joined = lobbies.Join(peer.Id, LobbyPayloads.ReadGuid(message.Payload));
+                await PublishAsync(joined, MessageType.PlayerJoined, token, message.RequestId).ConfigureAwait(false);
+                if (joined.State?.Phase == SetupPhase.Playing)
+                    lockstep.AddJoiner(joined.State.Id, peer.Id, joined.State.Players.Single(p => p.Id == peer.Id).Key);
                 break;
             case MessageType.LeaveLobby:
                 RequireEmpty(message.Payload);

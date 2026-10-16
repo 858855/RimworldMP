@@ -38,6 +38,10 @@ internal sealed class LockstepHost
         lock (holder.Gate) Deliver(action(holder.Session));
     }
 
+    /// <summary>A member joined a lobby in Playing: snapshot and catch-up (ADR 0032).</summary>
+    public void AddJoiner(Guid lobbyId, Guid session, PlayerKey key) =>
+        Run(lobbyId, lockstep => lockstep.AddJoiner(session, key, NowMs));
+
     public void Tick()
     {
         long now = NowMs;

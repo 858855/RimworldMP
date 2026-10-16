@@ -108,6 +108,177 @@ Assert(corrupted.PausedAt.Values.Distinct().Count() == 1 && corrupted.PausedAt.V
 AssertSameOrder(corrupted);
 Console.WriteLine($"PASS: corrupted state in one game detected at tick 600; all games stopped together at tick {corrupted.PausedAt.Values.First()}");
 
+// --- SAVE-001 / JOIN-001 (ADR 0032) ---
+var joinBack = LockstepPayloads.ReadJoin(LockstepPayloads.Join(new JoinSnapshot(120, 9, host, 150, 2, true)));
+Assert(joinBack.Boundary == 120 && joinBack.Sequence == 9 && joinBack.Host == host && joinBack.Horizon == 150 && joinBack.Speed == 2 && joinBack.Paused,
+    "join snapshot round trip");
+Expect<ProtocolException>(() => LockstepPayloads.Control(ScheduledKind.Save, 1));
+var saving = new LockstepSession(host, members, 0, new LockstepOptions { AutosaveIntervalTicks = 120 });
+Expect<LockstepRuleException>(() => saving.Control(guest, ScheduledKind.Save, 0, 0), 3);
+var manual = Scheduled(saving.Control(host, ScheduledKind.Save, 0, 0));
+Assert(manual.Kind == ScheduledKind.Save && manual.Data.Length == 0 && manual.Boundary == 0, "host saves on demand at the current point");
+saving.Control(host, ScheduledKind.Pause, 0, 0);
+foreach (Guid p in new[] { host, guest, third }) saving.ReportTick(p, 0, 0);
+var autosaves = new List<ScheduledCommand>();
+for (long now = 50; now <= 6000; now += 50)
+{
+    var round = new List<(Guid To, WireMessage Message)>();
+    foreach (Guid p in new[] { host, guest, third }) round.AddRange(saving.ReportTick(p, saving.Horizon, now));
+    round.AddRange(saving.Advance(now));
+    autosaves.AddRange(round.Where(o => o.To == host && o.Message.Type == MessageType.ScheduledCommand)
+        .Select(o => LockstepPayloads.ReadScheduled(o.Message.Payload)).Where(c => c.Kind == ScheduledKind.Save));
+}
+Assert(autosaves.Count >= 2 && autosaves.All(c => c.IssuerSession == Guid.Empty && c.Data.Length == 0) &&
+    autosaves.Zip(autosaves.Skip(1)).All(pair => pair.Second.Boundary - pair.First.Boundary >= 120),
+    "autosave once per interval, issued by the coordinator: " + string.Join(",", autosaves.Select(c => c.Boundary)));
+Console.WriteLine("PASS: coordinated save: host on demand, guests refused, autosave once per interval");
+
+Guid late = Guid.NewGuid(); PlayerKey lateKey = PlayerKey.Steam(1004);
+var joining = new LockstepSession(host, members, 0);
+joining.Control(host, ScheduledKind.Pause, 0, 0);
+joining.Advance(1000);
+int before = joining.Horizon;
+var joinOut = joining.AddJoiner(late, lateKey, 1000);
+var snapshotCommand = joinOut.Where(o => o.Message.Type == MessageType.ScheduledCommand).Select(o => (o.To, Command: LockstepPayloads.ReadScheduled(o.Message.Payload))).ToList();
+Assert(snapshotCommand.Count == 3 && snapshotCommand.All(c => c.To != late && c.Command.Kind == ScheduledKind.Save && new Guid(c.Command.Data) == late),
+    "snapshot command goes to the existing games only and names the joiner");
+JoinSnapshot start = LockstepPayloads.ReadJoin(joinOut.Single(o => o.To == late && o.Message.Type == MessageType.JoinSnapshot).Message.Payload);
+Assert(start.Boundary == before && start.Sequence == snapshotCommand[0].Command.Sequence && start.Host == host, "joiner learns where the snapshot was taken");
+Assert(joinOut.Any(o => o.To == late && o.Message.Type == MessageType.TickHorizon), "joiner gets the current horizon");
+Assert(!joining.ActiveParticipants.Contains(late), "joiner does not slow the others while catching up");
+var nextCommand = joining.Submit(guest, new byte[] { 5 }, 1000);
+Assert(nextCommand.Any(o => o.To == late) && LockstepPayloads.ReadScheduled(nextCommand.First(o => o.To == late).Message.Payload).Sequence == start.Sequence + 1,
+    "joiner receives every command from the next sequence on");
+Expect<LockstepRuleException>(() => joining.AddJoiner(late, lateKey, 1000), 6);
+foreach (Guid p in new[] { host, guest, third }) joining.ReportTick(p, before, 1000);
+var synced = joining.ReportTick(late, before, 1100);
+Assert(synced.Count(o => o.Message.Type == MessageType.PlayerSynced) == 4 && joining.ActiveParticipants.Contains(late), "caught-up joiner goes live, everyone is told");
+var lateClient = LockstepClient.ForJoin(start);
+Assert(!lateClient.MayRunTick(start.Boundary) || lateClient.Horizon == start.Boundary, "joiner starts at the snapshot point");
+lateClient.Receive(nextCommand.First(o => o.To == late).Message);
+Assert(lateClient.TakeCommandsAt(start.Boundary).Single().Data[0] == 5, "joiner runs the next command at the same point as everyone");
+// Negative control: a joiner starting one sequence too early or too late is caught at the next command, not silently off.
+foreach (ulong wrong in new[] { start.Sequence - 1, start.Sequence + 1 })
+{
+    var offByOne = LockstepClient.ForJoin(new JoinSnapshot(start.Boundary, wrong, host, start.Horizon, start.Speed, start.Paused));
+    Expect<ProtocolException>(() => offByOne.Receive(nextCommand.First(o => o.To == late).Message));
+}
+Console.WriteLine("PASS: join mid-game: snapshot to existing games only, joiner continues at the next sequence, not counted until caught up; off-by-one start refused");
+
+SimResult withJoin = SimulateJoin(seed: 11);
+AssertSameOrder(withJoin);
+Assert(withJoin.Desyncs == 0, "joiner's hashes match after catching up");
+Assert(withJoin.Completed.Count == 4 && withJoin.Completed.Values.Min() >= 900, "all four games progressed: " + string.Join(",", withJoin.Completed.Values));
+for (int seed = 12; seed <= 15; seed++) { var run = SimulateJoin(seed); AssertSameOrder(run); Assert(run.Desyncs == 0, "no desync with a joiner"); }
+Console.WriteLine($"PASS: 5 simulated runs with a player joining mid-game: after loading the host's snapshot the joiner executes exactly the same order; {withJoin.Logs.Values.First().Count} commands, no desync");
+
+// Like Simulate, but a fourth game joins at 6 s: the host saves at the snapshot point, the joiner loads that state,
+// catches up twice as fast and must then match everyone.
+static SimResult SimulateJoin(int seed)
+{
+    var random = new Random(seed);
+    Guid[] ids = { Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid() };
+    Guid joiner = ids[3];
+    double[] ticksPerMs = { 1.0, 0.8, 0.5, 2.0 };
+    var coordinator = new LockstepSession(ids[0], ids.Take(3).Select((id, i) => (id, PlayerKey.Steam((ulong)(i + 1)))), 0);
+    var games = ids.ToDictionary(id => id, _ => new LockstepClient());
+    var down = ids.ToDictionary(id => id, _ => new Link());
+    var up = ids.ToDictionary(id => id, _ => new Link());
+    var completed = ids.ToDictionary(id => id, _ => 0);
+    var budget = ids.ToDictionary(id => id, _ => 0.0);
+    var hashed = ids.ToDictionary(id => id, _ => -1);
+    var state = ids.ToDictionary(id => id, _ => 14695981039346656037UL);
+    var logs = ids.ToDictionary(id => id, _ => new List<(int Boundary, ulong Sequence)>());
+    bool joined = false, loaded = false;
+    JoinSnapshot? start = null;
+    (long At, int Tick, ulong State, List<(int, ulong)> Log)? snapshot = null;
+    int desyncs = 0;
+    void Out(IEnumerable<(Guid To, WireMessage Message)> messages, long now)
+    { foreach (var (to, message) in messages) down[to].Send(message, now + random.Next(5, 80)); }
+    Out(coordinator.Begin(), 0);
+    up[ids[1]].Send(LockstepClient.ControlMessage(ScheduledKind.Pause, 0), 20);
+    for (long now = 0; now < 20_000; now += 5)
+    {
+        if (now == 6000) { Out(coordinator.AddJoiner(joiner, PlayerKey.Steam(4), now), now); joined = true; }
+        foreach (Guid id in ids)
+            while (up[id].TryReceive(now, out WireMessage? m))
+            {
+                try
+                {
+                    Out(m!.Type switch
+                    {
+                        MessageType.Command => coordinator.Submit(id, m.Payload, now),
+                        MessageType.ClientTick => coordinator.ReportTick(id, LockstepPayloads.ReadTickPayload(m.Payload), now),
+                        MessageType.StateHash => coordinator.ReportHash(id, LockstepPayloads.ReadHash(m.Payload).Tick, LockstepPayloads.ReadHash(m.Payload).Hash),
+                        MessageType.SessionControl => coordinator.Control(id, LockstepPayloads.ReadControl(m.Payload).Kind, LockstepPayloads.ReadControl(m.Payload).Value, now),
+                        _ => throw new Exception("unexpected")
+                    }, now);
+                }
+                catch (LockstepRuleException error) when (error.Code is 3 or 7) { }
+            }
+        if (now % 50 == 0) Out(coordinator.Advance(now), now);
+        foreach (Guid id in ids)
+        {
+            if (id == joiner)
+            {
+                if (!joined) continue;
+                if (start == null)
+                {
+                    if (!down[id].TryReceive(now, out WireMessage? first)) continue;
+                    if (first!.Type != MessageType.JoinSnapshot) throw new Exception("FAIL: joiner's first message is not JoinSnapshot");
+                    start = LockstepPayloads.ReadJoin(first.Payload);
+                }
+                if (!loaded)
+                {
+                    if (snapshot == null || snapshot.Value.At > now) continue;          // chunk transfer still running
+                    games[id] = LockstepClient.ForJoin(start);
+                    completed[id] = snapshot.Value.Tick; state[id] = snapshot.Value.State;
+                    logs[id] = new List<(int, ulong)>(snapshot.Value.Log);
+                    hashed[id] = snapshot.Value.Tick;   // the snapshot is mid-tick: never report the hash of that tick
+                    loaded = true;
+                }
+            }
+            LockstepClient game = games[id];
+            while (down[id].TryReceive(now, out WireMessage? m))
+            {
+                if (m!.Type == MessageType.PlayerSynced || m.Type == MessageType.JoinSnapshot) continue;
+                game.Receive(m);
+                if (m.Type == MessageType.DesyncDetected) desyncs++;
+            }
+            void Execute()
+            {
+                foreach (ScheduledCommand command in game.TakeCommandsAt(completed[id]))
+                {
+                    if (command.Kind == ScheduledKind.Save)
+                    {
+                        // The host's state right here is the joiner's snapshot (later commands of this tick excluded).
+                        if (id == ids[0] && command.Data.Length == 16 && new Guid(command.Data) == joiner)
+                            snapshot = (now + 400, completed[id], state[id], new List<(int, ulong)>(logs[id]));
+                        continue;
+                    }
+                    logs[id].Add((command.Boundary, command.Sequence));
+                    state[id] = (state[id] ^ command.Sequence ^ command.Data[0]) * 1099511628211UL;
+                }
+            }
+            void Hash()
+            {
+                int t = completed[id];
+                if (t % 60 != 0 || t <= hashed[id]) return;
+                hashed[id] = t;
+                up[id].Send(LockstepClient.HashMessage(t, state[id] ^ (ulong)t), now + random.Next(5, 80));
+            }
+            Hash(); Execute();
+            budget[id] = Math.Min(budget[id] + ticksPerMs[Array.IndexOf(ids, id)] * 5, 2000);
+            while (budget[id] >= 1 && game.MayRunTick(completed[id])) { completed[id]++; budget[id]--; Hash(); Execute(); }
+            if (!game.MayRunTick(completed[id])) budget[id] = Math.Min(budget[id], 1);
+            if (game.ProgressMessage(completed[id], now) is WireMessage progress) up[id].Send(progress, now + random.Next(5, 80));
+            if (random.Next(100) < 3) up[id].Send(LockstepClient.CommandMessage(new[] { (byte)random.Next(256) }), now + random.Next(5, 80));
+        }
+    }
+    if (!coordinator.ActiveParticipants.Contains(joiner)) throw new Exception("FAIL: joiner never went live");
+    return new SimResult(logs, completed, new Dictionary<Guid, int>(), desyncs, 0);
+}
+
 static void AssertSameOrder(SimResult run)
 {
     int common = run.Completed.Values.Min();

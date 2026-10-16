@@ -20,6 +20,18 @@ namespace Multiplayer.Foundation.Network
         private int lastReported = -1;
         private long? lastReportMs;
 
+        public LockstepClient() { }
+
+        /// <summary>
+        /// For a game that joins mid-session (ADR 0032): it loaded the host's snapshot taken after boundary/sequence and
+        /// continues with the next command at that boundary.
+        /// </summary>
+        public static LockstepClient ForJoin(JoinSnapshot snapshot) => new LockstepClient
+        {
+            Horizon = snapshot.Boundary, lastTaken = snapshot.Boundary, lastSequence = snapshot.Sequence,
+            Paused = snapshot.Paused, Speed = snapshot.Speed
+        };
+
         public int Horizon { get; private set; }
         /// <summary>Changes only when the pause command is executed, at the same point in every game.</summary>
         public bool Paused { get; private set; } = true;
@@ -59,7 +71,7 @@ namespace Multiplayer.Foundation.Network
         }
 
         /// <summary>
-        /// Game commands to run now, after completed tick <paramref name="completedTick"/>, in shared order.
+        /// Game and save commands to run now, after completed tick <paramref name="completedTick"/>, in shared order.
         /// Pause and speed commands are applied here and not returned.
         /// </summary>
         public IReadOnlyList<ScheduledCommand> TakeCommandsAt(int completedTick)

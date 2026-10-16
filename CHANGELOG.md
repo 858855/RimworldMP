@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Speichern und Beitritt im laufenden Spiel (Arbeitsbranch `claude/save-join`, SAVE-001/JOIN-001)
+
+- Alle Spiele speichern an derselben Stelle: automatisch einmal pro Spieltag oder wenn der Host speichert.
+- Spieler können einem laufenden Spiel beitreten oder nach einem Abbruch zurückkehren. Der Host speichert dafür an einer festen Stelle; der Neue lädt diesen Stand, holt auf und läuft danach im Gleichschritt mit. Die anderen spielen währenddessen weiter. In einer Simulation führte der Neue danach exakt dieselben Befehle aus wie alle anderen.
+- Wer andere Mods hat, kann nicht beitreten.
+- Im Spiel noch nicht aktiv: Speichern, Laden und Aufholen gehören zur Spielseite.
+
 ### Spielmodus (Arbeitsbranch `feat/game-mode`, MODE-001)
 
 - Der Host wählt beim Erstellen der Lobby einmalig den Modus: **Coop** (eine gemeinsame Kolonie; Ereignisse entscheidet der Host oder, als Demokratie, die Mehrheit mit dem Host bei Gleichstand) oder **Fraktionen** (jeder seine eigene Kolonie; Beziehung verbündet, neutral oder verfeindet). Danach lässt er sich nicht mehr ändern.

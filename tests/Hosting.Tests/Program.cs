@@ -436,6 +436,71 @@ await using (var factionHost = await ListenHost.StartAsync("127.0.0.1", 0, "Host
 }
 Console.WriteLine("PASS: game mode over the network: chosen once by the host, visible before joining, Factions start refused for now");
 
+// SAVE-001/JOIN-001 (ADR 0032) end to end: a third player joins the running game over a Steam-like link. A player with
+// other mods is refused; with matching mods the host is told to save a snapshot for them, the joiner continues with the
+// next command, catches up and goes live.
+var joinMods = new ModManifestSummary(Enumerable.Repeat((byte)7, 32).ToArray(), "1.6.4871 rev600", 3);
+var otherMods = new ModManifestSummary(Enumerable.Repeat((byte)8, 32).ToArray(), "1.6.4871 rev600", 3);
+PlayerKey jHostKey = PlayerKey.Steam(76561198000000100UL), jGuestKey = PlayerKey.Steam(76561198000000101UL), jLateKey = PlayerKey.Steam(76561198000000102UL);
+await using (var joinHost = await ListenHost.StartAsync("127.0.0.1", 0, "Host", "Join Room", 4, jHostKey))
+{
+    LobbyView joinRoom = LobbyPayloads.ReadState((await ReceiveAsync(joinHost.Client, MessageType.LobbyStateUpdate)).Payload);
+    await joinHost.Client.SendAsync(MessageType.ModManifestSummary, 0, joinMods.ToPayload());
+    using var guestLink = new SteamLikeLink();
+    Assert(joinHost.AttachConnection(NetworkConnection.FromDuplexStream(guestLink.A), jGuestKey), "join-test guest attached");
+    using LobbyClient jGuest = await LobbyClient.ConnectOverStreamAsync(guestLink.B, "Guest", TimeSpan.FromSeconds(4), CancellationToken.None, jGuestKey);
+    await jGuest.SendAsync(MessageType.ModManifestSummary, 0, joinMods.ToPayload());
+    await StateAsync(jGuest, MessageType.JoinLobby, 800, LobbyPayloads.GuidValue(joinRoom.Id));
+    await ReachPlayingAsync(joinHost.Client, jGuest, jHostKey, jGuestKey);
+
+    using (LobbyClient wrongMods = await LobbyClient.ConnectAsync("127.0.0.1", joinHost.Port, "Wrong", TimeSpan.FromSeconds(4), CancellationToken.None, PlayerKey.Steam(76561198000000103UL)))
+    {
+        await wrongMods.SendAsync(MessageType.ModManifestSummary, 0, otherMods.ToPayload());
+        Assert(await ErrorCodeAsync(wrongMods, MessageType.JoinLobby, 801, LobbyPayloads.GuidValue(joinRoom.Id)) == 8, "joining a running game with other mods refused");
+    }
+
+    using var lateLink = new SteamLikeLink();
+    Assert(joinHost.AttachConnection(NetworkConnection.FromDuplexStream(lateLink.A), jLateKey), "late joiner attached");
+    using LobbyClient jLate = await LobbyClient.ConnectOverStreamAsync(lateLink.B, "Late", TimeSpan.FromSeconds(4), CancellationToken.None, jLateKey);
+    await jLate.SendAsync(MessageType.ModManifestSummary, 0, joinMods.ToPayload());
+    LobbyView lateJoined = await StateAsync(jLate, MessageType.JoinLobby, 802, LobbyPayloads.GuidValue(joinRoom.Id));
+    Assert(lateJoined.Phase == SetupPhase.Playing && lateJoined.Players.Count == 3, "joined the running game");
+
+    // Host: receives the snapshot command naming the joiner. Joiner: receives JoinSnapshot first, then the horizon.
+    ScheduledCommand? snapshotOrder = null; JoinSnapshot? lateStart = null;
+    var hostGame = new LockstepClient();
+    using (var wait = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
+        while (snapshotOrder == null || lateStart == null)
+        {
+            while (joinHost.Client.TryDequeue(out WireMessage? m) && m != null)
+                if (m.Type == MessageType.ScheduledCommand && LockstepPayloads.ReadScheduled(m.Payload) is { Kind: ScheduledKind.Save } save && save.Data.Length == 16)
+                    snapshotOrder = save;
+            while (lateStart == null && jLate.TryDequeue(out WireMessage? m) && m != null)
+                if (m.Type == MessageType.JoinSnapshot) lateStart = LockstepPayloads.ReadJoin(m.Payload);
+            await Task.Delay(10, wait.Token);
+        }
+    Assert(new Guid(snapshotOrder.Data) == jLate.SessionId && snapshotOrder.IssuerSession == Guid.Empty, "host is told to save a snapshot for the joiner");
+    Assert(lateStart.Sequence == snapshotOrder.Sequence && lateStart.Boundary == snapshotOrder.Boundary && lateStart.Host == lateJoined.HostId,
+        "joiner starts exactly at the snapshot point");
+    var lateGame = LockstepClient.ForJoin(lateStart);
+    await jGuest.SendAsync(MessageType.Command, 0, LockstepPayloads.Command(new byte[] { 33 }));
+    bool live = false; int lateTick = lateStart.Boundary; ScheduledCommand? seen = null;
+    using (var wait = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
+        while (!live || seen == null)
+        {
+            while (jLate.TryDequeue(out WireMessage? m) && m != null)
+            {
+                if (m.Type == MessageType.PlayerSynced && LobbyPayloads.ReadGuid(m.Payload) == jLate.SessionId) live = true;
+                else if (LockstepClient.Handles(m)) lateGame.Receive(m);
+            }
+            seen ??= lateGame.TakeCommandsAt(lateTick).FirstOrDefault();
+            if (lateGame.ProgressMessage(lateTick, Environment.TickCount64) is WireMessage progress) await jLate.SendAsync(progress.Type, 0, progress.Payload);
+            await Task.Delay(10, wait.Token);
+        }
+    Assert(seen.Data[0] == 33 && seen.Sequence == lateStart.Sequence + 1, "joiner executes the next command at the same point as the others");
+}
+Console.WriteLine("PASS: join a running game over the network: other mods refused, snapshot ordered from the host, joiner continues at the next command and goes live");
+
 // SETUP-001: the host's page mirror reaches guests only while setup runs, and only from the host.
 await using (var mirrorHost = await ListenHost.StartAsync("127.0.0.1", 0, "Host", "Mirror Room", 4, PlayerKey.Steam(76561198000000070UL)))
 {
@@ -685,6 +750,7 @@ static async Task<WireMessage> ReceiveAsync(LobbyClient client, MessageType want
 
 // One selected pawn per given owner (SETUP-004 test helper).
 // Walks a two-player lobby through setup to Playing, as the setup test above does.
+// (SAVE-001/JOIN-001 end-to-end test is above, next to the lockstep test.)
 static async Task ReachPlayingAsync(LobbyClient host, LobbyClient guest, PlayerKey hostKey, PlayerKey guestKey)
 {
     uint id = 500;

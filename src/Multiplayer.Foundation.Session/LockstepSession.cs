@@ -21,6 +21,8 @@ namespace Multiplayer.Foundation.Session
         public int HashInterval { get; set; } = 60;
         public double CommandsPerSecond { get; set; } = 30;
         public double CommandBurst { get; set; } = 60;
+        /// <summary>Coordinated save every this many ticks; 60000 = RimWorld.GenDate.TicksPerDay (checked by reflection).</summary>
+        public int AutosaveIntervalTicks { get; set; } = 60000;
     }
 
     /// <summary>
@@ -36,6 +38,7 @@ namespace Multiplayer.Foundation.Session
         private int clockBaseTick;
         private long clockBaseMs;
         private int lastComparedHashTick = -1;
+        private int nextAutosave;
 
         public LockstepSession(Guid host, IEnumerable<(Guid Session, PlayerKey Key)> members, long nowMs, LockstepOptions? options = null)
         {
@@ -45,6 +48,7 @@ namespace Multiplayer.Foundation.Session
             if (!participants.ContainsKey(host)) throw new ArgumentException("The host must take part.", nameof(host));
             Host = host;
             clockBaseMs = nowMs;
+            nextAutosave = this.options.AutosaveIntervalTicks;
         }
 
         public Guid Host { get; }
@@ -53,6 +57,8 @@ namespace Multiplayer.Foundation.Session
         public bool Paused { get; private set; } = true;
         public bool Ended { get; private set; }
         public IReadOnlyCollection<Guid> Participants => participants.Keys;
+        /// <summary>Participants that count for pace and hash comparison; joiners are not active until caught up.</summary>
+        public IReadOnlyCollection<Guid> ActiveParticipants => participants.Values.Where(p => p.Active).Select(p => p.Session).ToList();
 
         /// <summary>First message for everyone: the starting horizon (tick 0, paused).</summary>
         public IReadOnlyList<(Guid To, WireMessage Message)> Begin() => BroadcastHorizon();
@@ -66,13 +72,18 @@ namespace Multiplayer.Foundation.Session
             return Schedule(issuer, who.Key, ScheduledKind.Game, data);
         }
 
-        /// <summary>Pause, resume or speed. Anyone may pause or resume; only the host sets the speed (plan §7.1 default).</summary>
+        /// <summary>
+        /// Pause, resume, speed or save. Anyone may pause or resume; only the host sets the speed (plan §7.1 default)
+        /// and saves on demand (ADR 0032).
+        /// </summary>
         public IReadOnlyList<(Guid To, WireMessage Message)> Control(Guid issuer, ScheduledKind kind, byte value, long nowMs)
         {
             Participant who = Require(issuer);
             LockstepPayloads.Control(kind, value);
             if (kind == ScheduledKind.Speed && issuer != Host) throw new LockstepRuleException(3, "Only the host sets the speed.");
+            if (kind == ScheduledKind.Save && issuer != Host) throw new LockstepRuleException(3, "Only the host saves.");
             if (!who.Bucket.TryTake(nowMs)) throw new LockstepRuleException(7, "Too many commands.");
+            if (kind == ScheduledKind.Save) return Schedule(issuer, who.Key, ScheduledKind.Save, Array.Empty<byte>());
             var outgoing = new List<(Guid, WireMessage)>(Schedule(issuer, who.Key, kind, new[] { value }));
             Apply(kind, value, nowMs);
             outgoing.AddRange(BroadcastHorizon());
@@ -84,7 +95,16 @@ namespace Multiplayer.Foundation.Session
             Participant who = Require(session);
             if (tick > Horizon) throw new LockstepRuleException(1, "Reported a tick beyond the horizon.");
             if (tick > who.Tick) who.Tick = tick;
-            return Advance(nowMs);
+            var outgoing = new List<(Guid, WireMessage)>();
+            // A joiner goes live once it has caught up with the slowest active game (ADR 0032).
+            if (!who.Active && who.Tick >= participants.Values.Where(p => p.Active).Min(p => p.Tick))
+            {
+                who.Active = true;
+                var synced = new WireMessage(MessageType.PlayerSynced, 0, LobbyPayloads.GuidValue(session));
+                outgoing.AddRange(participants.Keys.Select(to => (to, synced)));
+            }
+            outgoing.AddRange(Advance(nowMs));
+            return outgoing;
         }
 
         public IReadOnlyList<(Guid To, WireMessage Message)> ReportHash(Guid session, int tick, ulong hash)
@@ -105,7 +125,7 @@ namespace Multiplayer.Foundation.Session
             int rate = options.TicksPerSecond[Speed - 1];
             long target = clockBaseTick + (nowMs - clockBaseMs) * rate / 1000;
             int lead = Math.Max(options.MinimumLeadTicks, (int)(options.MaximumLeadSeconds * rate));
-            long limit = (long)participants.Values.Min(p => p.Tick) + lead;
+            long limit = (long)participants.Values.Where(p => p.Active).Min(p => p.Tick) + lead;
             if (target > limit)
             {
                 // The slowest game sets the pace; rebase the clock so no backlog builds up and bursts later.
@@ -113,7 +133,32 @@ namespace Multiplayer.Foundation.Session
             }
             if (target <= Horizon) return Array.Empty<(Guid, WireMessage)>();
             Horizon = (int)Math.Min(target, int.MaxValue);
-            return BroadcastHorizon();
+            var outgoing = new List<(Guid, WireMessage)>();
+            if (Horizon >= nextAutosave)
+            {
+                // Everyone saves at the same point, once per interval (SAVE-001).
+                outgoing.AddRange(Schedule(Guid.Empty, null, ScheduledKind.Save, Array.Empty<byte>()));
+                nextAutosave = (Horizon / options.AutosaveIntervalTicks + 1) * options.AutosaveIntervalTicks;
+            }
+            outgoing.AddRange(BroadcastHorizon());
+            return outgoing;
+        }
+
+        /// <summary>
+        /// A player joins the running game (JOIN-001). The host saves a snapshot here for them; from the very next command
+        /// on they receive everything, load the snapshot, catch up and go live (ADR 0032).
+        /// </summary>
+        public IReadOnlyList<(Guid To, WireMessage Message)> AddJoiner(Guid session, PlayerKey key, long nowMs)
+        {
+            if (Ended) throw new LockstepRuleException(6, "The session has ended.");
+            if (participants.ContainsKey(session)) throw new LockstepRuleException(6, "Already part of this session.");
+            // Sent before the joiner is added, so it never receives its own snapshot command.
+            var outgoing = new List<(Guid, WireMessage)>(Schedule(Guid.Empty, null, ScheduledKind.Save, session.ToByteArray()));
+            var snapshot = new JoinSnapshot(Horizon, nextSequence - 1, Host, Horizon, Speed, Paused);
+            participants[session] = new Participant(session, key, options, nowMs) { Active = false, Tick = Horizon };
+            outgoing.Add((session, new WireMessage(MessageType.JoinSnapshot, 0, LockstepPayloads.Join(snapshot))));
+            outgoing.Add(BroadcastHorizon().First(o => o.To == session));
+            return outgoing;
         }
 
         public IReadOnlyList<(Guid To, WireMessage Message)> RemoveParticipant(Guid session)
@@ -146,11 +191,13 @@ namespace Multiplayer.Foundation.Session
             foreach (int tick in pendingHashes.Keys.ToList())
             {
                 var reports = pendingHashes[tick];
-                if (!participants.Keys.All(reports.ContainsKey)) break;   // later ticks cannot be complete earlier
+                // Only active games are waited for; a joiner's reports still count when present.
+                if (!participants.Values.Where(p => p.Active).All(p => reports.ContainsKey(p.Session))) break;
                 pendingHashes.Remove(tick);
                 lastComparedHashTick = tick;
                 ulong reference = reports[Host];
-                List<Guid> differing = participants.Keys.Where(p => reports[p] != reference).OrderBy(p => p).ToList();
+                List<Guid> differing = reports.Where(r => participants.ContainsKey(r.Key) && r.Value != reference)
+                    .Select(r => r.Key).OrderBy(p => p).ToList();
                 if (differing.Count == 0) continue;
                 // Absolutely in sync means never run on silently: tell everyone and stop time at one shared point.
                 var alarm = new WireMessage(MessageType.DesyncDetected, 0, LockstepPayloads.Desync(tick, differing));
@@ -167,7 +214,7 @@ namespace Multiplayer.Foundation.Session
 
         private IReadOnlyList<(Guid To, WireMessage Message)> BroadcastHorizon()
         {
-            Participant slowest = participants.Values.OrderBy(p => p.Tick).ThenBy(p => p.Session).First();
+            Participant slowest = participants.Values.Where(p => p.Active).OrderBy(p => p.Tick).ThenBy(p => p.Session).First();
             var message = new WireMessage(MessageType.TickHorizon, 0, LockstepPayloads.Horizon(
                 new TickHorizon(Horizon, Speed, Paused, slowest.Session, slowest.Tick)));
             return participants.Keys.Select(to => (to, message)).ToList();
@@ -187,6 +234,7 @@ namespace Multiplayer.Foundation.Session
             public Guid Session { get; }
             public PlayerKey Key { get; }
             public int Tick { get; set; }
+            public bool Active { get; set; } = true;
             public TokenBucket Bucket { get; }
         }
 

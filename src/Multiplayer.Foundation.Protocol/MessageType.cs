@@ -50,6 +50,9 @@ namespace Multiplayer.Foundation.Protocol
         ClientTick = 67,
         StateHash = 68,
         DesyncDetected = 69,
-        SessionControl = 70
+        SessionControl = 70,
+        // Claude lane (codes 71-79): SAVE-001 / JOIN-001 (ADR 0032)
+        JoinSnapshot = 71,
+        PlayerSynced = 72
     }
 }
