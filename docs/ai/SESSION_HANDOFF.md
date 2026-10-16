@@ -18,3 +18,9 @@
   - Veraltete Fenstertexte nach der Landung.
   - Verifikation: `docs/verification/2026-10-16-guest-world-discard.md`.
   - Offen: Was beim Gast im ersten Versuch in der Figurenwahl hängen blieb (Rückfrage beim Benutzer). Möglich ist, dass Host oder Gast ohne Fokus pausieren (`runInBackground=False`), sodass Anfragen liegen bleiben.
+- **Gastseite wie vanilla (2026-10-16):** Der Benutzer meinte mit dem Figurenfenster dessen Aussehen.
+  - Die Karten tragen jetzt Details, der Host sendet Bilder (`PawnPortrait`, Code 37).
+  - `GuestCharacterPage` baut vanillas „Create characters“ nach. ADR 0022 hat einen Nachtrag.
+  - Harness-Tests sind grün; der .NET-8-Harness liegt nur im Scratchpad (`net8.0`-Wrapper um die unveränderten Testquellen).
+  - Der Selbsttest zeichnet die Seite mit echten Figuren (PASS, Foto `selftest-guest-page.png`).
+  - Verifikation: `docs/verification/2026-10-16-guest-character-page.md`.

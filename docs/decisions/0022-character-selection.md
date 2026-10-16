@@ -17,3 +17,10 @@
 - **Persistenz:** keine. Der Besitz gilt nur in der Einrichtung; der gemeinsame Start (SETUP-005) und der Spielstand (OWN-001) übernehmen ihn.
 - **Tests:** Lobby-, Hosting- und Protokolltests für Liste, Anfragen, Fertig-Regeln. Selbsttest im Spiel (`-mpWorldSelfTest`): Host-Logik auf echten vanilla-Startfiguren, alle Prüfungen PASS. Zwei-Spieler-Lauf: **offen**.
 - **Rollback:** Commits zurücknehmen; die Charakterwahl hat dann wieder keine Figurenzuordnung.
+- **Nachtrag 2026-10-16 (Gastseite wie vanilla):**
+  - Der Benutzer wollte die Gastseite wie vanillas „Create characters“, nicht als Textliste.
+  - Die Figuren bleiben beim Host. Die Karten tragen jetzt Details (Namensteile, Alter, Xenotyp mit Symbol, Lieblingsfarbe, Gesundheit nach Körperteil, Beziehungen mit beiden Meinungen, Besitz).
+  - Der Host zeichnet jede Figur mit `PortraitsCache` und sendet sie als PNG (`PawnPortrait`, Code 37). Höchstens zwei Bilder je Durchlauf, erneut nur bei neuem Aussehen.
+  - `GuestCharacterPage` baut die vanilla-Seite nach: Liste mit Bildern, Namensfelder, Karte in drei Spalten, Team-Fertigkeiten, Knöpfe an vanillas Stellen. Texte nimmt sie über vanillas Übersetzungsschlüssel, wo es sie gibt.
+  - Verworfen: echte Figuren beim Gast (Scribe der Figuren samt Ideoligion und Verwandten), um vanillas eigene Karte zu nutzen. Zu viele Querverweise, die beim Gast fehlen, und jede Änderung müsste ganze Figuren neu übertragen.
+  - Nachweis: `docs/verification/2026-10-16-guest-character-page.md`.

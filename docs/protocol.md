@@ -45,6 +45,7 @@ Strings sind `length:u16` plus strikt gültige UTF-8-Bytes. Allgemeine Strings: 
 | 34 | PawnRequest | C→S→C | Art `u8`, Figur `u32`, andere Figur `u32`, Text (≤ 64 Byte), optional `PlayerKey`; nur Gäste, nur in `Characters`, an den Host |
 | 35 | GameReady | C→S | Fingerabdruck des geladenen Startspiels (32 Byte); nur Host, nur in `Generating` |
 | 36 | GameLoaded | C→S | Fingerabdruck des geladenen Startspiels (32 Byte); nur Gäste, nur in `Generating` |
+| 37 | PawnPortrait | C→S→C | Figur `u32`, PNG (`u32`-Länge, 1..49152 Byte); nur Host, nur in `Characters`, an alle anderen |
 
 Listen- und Zustandsupdates sind in `LobbyPayloads.cs` kodiert: Liste mit `count:u8`, je Lobby GUID, Name, Hostname, Spielerzahl und Kapazität; Snapshot mit GUID, Name, Host-GUID, Revision `u64`, Kapazität, Setup-Phase `u8`, optional gewähltes Feld und Spielerarray (Session-GUID, Name, Ready, PlayerKey, optional Fähnchen). Die Liste trägt je Lobby zusätzlich die Phase. Der TCP-Server verwendet diese Payloads; zwei unabhängige TCP-Testclients bestanden die Integrationstests. RimWorld-Client-Kompatibilität ist noch offen. Fehlercodes: `1=InvalidMessage`, `2=VersionMismatch`, `3=Unauthorized`, `4=NotFound`, `5=Capacity`, `6=InvalidState`, `7=ServerBusy`.
 
@@ -91,7 +92,14 @@ In `WorldTransfer` trägt jeder Spieler im Lobbyzustand zusätzlich `WorldStatus
 
 ## Figurenwahl (SETUP-004, ADR 0022)
 
-Figuren gibt es nur im Spiel des Hosts. Eine Karte in `PawnRoster`: Thing-ID `u32`, Startgruppe `bool`, optional Besitzer (`PlayerKey`), fünf Texte (Name, Kurzname, Kurzbeschreibung, Kindheit, Erwachsenenleben, je ≤ 160 Byte), dann Listen mit `count:u8` (≤ 24): Merkmale, Fertigkeiten (Name, Stufe `u8` mit `255` = unfähig, Leidenschaft `u8`), Unfähigkeiten, Gesundheit. Der Server leitet die Liste an die Gäste weiter, bildet je Spieler einen SHA-256 über dessen Karten und löscht Fertig, wenn sich der Wert ändert oder der Spieler keine Figur der Startgruppe mehr hat. Fertig in `Characters` verlangt eine eigene Figur der Startgruppe (Code 6). `PawnRequest`-Arten: `1` übernehmen, `2` freigeben, `3` neu würfeln, `4` tauschen, `5` umbenennen. Der Server ersetzt den mitgeschickten `PlayerKey` durch den des Absenders und leitet an den Host; ob eine Anfrage erlaubt ist, entscheidet der Host.
+Figuren gibt es nur im Spiel des Hosts. Eine Karte in `PawnRoster`: Thing-ID `u32`, Startgruppe `bool`, optional Besitzer (`PlayerKey`), fünf Texte (Name, Kurzname, Kurzbeschreibung, Kindheit, Erwachsenenleben, je ≤ 160 Byte), dann Listen mit `count:u8` (≤ 24): Merkmale, Fertigkeiten (Name, Stufe `u8` mit `255` = unfähig, Leidenschaft `u8`), Unfähigkeiten, Gesundheit. Danach `bool` und, wenn gesetzt, die Details für die Gastseite (2026-10-16):
+- drei Namensteile (je ≤ 64 Byte), Geschlecht `u8`, biologisches und chronologisches Alter (je `u16`);
+- Xenotyp (≤ 64 Byte) und Symbolschlüssel (`x:`+XenotypeDef oder `c:`+XenotypeIconDef, ≤ 96 Byte), Lieblingsfarbe RGBA `u32` (0 = keine);
+- Listen (`count:u8` ≤ 24): Gesundheit (Körperteil, Text), Beziehungen (Art, Name, Meinung `i16`, Gegenmeinung `i16`), Besitz (Name, Anzahl `u32`).
+
+`PawnPortrait` trägt das Bild einer Figur so, wie das Spiel des Hosts sie zeichnet. Der Host sendet es einmal je Figur und wieder, wenn sich ihr Aussehen ändert. Der Server prüft die Nutzlast und leitet sie nur in `Characters` und nur vom Host weiter (sonst Code 3 bzw. 6). Die Codes 33–37 kamen ohne neue Wire-Version; alte Clients können neue Listen nicht lesen.
+
+Der Server leitet die Liste an die Gäste weiter, bildet je Spieler einen SHA-256 über dessen Karten und löscht Fertig, wenn sich der Wert ändert oder der Spieler keine Figur der Startgruppe mehr hat. Fertig in `Characters` verlangt eine eigene Figur der Startgruppe (Code 6). `PawnRequest`-Arten: `1` übernehmen, `2` freigeben, `3` neu würfeln, `4` tauschen, `5` umbenennen. Der Server ersetzt den mitgeschickten `PlayerKey` durch den des Absenders und leitet an den Host; ob eine Anfrage erlaubt ist, entscheidet der Host.
 
 ## Gemeinsamer Spielstart (SETUP-005, ADR 0023)
 
