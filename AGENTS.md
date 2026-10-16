@@ -55,3 +55,5 @@ Nenne verwendete RimWorld-/MP-/SDK-Builds, Dateien, APIs mit Referenzen, Build-B
 35. `HEAD` ist die dynamische Referenz auf den aktuellen Branch-Commit (`git rev-parse HEAD`); der Commit kann seinen eigenen Hash nicht enthalten. Bei Widerspruch Git, Code und Prüfbelege vor Dokumentationskorrektur untersuchen.
 
 36. Originale Überprompt/Masterprompts sind als historische Quellen unter `docs/governance/PROMPT_HISTORY.md` verzeichnet; im normalen Arbeitsstart nicht vollständig laden. Bei Regelkonflikten gelten die aktuellen Anweisungen und die Governance 2.0.
+
+37. Zusammenarbeit mehrerer Agenten: `docs/ai/ASSIGNMENTS.md` legt fest, welche Aufgaben, Projekte, Branch-Präfixe und Nummernbereiche (ADR, Nachrichtencodes) jedem Agenten gehören. Nur Aufgaben der eigenen Bahn bearbeiten, eigene Übergabedatei unter `docs/ai/handoff/` pflegen, vor Beginn auf `origin` prüfen, ob die Aufgabe schon begonnen wurde. Wünsche an die andere Bahn als Eintrag in der eigenen Übergabedatei, nicht als Änderung im fremden Bereich.

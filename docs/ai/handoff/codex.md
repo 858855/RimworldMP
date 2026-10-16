@@ -1,0 +1,33 @@
+# Übergabe Codex (Spielseite)
+
+- **Bahn:** siehe `docs/ai/ASSIGNMENTS.md`. Branch-Präfix `codex/`, ADR 0040–0049, Nachrichtencodes 80–95. Arbeitsverzeichnis `/mnt/Arbeit/Git Projekte/RimworldMP`.
+- **Erste Aufgabe:** X1 `VER-001` (Rest) oder X2 Tick-Treiber; Liste in `ASSIGNMENTS.md`.
+- **Wünsche an Claude:** (noch keine)
+
+## Vorgeschichte der Spielseite (bisherige gemeinsame Übergabe, unverändert übernommen)
+
+- **Spielmodus (`feat/game-mode`, ADR 0031, MODE-001):**
+  - Der Benutzer will zwei Modi: Coop (Host-Entscheid oder Demokratie) und Fraktionen. Gewählt wird einmalig beim Erstellen, danach nicht änderbar.
+  - Koordinator-Seite fertig: `LobbyMode` in `CreateLobby`, Lobbyzustand und -liste; Fraktionsstart abgelehnt bis `FACTION-001`.
+  - **Für die Spielseite:** Auswahl im Lobby-Fenster (`LobbyPayloads.Create(name, capacity, mode)` bzw. `ListenHost.StartAsync(..., mode:)`), Anzeige des Modus in der Lobbyliste, Modus in `MultiplayerSession` speichern und beim Laden übernehmen.
+  - Neue Aufgaben: `VOTE-001`, `FACTION-001`, `FACTION-002`. Offene Benutzerfragen stehen im ADR.
+
+- **Lockstep-Koordinator (`feat/lockstep-session`, ADR 0030):**
+  - Branch von `feat/mod-check-setup-ui` @ `08e7f9b`. Aufteilung laut Benutzer am 2026-10-16: Koordinator-Seite hier, Spielseite beim zweiten Beitragenden.
+  - Neues Projekt `Multiplayer.Foundation.Session` (`LockstepSession`), dazu `LockstepClient` im Network-Projekt sowie `LockstepHost` und `OrderedOutbox` im Server. Codes 64–70.
+  - Die Sitzung startet automatisch beim Eintritt in `Playing`, pausiert bei Tick 0.
+  - **Für die Spielseite:** Den Dauerpause-Patch (`SessionPauseTickPatch`) durch den Tick-Treiber ersetzen. Der rechnet Tick c+1 nur, wenn `LockstepClient.MayRunTick(c)`, und ruft vorher und während der Pause in jedem Frame `TakeCommandsAt(c)` auf. Sitzungstick = `TicksGame − TicksGame bei der Landung`. `ProgressMessage` ~10/s senden, alle 60 Ticks `HashMessage`. Spieler-Pause und -Geschwindigkeit als `ControlMessage` senden, statt lokal umzuschalten.
+  - Paketliste in `build-mod.sh` und `package-mod.py` um `Multiplayer.Foundation.Session.dll` ergänzt.
+  - Verifikation: `docs/verification/2026-10-16-lockstep-coordinator.md`.
+
+- **Bereich:** `MOD-001`, Spielseite von `START-001`, `SETUP-001`, `SETUP-002`, `SETUP-003`, `SETUP-004`, `SETUP-005`, `VER-001`, auf Basis von `feat/setup-rules` (ADR 0013–0017).
+- **Branch:** `feat/mod-check-setup-ui`, lokal unter `E:/RimworldMP`, abgezweigt von `origin/feat/setup-rules` @ `5798f95`. Ersetzt `origin/feat/lobby-hardening` (gleiche Funktionen auf eigenem Protokoll; auf Wunsch des Benutzers hierher übertragen).
+- **Stand:** Mod-Prüfung (Prüfsumme nur über Mods), Bereit-Sperre, Unterschiedsbericht über den Chunk-Kanal, **Spiel starten** mit Begründung; nach dem Start öffnet der Host die vanilla-Seiten, die Mod spiegelt Seite und Auswahl an die Gäste (Code 30) und schaltet die Serverphasen nach; der letzte Start ist während einer gemeinsamen Einrichtung gesperrt. ADR 0018 und 0019.
+- **Geprüft:** Sechs Testprojekte im .NET-8-Harness bestanden; Mod ohne Warnungen gebaut, installiert, Rauchtest (Manifest im Log, Patches geladen). Details: `docs/verification/2026-10-15-mod-check-setup-ui.md`.
+- **Offen:** Zwei-Spieler-Spieltest (Prüfpunkte 1–9); VER-001 Tickpfad-Threads; danach `OWN-001`, `SYNC-001`.
+- **Nächster Schritt:** Spieltest nach `docs/reviews/2026-10-15-mod-check-setup-ui.md`; danach `OWN-001`/`SYNC-001`. Selbsttest: `RimWorldWin64.exe -mpWorldSelfTest [-mpSelfTestScreenshot] -mpQuitAfterSelfTest`, Ergebnis im `Player.log`, Bild unter `SaveData/MultiplayerFoundation/selftest-site.png`.
+- **Dateien/Befehle:** `src/Multiplayer.Foundation.Protocol/ModManifest.cs`, `SetupPayloads.cs`, `src/Multiplayer.Foundation.Lobby/LobbyRegistry.cs`, `src/Multiplayer.Foundation.Hosting/FoundationServer.cs`, `src/Multiplayer.Foundation.RimWorld/{FoundationMod,SetupMirror,SetupOverlayWindow,SharedStartGuardPatch,ModManifestBuilder,ModDiffWindow}.cs`; Build: `RIMWORLD_MANAGED=E:/SteamLibrary/steamapps/common/RimWorld/RimWorldWin64_Data/Managed DOTNET_BIN=dotnet bash scripts/build-mod.sh`.
+- **SETUP-002:** Host sendet die Welt nach „Welt erstellen“ (Scribe + gzip, Chunk-Art `World`), Gäste laden sie im Hauptmenü und melden einen Fingerabdruck (nur diskrete Werte); `SiteSelection` erst, wenn alle passen. ADR 0020, Verifikation `docs/verification/2026-10-15-world-transfer.md`.
+- **SETUP-003:** Gäste sehen in der Startortwahl die Weltkarte, „Weiter“ setzt ihr Fähnchen; alle sehen alle Fähnchen; nur der Host wählt. ADR 0021.
+- **SETUP-004:** Figuren nur im Spiel des Hosts; `CharacterHost` hält den Besitz und führt Gastanfragen mit `StartingPawnUtility` aus; Liste als Karten (Code 33), Anfragen (Code 34). Gäste haben ein Figurenfenster, der Host die vanilla-Seite plus Feld. Fertig braucht eine eigene Figur, Änderungen nehmen es zurück. ADR 0022, Verifikation `docs/verification/2026-10-15-character-selection.md`.
+- **SETUP-005:** Host startet über vanilla `InitGameStart` erst nach Serverzustimmung, füllt `MultiplayerSession` (Spieler, Besitzer), speichert, sendet (Chunk-Art 3) und lädt selbst neu; Gäste laden die Kopie; Fingerabdruck nach dem Laden (Codes 35/36), dann `Playing`. Zeit pausiert bis SYNC-001 (`DoSingleTick`-Sperre). Hauptmenü verwirft das Spiel ohne offenes Fenster. ADR 0023, Verifikation `docs/verification/2026-10-15-game-start.md`.

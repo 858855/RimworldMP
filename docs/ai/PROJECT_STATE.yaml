@@ -14,14 +14,14 @@ target_rimworld_version:
   runtime: Unity/Mono
   game_runtime_tested: true
   other_versions_verified: []
-current_phase: mod_check_start_and_setup_mirror_review_pending
+current_phase: coop_foundations_merged_parallel_lanes
 git:
-  branch: feat/mod-check-setup-ui
-  base_branch: feat/setup-rules
-  base_commit: 5798f95
+  branch: main
+  base_branch: null
+  base_commit: null
   current_commit_ref: HEAD
-  pushed: false
-  merged: false
+  pushed: true
+  merged: true
   dependent_branches:
   - feat/setup-rules
   - feat/player-key
@@ -153,7 +153,7 @@ active_tasks:
 - SETUP-003
 - SETUP-004
 - SETUP-005
-next_action: 'Zwei-Spieler-Test der ganzen Einrichtung bis zur Landung (Prüfpunkte 1–9 in docs/reviews/2026-10-15-mod-check-setup-ui.md); danach OWN-001 (Besitzanzeige) und SYNC-001 (Gleichlauf).'
+next_action: 'Parallele Bahnen nach docs/ai/ASSIGNMENTS.md: Claude C1 SAVE-001/JOIN-001 (Koordinator), Codex X1 VER-001 oder X2 Tick-Treiber. Spieltests derzeit nicht möglich.'
 documentation_refs:
   tasks: docs/ai/TASKS.yaml
   handoff: docs/ai/SESSION_HANDOFF.md

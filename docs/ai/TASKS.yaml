@@ -547,7 +547,7 @@ tasks:
   - 'scripts/validate_project_state.py besteht'
   implementation: implemented
   verification: tests_passed
-  integration: ready_for_human_review
+  integration: merged
   branch: docs/full-multiplayer-plan
   evidence:
   - docs/plans/rimworldmp-full-plan.md
@@ -559,6 +559,7 @@ tasks:
   goal: 'Alle im Plan mit [U] markierten APIs gegen die lokale 1.6-Assembly per Reflection belegen und Kernannahmen messen.'
   description: 'Plan §10 Version 0.2; lokale Roadmap F1, F3.'
   priority: critical
+  owner: codex
   components:
   - rimworld_adapter
   depends_on:
@@ -570,7 +571,7 @@ tasks:
   - 'Threads und Jobs im 1.6-Tickpfad aufgelistet'
   implementation: in_progress
   verification: not_tested
-  integration: not_submitted
+  integration: merged
   branch: feat/mod-check-setup-ui
   evidence:
   - references/verified-apis.md
@@ -616,7 +617,7 @@ tasks:
   - 'Spielneustart und echtes Steam nicht getestet'
   implementation: implemented
   verification: tests_passed
-  integration: ready_for_human_review
+  integration: merged
   branch: feat/player-key
   base_branch: feat/chunk-transfer
   base_commit: c7ed45a
@@ -645,7 +646,7 @@ tasks:
   - 'Server lehnt Bereit bei Mismatch ab (Test)'
   implementation: implemented
   verification: tests_passed
-  integration: ready_for_human_review
+  integration: merged
   branch: feat/mod-check-setup-ui
   evidence:
   - docs/decisions/0018-mod-check-and-start-ui.md
@@ -671,7 +672,7 @@ tasks:
   - 'Lobby-Sperre, Abbruch und keine Host-Migration während der Einrichtung getestet'
   implementation: implemented
   verification: tests_passed
-  integration: ready_for_human_review
+  integration: merged
   branch: feat/mod-check-setup-ui
   base_branch: feat/player-key
   base_commit: 2221608
@@ -720,7 +721,7 @@ tasks:
   - 'Empfänger reserviert die angekündigte Länge (bis 256 MiB für Spielstände)'
   implementation: implemented
   verification: tests_passed
-  integration: ready_for_human_review
+  integration: merged
   branch: feat/chunk-transfer
   base_branch: docs/full-multiplayer-plan
   base_commit: 1e5a529
@@ -744,7 +745,7 @@ tasks:
   - 'Auswahl der Schritte 1, 2, 3 und 5 erscheint live beim Client, einschließlich Zurück'
   implementation: implemented
   verification: tests_passed
-  integration: ready_for_human_review
+  integration: merged
   branch: feat/mod-check-setup-ui
   evidence:
   - docs/decisions/0019-setup-page-mirror.md
@@ -768,7 +769,7 @@ tasks:
   - 'Eine erzwungene Mod-Abweichung bricht mit Bericht ab'
   implementation: implemented
   verification: tests_passed
-  integration: ready_for_human_review
+  integration: merged
   branch: feat/mod-check-setup-ui
   evidence:
   - docs/decisions/0020-world-transfer.md
@@ -793,7 +794,7 @@ tasks:
   - 'Keine Phase endet ohne Wahl des Hosts; kein Timer'
   implementation: implemented
   verification: tests_passed
-  integration: ready_for_human_review
+  integration: merged
   branch: feat/mod-check-setup-ui
   base_branch: feat/player-key
   base_commit: 2221608
@@ -824,7 +825,7 @@ tasks:
   - 'Pawn-Änderung setzt Fertig des Spielers zurück'
   implementation: implemented
   verification: tests_passed
-  integration: ready_for_human_review
+  integration: merged
   branch: feat/mod-check-setup-ui
   base_branch: feat/player-key
   base_commit: 2221608
@@ -850,7 +851,7 @@ tasks:
   - 'Beide Clients laden einen Spielstand mit gleichem SHA-256, Ort, Figuren und Besitzern'
   implementation: implemented
   verification: tests_passed
-  integration: ready_for_human_review
+  integration: merged
   branch: feat/mod-check-setup-ui
   evidence:
   - docs/decisions/0023-shared-game-start.md
@@ -863,6 +864,7 @@ tasks:
   goal: 'Speichern, welcher Spieler welche Figur steuert, und es sichtbar machen.'
   description: 'Plan §7.7; lokale Roadmap P1.'
   priority: medium
+  owner: codex
   components:
   - rimworld_adapter
   depends_on:
@@ -918,6 +920,7 @@ tasks:
   goal: 'Der Server ordnet Befehle und gibt Ticks frei; Clients simulieren nur bis zum Horizont.'
   description: 'Plan §7.1; lokale Roadmap S2.'
   priority: critical
+  owner: codex
   components:
   - session_core
   - listen_host
@@ -931,7 +934,7 @@ tasks:
   - 'Zwei Clients laufen im Lockstep; der langsamste bestimmt das Tempo'
   implementation: in_progress
   verification: tests_passed
-  integration: not_submitted
+  integration: merged
   branch: feat/lockstep-session
   base_branch: feat/mod-check-setup-ui
   base_commit: 08e7f9b
@@ -945,6 +948,7 @@ tasks:
   goal: 'Spieleraktionen als Befehle mit stabilen Referenzen erfassen und ausführen.'
   description: 'Plan §7.2, §7.3; lokale Roadmap S2.'
   priority: critical
+  owner: codex
   components:
   - session_core
   - rimworld_adapter
@@ -965,6 +969,7 @@ tasks:
   goal: 'Pause und Spielgeschwindigkeit als Befehle mit Host-Richtlinie.'
   description: 'Plan §7.1; lokale Roadmap S4.'
   priority: high
+  owner: codex
   components:
   - session_core
   - rimworld_adapter
@@ -1024,6 +1029,7 @@ tasks:
   goal: 'Abweichungen zwischen Clients schnell erkennen.'
   description: 'Plan §7.9; lokale Roadmap S5.'
   priority: critical
+  owner: codex
   components:
   - session_core
   - rimworld_adapter
@@ -1033,7 +1039,7 @@ tasks:
   - 'Ein absichtlich erzeugter Desync wird innerhalb von 60 Ticks erkannt'
   implementation: in_progress
   verification: tests_passed
-  integration: not_submitted
+  integration: merged
   branch: feat/lockstep-session
   base_branch: feat/mod-check-setup-ui
   base_commit: 08e7f9b
@@ -1065,6 +1071,7 @@ tasks:
   goal: 'Desynchronisierte Clients ohne Neustart reparieren.'
   description: 'Plan §7.9; lokale Roadmap S5.'
   priority: high
+  owner: claude
   components:
   - session_core
   - rimworld_adapter
@@ -1084,6 +1091,7 @@ tasks:
   goal: 'Alle Clients speichern am selben Tick; der Spielstand des Snapshot-Providers ist maßgeblich.'
   description: 'Plan §7.8; lokale Roadmap S4.'
   priority: high
+  owner: claude
   components:
   - session_core
   - rimworld_adapter
@@ -1103,6 +1111,7 @@ tasks:
   goal: 'Spieler treten einem laufenden Spiel bei oder verbinden sich neu und holen auf.'
   description: 'Plan §7.8; lokale Roadmap S4.'
   priority: critical
+  owner: claude
   components:
   - session_core
   - dedicated_server
@@ -1302,6 +1311,7 @@ tasks:
   goal: 'Gefälschte PlayerKeys in IP-Lobbys abweisen.'
   description: 'Plan §7.12.'
   priority: medium
+  owner: claude
   components:
   - network_core
   - dedicated_server
@@ -1353,6 +1363,7 @@ tasks:
   goal: 'Der Host wählt den Modus einmalig beim Erstellen; er ist danach nicht änderbar und steht im Spielstand.'
   description: 'ADR 0031. Koordinator-Seite: Protokoll, Server-Regeln, Lobbyzustand und -liste. Spielseite: Auswahl im Lobby-Fenster, Anzeige, Speichern in MultiplayerSession.'
   priority: high
+  owner: codex
   components:
   - protocol
   - lobby_core
@@ -1368,7 +1379,7 @@ tasks:
   - 'Beim Laden kommt der Modus aus dem Spielstand'
   implementation: in_progress
   verification: tests_passed
-  integration: not_submitted
+  integration: merged
   branch: feat/game-mode
   base_branch: feat/lockstep-session
   base_commit: 52a6de1
@@ -1382,6 +1393,7 @@ tasks:
   goal: 'Im Modus Coop-Demokratie entscheiden alle per Abstimmung über Ereignisse im Spiel; der Host entscheidet bei Gleichstand.'
   description: 'ADR 0031. Abstimmung als Lockstep-Befehl mit gemeinsamer Pause; Ergebnis wirkt bei allen am selben Tick.'
   priority: medium
+  owner: claude
   components:
   - session_core
   - rimworld_adapter
