@@ -95,6 +95,12 @@ namespace Multiplayer.Foundation.RimWorld
                 Log.Message("Multiplayer Foundation world self-test: world without a setup page " + (kept ? "kept" : "dropped") +
                     " (game=" + (Current.Game != null) + " world=" + (Current.Game?.World != null) + " initData=" + (Current.Game?.InitData != null) + ")");
                 // The window stays open: without any window the main menu drops the game (found by this check).
+                // Like a guest when the host's game arrives (LoadGuestGame): the setup world goes, and nothing of it may
+                // stay current, or drawing the main menu throws (guest log, 2026-10-16).
+                WorldCodec.Discard();
+                bool detached = Current.Game?.World == null;
+                Log.Message("Multiplayer Foundation world self-test: world discard " + (detached ? "PASS" : "FAIL") + " (game=" + (Current.Game != null) +
+                    " world=" + (Current.Game?.World != null) + " grid=" + (Current.Game?.World?.grid != null) + ")");
                 siteStage = 0;
                 if (kept && pawnsPassed && startTile.Valid) gameStage = 1;
                 else cleanupWhenIdle = true;
@@ -112,6 +118,8 @@ namespace Multiplayer.Foundation.RimWorld
             { quitWhenIdle = false; Root.Shutdown(); return; }
             if (started || !Requested || Current.ProgramState != ProgramState.Entry || LongEventHandler.AnyEventNowOrWaiting) return;
             started = true;
+            // Without focus the game stops updating and the test stalls (2026-10-16); this run only, the prefs stay as they are.
+            UnityEngine.Application.runInBackground = true;
             LongEventHandler.QueueLongEvent(Run, "LoadingLongEvent", false, error => Log.Error("Multiplayer Foundation world self-test: FAIL " + error));
         }
 
@@ -295,7 +303,7 @@ namespace Multiplayer.Foundation.RimWorld
         // Host side of the game test: a fresh game with a generated world and the scenario's starting pawns.
         private static void PrepareHostGame()
         {
-            MemoryUtility.ClearAllMapsAndWorld();
+            if (Current.Game != null) MemoryUtility.ClearAllMapsAndWorld();
             Current.Game = new Game { InitData = new GameInitData() };
             Current.Game.Scenario = ScenarioDefOf.Crashlanded.scenario.CopyForEditing();
             Current.Game.Scenario.PreConfigure();
