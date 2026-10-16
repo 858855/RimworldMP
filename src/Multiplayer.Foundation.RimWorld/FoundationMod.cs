@@ -209,6 +209,18 @@ namespace Multiplayer.Foundation.RimWorld
             return false;
         }
 
+        internal bool CaptureForbidden(Thing thing, bool forbidden)
+        {
+            if (!SharedGame || lobby?.Phase != SetupPhase.Playing || GameCommandCodec.Executing ||
+                Event.current == null) return true;
+            if (tickDriver == null || tickDriver.Faulted || thing.Map == null)
+            { status = "Forbid-Befehl konnte nicht gesendet werden."; return false; }
+            byte[] data = GameCommandCodec.Forbid(thing.Map.uniqueID, thing.thingIDNumber, forbidden);
+            if (!SendBackground(LockstepClient.CommandMessage(data)))
+                status = "Forbid-Befehl konnte nicht gesendet werden.";
+            return false;
+        }
+
         private static void ExecuteGameCommand(ScheduledCommand command) => GameCommandCodec.Execute(command);
 
         private void PollScheduledSave()

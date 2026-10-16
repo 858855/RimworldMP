@@ -964,12 +964,12 @@ tasks:
   verification: build_passed
   integration: not_submitted
   branch: codex/command-pipeline
-  base_branch: codex/resync-game
-  base_commit: 0bde512
+  base_branch: main
+  base_commit: b4255c6
   evidence:
   - docs/decisions/0043-command-pipeline-first-action.md
   - docs/verification/2026-10-16-command-pipeline-first-action.md
-  blocker: 'Nur Draft/Undraft kodiert; übrige Referenztypen, Ordered Jobs, Designatoren und Zwei-Client-Spieltest fehlen.'
+  blocker: 'Draft/Undraft und Forbid/Unforbid kodiert; übrige Referenztypen, Ordered Jobs, Designatoren und Zwei-Client-Spieltest fehlen.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: SYNC-003
   title: 'Geschwindigkeit und Pause'

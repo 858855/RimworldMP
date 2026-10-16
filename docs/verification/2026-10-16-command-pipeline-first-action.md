@@ -1,6 +1,6 @@
 # X4 / SYNC-002: erster Spielbefehl, Prüfung 2026-10-16
 
-- **Branch/Basis:** `codex/command-pipeline` von `codex/resync-game` @ `0bde512`; dieser Basisbranch ist noch nicht in `main`. Umgebung: Linux, RimWorld 1.6.4871 rev598, .NET SDK 10.0.402.
+- **Branch/Basis:** `codex/command-pipeline` nach Rebase auf `main` @ `b4255c6`. Umgebung: Linux, RimWorld 1.6.4871 rev598, .NET SDK 10.0.402.
 - **API-Prüfung:** Reflection gegen lokale `Assembly-CSharp.dll`: `RimWorld.Pawn_DraftController.Drafted` besitzt einen öffentlichen Setter; das `pawn`-Feld ist vorhanden. `Verse.AI.Pawn_JobTracker.TryTakeOrderedJob(Job, JobTag?, bool)` und `Verse.Designator.DesignateSingleCell(IntVec3)` sind vorhanden, aber in diesem Schritt nicht gepatcht. Die Harmony-Signatur des Draft-Setters wurde mit dem Mod-Build geprüft.
 
 | Ausgeführt | Ergebnis |
@@ -12,3 +12,10 @@
 | `git diff --check` | Exit 0. |
 
 **Grenze:** Kein laufender RimWorld-Client und keine zwei Spiele mit Draft-Toggle getestet. Der Setter-Prefix ist nur für GUI-Aktionen einer aktiven Sitzung vorgesehen; Harmony-Reihenfolge mit anderen Mods und tatsächliche Erfassung im Spiel sind offen. Weitere Aktionen und Referenztypen aus Plan §7.3 fehlen.
+
+## Erweiterung: Forbid/Unforbid
+
+- **Lokale API-Prüfung:** Reflection gegen `Assembly-CSharp.dll` bestätigt `ForbidUtility.SetForbidden(Thing t, bool value, bool warnOnFail)` als öffentliche Methode. Der Hook verwendet diese Signatur; ob alle UI-Wege sie benutzen, ist ohne Spielstart ungeklärt.
+- **Build:** `DOTNET_BIN=/home/fabiok/.local/share/dotnet-rimworldmp/dotnet bash scripts/build-mod.sh` nach der Erweiterung, Exit 0; 0 Warnungen, 0 Fehler.
+- **Codec-Prüfung:** Temporäres, nicht versioniertes Reflection-Programm `/tmp/rimworld-api-inspect/Inspect.csproj` mit `dotnet run --project /tmp/rimworld-api-inspect/Inspect.csproj --no-restore`, Exit 0. 11-Byte-Payload mit Karten-ID 17, Thing-ID 12345 und `true` roundtrip-geprüft; abgeschnittenes Paket und unbekannter Opcode abgewiesen.
+- **Grenze:** Kein RimWorld-Prozess gestartet. Kein tatsächlicher Forbid-Klick und keine Zwei-Client-Synchronisierung geprüft. SYNC-002 bleibt `in_progress`.
