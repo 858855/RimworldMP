@@ -1609,13 +1609,14 @@ tasks:
   - 'Fortsetzen: Tabelle nur vom Host, Beitritt nur aus der Tabelle, Start direkt zur Spielübertragung; Fraktionsstart weiter gesperrt'
   implementation: in_progress
   verification: tests_passed
-  integration: not_submitted
+  integration: merged
   branch: claude/faction-sites
   base_branch: main
   base_commit: 9fc1519
   evidence:
   - docs/verification/2026-10-16-faction-sites.md
   - docs/decisions/0038-faction-sites-ideology-and-continue.md
+  - docs/reviews/2026-10-16-faction-setup-integration.md
   blocker: 'Koordinator-Seite fertig und Ende zu Ende getestet (Codes 98–101). Offen: Spielseite (Codex, FACTION-005: Prüfung von Feld und Ideologie, Zurückweisen, Generierung je Platz, Tabelle im Spielstand), Fortsetzen im Coop (Rest von SAVE-002), Regel R4.'
   plan_ref: docs/decisions/0038-faction-sites-ideology-and-continue.md
 - id: FACTION-002
@@ -1698,7 +1699,7 @@ tasks:
   - 'Coop bleibt unverändert und Fraktionsstart gesperrt'
   implementation: in_progress
   verification: build_passed
-  integration: not_submitted
+  integration: merged
   branch: codex/faction-setup
   base_branch: claude/faction-sites
   base_commit: 428a065
@@ -1728,7 +1729,7 @@ tasks:
   - 'Zwei echte Clients erhalten die gewählten statt zufälliger Startfiguren'
   implementation: implemented
   verification: build_passed
-  integration: not_submitted
+  integration: merged
   branch: codex/faction-setup
   evidence:
   - docs/decisions/0048-selected-start-pawns.md
