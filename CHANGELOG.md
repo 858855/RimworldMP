@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Verbindungsanzeige und Wiederbeitritt (`codex/continuous-sync`, SYNC-009)
+
+- Nach einem unerwarteten Abbruch hält der Spieladapter das gemeinsame Spiel und lokale Autosaves an. Ein Gast versucht, sich mit seiner bisherigen Identität über IP oder Steam erneut zu verbinden. Er setzt erst nach Laden eines neuen Host-Snapshots und Neuaufbau des Tick-Treibers fort. Ein ausdrückliches Trennen erlaubt die lokale Fortsetzung.
+- Das Verbindungsfenster und das Spieloverlay zeigen die Ping-Laufzeit sowie unbeantwortete Ping-Proben. Bei erhöhter Laufzeit oder ausfallenden Antworten begrenzt der Adapter die lokale Spielgeschwindigkeit auf höchstens 2× oder 1×. Die Tickfreigabe des Koordinators bleibt maßgeblich. Roh-Paketverlust lässt sich über die verwendeten zuverlässigen Streams nicht messen.
+- Der Mod-Build und die Dokumentationsprüfung sind erfolgreich. Wiederbeitritt und Tempoverhalten in zwei laufenden Spielen wurden auf Benutzerwunsch nicht getestet. Ein ausgefallener Host kann derzeit keine bestehende Lobby wieder übernehmen.
+
 ### Gewählte Startfiguren und isolierter Fraktions-Testschnitt (`codex/faction-setup`)
 
 - In der Koop-Figurenwahl beansprucht ein Gast eine freie Startfigur nun direkt über den Zeilenklick. Vor dem Spielstart prüft der Host, ob jeder Spieler genau eine Figur der tatsächlichen Startgruppe besitzt. Nach der Landung bricht er die gemeinsame Übertragung ab, wenn eine ausgewählte Figur fehlt. Damit werden fehlende Besitzzuordnungen nicht mehr still als zufällige Startfiguren übernommen. Der Mod baut; der korrigierte Ablauf wurde auf Wunsch des Benutzers nicht erneut im Spiel getestet.

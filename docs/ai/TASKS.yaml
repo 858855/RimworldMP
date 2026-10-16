@@ -1735,3 +1735,31 @@ tasks:
   - docs/decisions/0048-selected-start-pawns.md
   - docs/verification/2026-10-16-faction-runtime-and-pawns.md
   blocker: 'Der Zwei-Client-Spieltest ist auf Benutzerwunsch ausgesetzt. Ursache der beobachteten Sitzung ist ohne Log nicht abschließend belegt.'
+- id: SYNC-009
+  title: 'Kontinuierlicher Gleichlauf mit Hot-Rejoin und Qualitätsanzeige'
+  goal: 'Bei Verbindungsstörung keinen lokalen Tick verlieren; Gast über denselben PlayerKey und Host-Snapshot zurückholen und Verbindungslage sichtbar machen.'
+  description: 'Spielseite auf vorhandenem Lockstep- und Snapshot-Vertrag. Ping/Pong-RTT und Antwortausfälle; lokale Tempoobergrenze bei hoher Verzögerung. Kein Roh-Paketverlustmesswert.'
+  priority: critical
+  owner: codex
+  components:
+  - rimworld_adapter
+  depends_on:
+  - SYNC-001
+  - JOIN-002
+  - DESYNC-003
+  acceptance:
+  - 'Ein unterbrochenes Gastspiel rechnet bis zum erfolgreichen Snapshot-Rejoin keinen weiteren Tick'
+  - 'IP- und Steam-Gast können dieselbe Lobby mit derselben Identität erneut beitreten; kein alter Tick-Treiber läuft davor an'
+  - 'RTT und ausgefallene Ping-Antworten werden ehrlich beschriftet angezeigt'
+  - 'Bei schlechter Qualität begrenzt die Spielseite das lokale Tempo ohne Änderung der autoritativen Befehlsfolge'
+  - 'Mod-Build und Zwei-Client-Spieltest mit Unterbrechung, Resync und Tempoänderung dokumentiert'
+  implementation: implemented
+  verification: build_passed
+  integration: not_submitted
+  branch: codex/continuous-sync
+  base_branch: main
+  base_commit: 85e02f9
+  evidence:
+  - docs/decisions/0049-continuous-sync-and-rejoin.md
+  - docs/verification/2026-10-16-continuous-sync.md
+  blocker: 'Zwei-Client-RimWorld-Test auf Benutzerwunsch aktuell ausgesetzt; Host-Hot-Rejoin benötigt einen separaten Koordinator-Vertrag.'

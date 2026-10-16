@@ -31,6 +31,17 @@ namespace Multiplayer.Foundation.RimWorld
         private CSteamID pendingInvite;
         private bool steamHostStarting;
         private bool autoJoinSteamLobby;
+        private string? lastIpHost;
+        private int lastIpPort;
+        private CSteamID lastSteamLobby;
+        private Guid? rejoinLobby;
+        private string? rejoinPassword;
+        private uint rejoinRequest;
+        private long nextReconnectAt;
+        private int reconnectAttempts;
+        private bool reconnectRejected;
+        private bool holdForSnapshot;
+        private ConnectionQuality quality = new ConnectionQuality();
         private Task<UpnpPortMapping>? mapping;
         private UpnpPortMapping? mapped;
         private IPAddress? externalAddress;
@@ -134,14 +145,17 @@ namespace Multiplayer.Foundation.RimWorld
         /// <summary>
         /// The shared game stays paused before Playing, until its driver is ready, and on coordinator pause/failure.
         /// </summary>
-        internal bool SessionPaused => WorldSelfTest.HoldsPause ||
+        private bool ConnectionLost => client != null && !client.IsConnected && SharedGame;
+
+        internal bool SessionPaused => WorldSelfTest.HoldsPause || holdForSnapshot || ConnectionLost ||
             (SharedGame && (lobby!.Phase != SetupPhase.Playing || tickDriver == null || tickDriver.Paused ||
                 tickDriver.CompletedTick(Find.TickManager) >= tickDriver.Horizon));
 
         private bool SharedGame => client != null && lobby != null && lobby.Phase >= SetupPhase.Generating &&
             Current.ProgramState == ProgramState.Playing;
 
-        internal bool SuppressLocalAutosave => SharedGame && lobby?.Phase == SetupPhase.Playing;
+        internal bool SuppressLocalAutosave => holdForSnapshot || ConnectionLost ||
+            (SharedGame && lobby?.Phase == SetupPhase.Playing);
 
         /// <summary>A guest's received world lives only while a window is open in the main menu (see FoundationWindow).</summary>
         internal bool KeepWindowOpen => lobby != null && client != null && lobby.HostId != client.SessionId && guestWorldLoaded &&
@@ -160,7 +174,7 @@ namespace Multiplayer.Foundation.RimWorld
         {
             if (tickDriver != null) return true;
             if (!SharedGame || lobby?.Phase != SetupPhase.Playing) return false;
-            if (pendingJoinSnapshot != null && !joinSnapshotReady) return false;
+            if (ConnectionLost || (holdForSnapshot || pendingJoinSnapshot != null) && !joinSnapshotReady) return false;
             MultiplayerSession? session = MultiplayerSession.ForCurrentGame;
             if (session?.Active != true || session.SessionId != lobby.Id.ToString("N")) return false;
             if (session.Mode != lobby.Mode)
@@ -179,6 +193,9 @@ namespace Multiplayer.Foundation.RimWorld
                 manager.TicksGame - (join?.Boundary ?? 0), SaveAtBoundary, ExecuteGameCommand, join);
             pendingJoinSnapshot = null;
             joinSnapshotReady = false;
+            holdForSnapshot = false;
+            rejoinLobby = null;
+            reconnectRejected = false;
             try
             {
                 while (pendingTickMessages.Count != 0) tickDriver.Receive(pendingTickMessages.Dequeue());
@@ -291,7 +308,7 @@ namespace Multiplayer.Foundation.RimWorld
 
         internal bool PrepareSessionFrame(TickManager manager)
         {
-            if (!SharedGame && !WorldSelfTest.HoldsPause) return false;
+            if (!SharedGame && !WorldSelfTest.HoldsPause && !holdForSnapshot) return false;
             TryStartTickDriver(manager);
             if (tickDriver != null && !tickDriver.Faulted)
             {
@@ -305,14 +322,20 @@ namespace Multiplayer.Foundation.RimWorld
 
         internal void RestoreSessionSpeed(TickManager manager)
         {
-            if (SharedGame || WorldSelfTest.HoldsPause) SetSessionSpeed(manager);
+            if (SharedGame || WorldSelfTest.HoldsPause || holdForSnapshot) SetSessionSpeed(manager);
+        }
+
+        private TimeSpeed EffectiveSessionSpeed()
+        {
+            if (SessionPaused || tickDriver == null) return TimeSpeed.Paused;
+            if (tickDriver.CatchingUp) return TimeSpeed.Ultrafast;
+            byte capped = (byte)Math.Min((int)tickDriver.Speed, (int)quality.SpeedCap);
+            return capped == 1 ? TimeSpeed.Normal : capped == 2 ? TimeSpeed.Fast : TimeSpeed.Superfast;
         }
 
         private bool SetSessionSpeed(TickManager manager)
         {
-            TimeSpeed approved = SessionPaused ? TimeSpeed.Paused : tickDriver!.CatchingUp ? TimeSpeed.Ultrafast
-                : tickDriver.Speed == 1 ? TimeSpeed.Normal
-                : tickDriver.Speed == 2 ? TimeSpeed.Fast : TimeSpeed.Superfast;
+            TimeSpeed approved = EffectiveSessionSpeed();
             if (manager.CurTimeSpeed == approved) return false;
             applyingSessionSpeed = true;
             try { manager.CurTimeSpeed = approved; }
@@ -322,6 +345,7 @@ namespace Multiplayer.Foundation.RimWorld
 
         internal bool MayRunSessionTick(TickManager manager)
         {
+            if (holdForSnapshot || ConnectionLost) return false;
             if (!SharedGame && !WorldSelfTest.HoldsPause) return true;
             if (WorldSelfTest.HoldsPause || !TryStartTickDriver(manager) || tickDriver == null) return false;
             try
@@ -416,12 +440,12 @@ namespace Multiplayer.Foundation.RimWorld
 
         internal void InterceptSessionSpeed(ref TimeSpeed value)
         {
-            if (applyingSessionSpeed || !SharedGame) return;
+            if (applyingSessionSpeed) return;
+            if (holdForSnapshot || ConnectionLost) { value = TimeSpeed.Paused; return; }
+            if (!SharedGame) return;
             if (tickDriver == null || lobby?.Phase != SetupPhase.Playing)
             { if (value != TimeSpeed.Paused) { value = TimeSpeed.Paused; NotifySessionPaused(); } return; }
-            TimeSpeed approved = SessionPaused ? TimeSpeed.Paused : tickDriver.CatchingUp ? TimeSpeed.Ultrafast
-                : tickDriver.Speed == 1 ? TimeSpeed.Normal
-                : tickDriver.Speed == 2 ? TimeSpeed.Fast : TimeSpeed.Superfast;
+            TimeSpeed approved = EffectiveSessionSpeed();
             if (value == approved) return;
             if (value == TimeSpeed.Paused) RequestControl(ScheduledKind.Pause, 1);
             else
@@ -436,6 +460,7 @@ namespace Multiplayer.Foundation.RimWorld
 
         internal bool InterceptSessionToggle()
         {
+            if (holdForSnapshot || ConnectionLost) { NotifySessionPaused(); return false; }
             if (!SharedGame) return true;
             if (tickDriver == null || lobby?.Phase != SetupPhase.Playing) { NotifySessionPaused(); return false; }
             RequestControl(ScheduledKind.Pause, tickDriver.Paused ? (byte)0 : (byte)1);
@@ -497,8 +522,18 @@ namespace Multiplayer.Foundation.RimWorld
             if (client == null)
             {
                 Rect viewport = new Rect(x, y, width, statusY - y - 8f);
-                Widgets.BeginScrollView(viewport, ref connectionScroll, new Rect(0f, 0f, width - 18f, 720f));
+                Widgets.BeginScrollView(viewport, ref connectionScroll, new Rect(0f, 0f, width - 18f, holdForSnapshot ? 820f : 720f));
                 float contentY = 0f, contentWidth = width - 18f;
+                if (holdForSnapshot)
+                {
+                    Widgets.Label(new Rect(0f, contentY, contentWidth, 48f),
+                        "Verbindung unterbrochen. Die gemeinsame Partie steht still, bis der Host-Spielstand erneut geladen ist.");
+                    contentY += 50f;
+                    if (rejoinLobby != null && Widgets.ButtonText(new Rect(0f, contentY, 180f, 30f), "Jetzt erneut verbinden"))
+                    { reconnectRejected = false; nextReconnectAt = 0; }
+                    if (Widgets.ButtonText(new Rect(190f, contentY, 180f, 30f), "Nur lokal fortsetzen")) Disconnect();
+                    contentY += 44f;
+                }
                 Widgets.Label(new Rect(0f, contentY, 110f, 26f), "Spielername");
                 settings.PlayerName = Widgets.TextField(new Rect(112f, contentY, contentWidth - 112f, 26f), settings.PlayerName);
                 contentY += 32f;
@@ -623,6 +658,18 @@ namespace Multiplayer.Foundation.RimWorld
             { GUIUtility.systemCopyBuffer = best; status = "Kopiert: " + best; }
             if (Widgets.ButtonText(new Rect(x + width - 145f, y, 145f, 32f), "Trennen")) Disconnect();
             y += 44f;
+            Rect qualityRect = new Rect(x, y, width, 25f);
+            Widgets.Label(qualityRect, quality.Display);
+            TooltipHandler.TipRegion(qualityRect,
+                "Antwortausfälle sind unbeantwortete Ping-Proben. TCP und Steam melden hier keinen Roh-Paketverlust.");
+            y += 27f;
+            if (holdForSnapshot && rejoinLobby != null && lobby == null)
+            {
+                Widgets.Label(new Rect(x, y, width - 190f, 28f), "Warte auf Wiederbeitritt zur laufenden Partie.");
+                if (reconnectRejected && Widgets.ButtonText(new Rect(x + width - 180f, y, 180f, 28f), "Rejoin erneut"))
+                { rejoinPassword = joinPassword.Length == 0 ? null : joinPassword; reconnectRejected = false; SendRejoinRequest(); }
+                y += 34f;
+            }
             if (hosted != null && steam?.IsHosting != true)
             {
                 string info = Reachability();
@@ -695,6 +742,7 @@ namespace Multiplayer.Foundation.RimWorld
             try { identity = LocalIdentity(); }
             catch (Exception error) { status = error.Message; return; }
             status = "Verbindung wird aufgebaut";
+            lastIpHost = host; lastIpPort = port; lastSteamLobby = default;
             connecting = LobbyClient.ConnectAsync(host, port, settings.PlayerName.Trim(), TimeSpan.FromSeconds(10),
                 System.Threading.CancellationToken.None, settings.LocalKey, identity);
         }
@@ -769,6 +817,7 @@ namespace Multiplayer.Foundation.RimWorld
             pendingInvite = default;
             status = "Steam-Verbindung wird aufgebaut";
             autoJoinSteamLobby = true;
+            lastSteamLobby = invited; lastIpHost = null; lastIpPort = 0;
             connecting = steam.JoinAsync(invited, settings.PlayerName.Trim());
         }
 
@@ -781,7 +830,27 @@ namespace Multiplayer.Foundation.RimWorld
 
         private void Disconnect()
         {
-            if (client == null) return;
+            rejoinLobby = null; rejoinPassword = null; rejoinRequest = 0;
+            holdForSnapshot = false; reconnectRejected = false; reconnectAttempts = 0;
+            lastIpHost = null; lastIpPort = 0; lastSteamLobby = default;
+            quality = new ConnectionQuality();
+            if (client == null)
+            {
+                if (connecting != null)
+                {
+                    Task<LobbyClient> abandoned = connecting;
+                    connecting = null;
+                    abandoned.ContinueWith(task =>
+                    {
+                        if (task.Status == TaskStatus.RanToCompletion) task.Result.Dispose();
+                        else _ = task.Exception;
+                    }, TaskScheduler.Default);
+                }
+                steam?.Leave();
+                ResetTransfers();
+                status = "Nicht verbunden; Spiel läuft jetzt nur lokal.";
+                return;
+            }
             SavePins();
             LobbyClient old = client;
             client = null; lobby = null; available = Array.Empty<LobbySummary>(); chatMessages.Clear();
@@ -1381,7 +1450,11 @@ namespace Multiplayer.Foundation.RimWorld
             GUI.color = new Color(1f, 0.85f, 0.45f);
             Widgets.Label(new Rect(inRect.x, inRect.y + 46f, inRect.width, 24f), GameTickStatus());
             GUI.color = Color.white;
-            float y = inRect.y + 72f;
+            Rect qualityRect = new Rect(inRect.x, inRect.y + 70f, inRect.width, 24f);
+            Widgets.Label(qualityRect, quality.Display);
+            TooltipHandler.TipRegion(qualityRect,
+                "Antwortausfälle sind unbeantwortete Ping-Proben; kein gemessener Roh-Paketverlust.");
+            float y = inRect.y + 96f;
             MultiplayerSession? session = MultiplayerSession.ForCurrentGame;
             List<Pawn> colonists = session?.Active == true ? GameFingerprint.Colonists() : new List<Pawn>();
             foreach (PlayerView player in lobby.Players.Take(4))
@@ -2404,8 +2477,94 @@ namespace Multiplayer.Foundation.RimWorld
             catch (Exception error) { status = "Senden fehlgeschlagen: " + error.Message; return false; }
         }
 
+        private void StartReconnect()
+        {
+            if (rejoinLobby == null || reconnectRejected || connecting != null || client != null) return;
+            try
+            {
+                status = "Verbindung unterbrochen · verbinde erneut (Versuch " + (reconnectAttempts + 1) + ") …";
+                if (lastIpHost != null)
+                    connecting = LobbyClient.ConnectAsync(lastIpHost, lastIpPort, settings.PlayerName.Trim(),
+                        TimeSpan.FromSeconds(10), System.Threading.CancellationToken.None, settings.LocalKey, LocalIdentity());
+                else if (lastSteamLobby.IsValid() && steam != null)
+                    connecting = steam.JoinAsync(lastSteamLobby, settings.PlayerName.Trim());
+                else
+                { reconnectRejected = true; status = "Kein gespeicherter Endpunkt für den Wiederbeitritt."; return; }
+                reconnectAttempts++;
+            }
+            catch (Exception error)
+            { ScheduleReconnect(error.Message); }
+        }
+
+        private void ScheduleReconnect(string reason)
+        {
+            int delaySeconds = Math.Min(30, 1 << Math.Min(5, reconnectAttempts));
+            nextReconnectAt = NowMs() + delaySeconds * 1000L;
+            status = "Wiederverbinden fehlgeschlagen: " + reason + " · nächster Versuch in " + delaySeconds + " s";
+        }
+
+        private void SendRejoinRequest()
+        {
+            if (rejoinLobby == null || client == null) return;
+            rejoinRequest = requestId++;
+            if (!SendBackground(new WireMessage(MessageType.JoinLobby, rejoinRequest,
+                LobbyPayloads.Join(rejoinLobby.Value, rejoinPassword))))
+            { rejoinRequest = 0; status = "Wiederbeitritt konnte nicht gesendet werden."; }
+            else status = "Verbunden · warte auf die Lobby und den Snapshot des Hosts …";
+        }
+
+        private void HandleUnexpectedDisconnect(LobbyClient connectedClient, string? failure = null)
+        {
+            bool inGame = Current.ProgramState == ProgramState.Playing &&
+                MultiplayerSession.ForCurrentGame?.Active == true &&
+                (lobby?.Phase == SetupPhase.Playing || holdForSnapshot);
+            bool guest = rejoinLobby != null || (lobby != null && lobby.HostId != connectedClient.SessionId);
+            Guid? target = rejoinLobby ?? (guest ? lobby?.Id : null);
+            if (inGame && guest && target != null)
+            {
+                rejoinLobby = target;
+                rejoinRequest = 0;
+                rejoinPassword ??= joinPassword.Length == 0 ? null : joinPassword;
+                reconnectRejected = false;
+                reconnectAttempts = 0;
+                nextReconnectAt = NowMs() + 1000;
+            }
+            string reason = failure ?? connectedClient.LastError ?? "Unbekannt";
+            connectedClient.Dispose();
+            client = null; lobby = null; chatMessages.Clear(); available = Array.Empty<LobbySummary>();
+            ResetTransfers();
+            holdForSnapshot = inGame;
+            quality = new ConnectionQuality();
+            if (hosted != null)
+            {
+                ListenHost running = hosted;
+                hosted = null;
+                action = running.StopAsync();
+                ReleaseMapping();
+                rejoinLobby = null;
+            }
+            steam?.Leave();
+            status = inGame ? (guest && rejoinLobby != null
+                ? "Verbindung unterbrochen: " + reason + " · Spiel angehalten, Wiederbeitritt läuft."
+                : "Host-Verbindung unterbrochen: " + reason + " · Spiel angehalten.")
+                : "Verbindung unterbrochen: " + reason;
+            if (inGame) OpenWindow();
+        }
+
+        private void PollConnectionQuality()
+        {
+            if (client == null || !client.IsConnected) return;
+            long now = NowMs();
+            WireMessage? probe = quality.StartProbe(now, requestId);
+            if (probe == null) return;
+            requestId++;
+            if (!SendBackground(probe)) quality.SendFailed(probe.RequestId);
+        }
+
         private void UpdateNetwork()
         {
+            if (client == null && rejoinLobby != null && !reconnectRejected && connecting == null &&
+                NowMs() >= nextReconnectAt) StartReconnect();
             if (hosted != null && Time.realtimeSinceStartup >= nextPinCheckAt)
             { nextPinCheckAt = Time.realtimeSinceStartup + 1f; SavePins(); }
             if (hosting != null && hosting.IsCompleted)
@@ -2427,11 +2586,18 @@ namespace Multiplayer.Foundation.RimWorld
                 try
                 {
                     client = connecting.GetAwaiter().GetResult();
+                    quality = new ConnectionQuality();
                     status = "Verbunden";
-                    action = client.SendAsync(MessageType.LobbyListRequest, requestId++, Array.Empty<byte>());
+                    if (rejoinLobby == null)
+                        action = client.SendAsync(MessageType.LobbyListRequest, requestId++, Array.Empty<byte>());
+                    else status = "Verbindung steht · prüfe Mods vor dem Wiederbeitritt …";
                 }
                 catch (Exception error)
-                { autoJoinSteamLobby = false; status = "Verbindung fehlgeschlagen: " + error.Message; }
+                {
+                    autoJoinSteamLobby = false;
+                    if (rejoinLobby != null) ScheduleReconnect(error.Message);
+                    else status = "Verbindung fehlgeschlagen: " + error.Message;
+                }
                 connecting = null;
             }
             if (mapping != null && mapping.IsCompleted)
@@ -2459,17 +2625,23 @@ namespace Multiplayer.Foundation.RimWorld
             }
             WorldSelfTest.TryStart();
             UpdateManifestAndTransfers();
+            if (client != null && rejoinLobby != null && rejoinRequest == 0 &&
+                !reconnectRejected && manifestSentTo == client) SendRejoinRequest();
             UpdateHostSetup();
             UpdateGuestGame();
             UpdateSiteFlags();
             if (client == null) return;
             LobbyClient connectedClient = client;
+            PollConnectionQuality();
             try
             {
                 while (connectedClient.TryDequeue(out WireMessage? message) && message != null)
                 {
                     switch (message.Type)
                     {
+                        case MessageType.Pong:
+                            quality.Receive(message, NowMs());
+                            break;
                         case MessageType.LobbyListResponse:
                             available = LobbyPayloads.ReadList(message.Payload); listPage = 0;
                             if (autoJoinSteamLobby)
@@ -2581,6 +2753,12 @@ namespace Multiplayer.Foundation.RimWorld
                                 Messages.Message("Spielstart abgelehnt: " + reason, MessageTypeDefOf.RejectInput, false);
                                 ReopenCharacterPage();
                             }
+                            if (rejoinLobby != null && message.RequestId == rejoinRequest)
+                            {
+                                reconnectRejected = true;
+                                status = "Wiederbeitritt abgelehnt: " + reason;
+                                break;
+                            }
                             status = "Serverfehler " + code + ": " + reason; break;
                     }
                 }
@@ -2600,22 +2778,10 @@ namespace Multiplayer.Foundation.RimWorld
             catch (Exception error) when (error is ProtocolException || error is InvalidOperationException)
             {
                 string failure = "Ungültige Serverdaten: " + error.Message;
-                Disconnect(); status = failure; return;
+                HandleUnexpectedDisconnect(connectedClient, failure); return;
             }
             if (!connectedClient.IsConnected)
-            {
-                status = "Verbindung unterbrochen: " + (connectedClient.LastError ?? "Unbekannt");
-                connectedClient.Dispose(); client = null; lobby = null; chatMessages.Clear();
-                ResetTransfers();
-                if (hosted != null)
-                {
-                    ListenHost running = hosted;
-                    hosted = null;
-                    action = running.StopAsync();
-                    ReleaseMapping();
-                }
-                steam?.Leave();
-            }
+                HandleUnexpectedDisconnect(connectedClient);
         }
 
         private void StartReachability(ListenHost host)

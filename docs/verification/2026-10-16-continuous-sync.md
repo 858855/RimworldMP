@@ -1,0 +1,12 @@
+# SYNC-009 – Verbindungsqualität und Gast-Wiederbeitritt
+
+- **Zeitpunkt:** 2026-10-16, Branch `codex/continuous-sync`, Basis `85e02f9` (`main`). Der abschließende Commit steht in der Git-Historie; diese Datei enthält bewusst keinen eigenen Commit-Hash.
+- **Umgebung:** Linux; RimWorld 1.6.4871 (lokaler Unity/Mono-Adapter, Runtime rev600 laut Projektzustand); .NET-SDK unter `/home/fabiok/.local/share/dotnet-rimworldmp/dotnet`.
+- **Pfadprüfung, aus Quellcode abgeleitet:** `FoundationServer` beantwortet `Ping` mit gleicher Request-ID und Payload. `LobbyRegistry.Join` erlaubt Gast-Beitritt in `Playing` nach Mod-Abgleich. `FoundationServer` ruft danach `lockstep.AddJoiner` auf; Spielseite lädt den Host-Snapshot und bestätigt `SnapshotLoaded`. Ein Host-Abgang entfernt dagegen die Lobby. Damit ist nur Gast-Hot-Rejoin vom vorhandenen Koordinatorvertrag gedeckt.
+- **Schutzprüfung, aus Quellcode abgeleitet:** `SessionPaused`, `MayRunSessionTick`, Geschwindigkeits-Interceptor und Autosave-Sperre berücksichtigen den sofort erkennbaren Socket-Ausfall sowie die Wartephase vor dem neuen Snapshot. Der Tick-Treiber wird bei Abbruch verworfen und erst nach dem Laden des neuen Snapshots wieder aufgebaut. Echtzeit-Qualitätswerte ändern keine Befehlsdaten und keinen Zustands-Hash.
+- **Build:** `env DOTNET_BIN=/home/fabiok/.local/share/dotnet-rimworldmp/dotnet bash scripts/build-mod.sh` – Exit 0, 0 Warnungen, 0 Fehler; nach der Tick-/Autosave-Schutzkorrektur ausgeführt.
+- **Dokumentation:** `python3 scripts/validate_project_state.py` – Exit 0, 22 Pflichtdateien, 68 Aufgaben.
+- **Diff:** `git diff --check` – Exit 0.
+- **Nicht ausgeführt:** RimWorld-Spielstart, zwei reale Clients, Unterbrechung unter Last, Steam-Reconnect, Host-Wiederbeitritt, Resync nach Zustandsabweichung, lange Tickfolge. Auf Benutzerwunsch keine weiteren Spieltests. Build und statische Pfadprüfung sind kein Laufzeitnachweis.
+- **Messgrenze:** Angezeigt werden Roundtrip und unbeantwortete Anwendungs-Ping-Proben in einem 20er-Fenster. TCP/Steam verbergen Roh-Paketverlust; die Anzeige darf nicht als Netzwerk-Paketverlust interpretiert werden. Die Tempoobergrenze ist lokal und reicht von 3× über 2× auf 1×; darunter begrenzt weiterhin der autoritative Tick-Horizont.
+- **Offen:** Tatsächliche Zwei-Client-Prüfung des Wiederbeitritts und der gemeinsamen Tickfolge; serverseitiger Vertrag für die Rückkehr eines Hosts in dieselbe Lobby; vollständige Gameplay-Befehlserfassung bleibt eine unabhängige Voraussetzung für dauerhaften Spielgleichlauf.
