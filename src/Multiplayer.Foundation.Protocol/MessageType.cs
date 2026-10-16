@@ -65,6 +65,11 @@ namespace Multiplayer.Foundation.Protocol
         VoteState = 79,
         // Claude lane, second range 96-111 (user, 2026-10-16). FACTION-004 (ADR 0037): Factions mode storytellers.
         FactionOptions = 96,
-        StorytellerChoice = 97
+        StorytellerChoice = 97,
+        // FACTION-006 (ADR 0038): site and ideology per faction, the host's rejection, continuing a saved Factions game.
+        FactionSiteChoice = 98,
+        FactionIdeologyChoice = 99,
+        FactionChoiceClear = 100,
+        FactionRestore = 101
     }
 }

@@ -347,8 +347,8 @@ Assert(SlotIn(fxRead, fxG1) == 1 && TellerIn(fxRead, fxHost) == "Cassandra" && f
 fx.AdvanceSetup(fxHost, SetupPhase.WorldTransfer);
 byte[] fxWorld = Enumerable.Repeat((byte)7, 32).ToArray();
 fx.SetHostWorld(fxHost, fxWorld); fx.ReportWorld(fxG1, fxWorld);
-fx.AdvanceSetup(fxHost, SetupPhase.SiteSelection); fx.DecideSite(fxHost, new SiteTile(3, 0));
-fx.AdvanceSetup(fxHost, SetupPhase.Characters);
+fx.AdvanceSetup(fxHost, SetupPhase.SiteSelection);
+ChooseOwnSitesAndIdeologies(fx, fxHost, fxG1);
 fx.SetRoster(fxHost, RosterFor(fxHostKey, fxG1Key)); fx.Ready(fxHost, true); fx.Ready(fxG1, true);
 fx.AdvanceSetup(fxHost, SetupPhase.Generating);
 fx.SetHostGame(fxHost, fxWorld); fx.ReportGame(fxG1, fxWorld);
@@ -392,7 +392,168 @@ locked37.Ready(lkHost, true); locked37.Ready(lkGuest, true);
 Expect(6, () => locked37.AdvanceSetup(lkHost, SetupPhase.Scenario));
 Console.WriteLine("PASS: factions: slot per player key, storyteller per faction, shared difficulty from the host, done rules, Factions start still refused (ADR 0037)");
 
+// ADR 0038: own site and ideology per faction slot; no foreign or duplicate sites; the host's game rejects with a reason;
+// slots stay stable through choices, departures and reconnects.
+var fs = new LobbyRegistry(8, 2, factionsSetupEnabled: true);
+Guid sHost = Guid.NewGuid(), sG1 = Guid.NewGuid(), sG2 = Guid.NewGuid();
+PlayerKey sHostKey = PlayerKey.Local(Guid.NewGuid()), sG1Key = PlayerKey.Local(Guid.NewGuid()), sG2Key = PlayerKey.Local(Guid.NewGuid());
+fs.AddMember(sHost, "Host", sHostKey); fs.AddMember(sG1, "Guest1", sG1Key); fs.AddMember(sG2, "Guest2", sG2Key);
+Guid sRoom = fs.Create(sHost, "Orte", 4, LobbyMode.Factions(FactionRelation.Neutral)).State!.Id;
+fs.Join(sG1, sRoom); fs.Join(sG2, sRoom);
+Guid[] sAll = { sHost, sG1, sG2 };
+foreach (Guid id in sAll) fs.Ready(id, true);
+fs.AdvanceSetup(sHost, SetupPhase.Scenario); fs.AdvanceSetup(sHost, SetupPhase.Storyteller);
+fs.SetFactionOptions(sHost, new FactionOptions("Rough", new[] { "Randy", "Phoebe" }));
+foreach (Guid id in sAll) { fs.ChooseStoryteller(id, "Randy"); fs.Ready(id, true); }
+fs.AdvanceSetup(sHost, SetupPhase.WorldParams); fs.AdvanceSetup(sHost, SetupPhase.WorldTransfer);
+byte[] sWorld = Enumerable.Repeat((byte)9, 32).ToArray();
+fs.SetHostWorld(sHost, sWorld); fs.ReportWorld(sG1, sWorld); fs.ReportWorld(sG2, sWorld);
+LobbyView sSites = fs.AdvanceSetup(sHost, SetupPhase.SiteSelection).State!;
+SiteTile? SiteIn(LobbyView view, Guid id) => view.Players.Single(p => p.Id == id).FactionSite;
+string? NoteIn(LobbyView view, Guid id) => view.Players.Single(p => p.Id == id).FactionNote;
+bool SlotsStable(LobbyView view) => view.Players.All(p => p.FactionSlot == (p.Key == sHostKey ? 0 : p.Key == sG1Key ? 1 : 2));
+Assert(SlotsStable(sSites) && sSites.Site == null, "slots 0/1/2 and no global site in the Factions mode");
+Expect(6, () => fs.SetSiteFlag(sG1, new SiteTile(1, 0)));                              // Coop flags are not used here
+Expect(6, () => fs.DecideSite(sHost, new SiteTile(1, 0)));                             // the host does not choose for everyone
+Expect(6, () => fs.ChooseIdeology(sG1, "Ideo", new byte[] { 1 }));                     // not the ideology step
+Expect(6, () => fs.Ready(sG1, true));                                                  // done needs an own site
+Expect(6, () => fs.AdvanceSetup(sHost, SetupPhase.Ideology));
+var tileA = new SiteTile(40, 0); var tileAOrbit = new SiteTile(40, 1); var tileB = new SiteTile(55, 0);
+LobbyView own = fs.ChooseFactionSite(sG1, tileA).State!;
+Assert(SiteIn(own, sG1) == tileA && SiteIn(own, sHost) == null && SiteIn(own, sG2) == null && SlotsStable(own),
+    "a choice only ever changes the sender's own faction");
+try { fs.ChooseFactionSite(sG2, tileA); throw new Exception("FAIL: two factions on one site"); }
+catch (LobbyRuleException ex) { Assert(ex.Code == 6 && ex.Message.Contains("already starts"), "a site another faction holds is refused"); }
+Assert(SiteIn(fs.ChooseFactionSite(sG2, tileAOrbit).State!, sG2) == tileAOrbit, "the same tile id on another planet layer is another site");
+fs.Ready(sG1, true);
+LobbyView again = fs.ChooseFactionSite(sG1, tileA).State!;
+Assert(again.Players.Single(p => p.Id == sG1).Ready && again.Revision == own.Revision + 2, "the same site again keeps done and changes nothing");
+Assert(!fs.ChooseFactionSite(sG1, tileB).State!.Players.Single(p => p.Id == sG1).Ready, "a new site clears the own done");
+Assert(SiteIn(fs.ChooseFactionSite(sG1, null).State!, sG1) == null, "a site can be withdrawn");
+fs.ChooseFactionSite(sG1, tileA);
+Assert(SiteIn(fs.ChooseFactionSite(sG2, tileB).State!, sG2) == tileB, "a withdrawn or replaced site is free again");
+fs.ChooseFactionSite(sHost, new SiteTile(70, 0));
+foreach (Guid id in sAll) fs.Ready(id, true);
+Expect(3, () => fs.ClearFactionChoice(sG1, 2, FactionChoiceKind.Site, "nein"));        // only the host's game rejects
+Expect(6, () => fs.ClearFactionChoice(sHost, 2, FactionChoiceKind.Ideology, "x"));     // not the ideology step
+Expect(6, () => fs.ClearFactionChoice(sHost, 9, FactionChoiceKind.Site, "x"));         // no such slot
+Expect(1, () => fs.ClearFactionChoice(sHost, 2, FactionChoiceKind.Site, new string('x', 129)));  // checked before any change
+Expect(1, () => fs.ChooseIdeology(sG2, " ", new byte[1]));                            // an invalid label is refused before anything else
 
+LobbyView rejected = fs.ClearFactionChoice(sHost, 2, FactionChoiceKind.Site, "Zu nah an Guest1").State!;
+Assert(SiteIn(rejected, sG2) == null && !rejected.Players.Single(p => p.Id == sG2).Ready && NoteIn(rejected, sG2) == "Zu nah an Guest1" &&
+    rejected.Players.Single(p => p.Id == sG1).Ready && NoteIn(rejected, sG1) == null && SlotsStable(rejected),
+    "the host's rejection clears only that faction's site and done and tells why");
+Assert(LobbyRegistry.FactionSetupBlockReason(rejected) == "Startort fehlt: Guest2", "the reason names who has no site");
+Expect(6, () => fs.AdvanceSetup(sHost, SetupPhase.Ideology));
+Assert(NoteIn(fs.ChooseFactionSite(sG2, new SiteTile(80, 0)).State!, sG2) == null, "the next own choice clears the note");
+Assert(LobbyRegistry.FactionSetupBlockReason(fs.Ready(sHost, true).State!) == "Warte auf: Guest2", "then it waits for done");
+fs.Ready(sG2, true);
+LobbyView sIdeo = fs.AdvanceSetup(sHost, SetupPhase.Ideology).State!;
+Assert(sIdeo.Phase == SetupPhase.Ideology && SiteIn(sIdeo, sG1) == tileA && SlotsStable(sIdeo), "sites stay after the step");
+Expect(6, () => fs.ChooseFactionSite(sG1, tileB));                                     // sites only during site selection
+Expect(6, () => fs.Ready(sG1, true));                                                  // done needs an own ideology
+byte[] ideoA = { 1, 2, 3 }, ideoB = { 4, 5, 6 };
+var firstIdeo = fs.ChooseIdeology(sG1, "Ahnen", ideoA);
+Assert(firstIdeo.Forward && firstIdeo.Host == sHost && firstIdeo.Slot == 1 && firstIdeo.Player == sG1Key, "the data goes to the host with the chooser's slot and key");
+Assert(firstIdeo.Change.State!.Players.Single(p => p.Id == sG1).Ideology!.SameAs(IdeologySummary.Of("Ahnen", ideoA)), "everyone sees label and hash");
+fs.Ready(sG1, true);
+var repeat = fs.ChooseIdeology(sG1, "Ahnen", ideoA);
+Assert(!repeat.Forward && repeat.Change.State!.Players.Single(p => p.Id == sG1).Ready, "the same ideology again is not forwarded and keeps done");
+Assert(fs.ChooseIdeology(sG2, "Ahnen", ideoA).Forward, "two factions may choose the same ideology");
+var changed = fs.ChooseIdeology(sG1, "Ahnen", ideoB);
+Assert(changed.Forward && !changed.Change.State!.Players.Single(p => p.Id == sG1).Ready, "new data is forwarded and clears done");
+fs.ChooseIdeology(sHost, "Host-Ideo", ideoB);
+foreach (Guid id in sAll) fs.Ready(id, true);
+LobbyView ideoRejected = fs.ClearFactionChoice(sHost, 1, FactionChoiceKind.Ideology, "Daten fehlen beim Host").State!;
+Assert(ideoRejected.Players.Single(p => p.Id == sG1).Ideology == null && NoteIn(ideoRejected, sG1) == "Daten fehlen beim Host" &&
+    LobbyRegistry.FactionSetupBlockReason(ideoRejected) == "Ideologie fehlt: Guest1", "the host's game rejects an ideology it has no data for");
+fs.ChooseIdeology(sG1, "Ahnen", ideoB); fs.Ready(sG1, true);
+LobbyView afterLeave38 = fs.Leave(sG2).State!;
+Assert(afterLeave38.Players.Count == 2 && afterLeave38.Players.All(p => p.Key != sG2Key) && SlotsStable(afterLeave38),
+    "a departed player's faction is gone before the game exists; the others keep their slots");
+LobbyView sChars = fs.AdvanceSetup(sHost, SetupPhase.Characters).State!;
+Assert(sChars.Phase == SetupPhase.Characters && sChars.Players.All(p => p.Ideology != null && p.FactionSite != null && p.FactionNote == null),
+    "with the departed player gone everyone has site and ideology");
+fs.SetRoster(sHost, RosterFor(sHostKey, sG1Key)); fs.Ready(sHost, true); fs.Ready(sG1, true);
+fs.AdvanceSetup(sHost, SetupPhase.Generating); fs.SetHostGame(sHost, sWorld); fs.ReportGame(sG1, sWorld);
+fs.AdvanceSetup(sHost, SetupPhase.Playing);
+fs.Leave(sG1); fs.RemoveMember(sG1); fs.AddMember(sG1, "Guest1", sG1Key);
+LobbyView sBack = fs.Join(sG1, sRoom).State!;
+Assert(sBack.Players.Single(p => p.Id == sG1).FactionSlot == 1 && SiteIn(sBack, sG1) == tileA &&
+    sBack.Players.Single(p => p.Id == sG1).Ideology!.SameAs(IdeologySummary.Of("Ahnen", ideoB)), "reconnect: same slot, site and ideology");
+LobbyView sRead = LobbyPayloads.ReadState(LobbyPayloads.State(sBack));
+Assert(SiteIn(sRead, sG1) == tileA && sRead.Players.Single(p => p.Id == sG1).Ideology!.Label == "Ahnen", "site and ideology survive the state payload");
+// Coop keeps its flags and the host's site; the faction choices do not exist there.
+var coop38 = new LobbyRegistry(8);
+Guid cHost38 = Guid.NewGuid(), cGuest38 = Guid.NewGuid();
+coop38.AddMember(cHost38, "Host", PlayerKey.Local(Guid.NewGuid())); coop38.AddMember(cGuest38, "Guest", PlayerKey.Local(Guid.NewGuid()));
+coop38.Join(cGuest38, coop38.Create(cHost38, "Coop", 4).State!.Id);
+coop38.Ready(cHost38, true); coop38.Ready(cGuest38, true);
+foreach (SetupPhase next in new[] { SetupPhase.Scenario, SetupPhase.Storyteller, SetupPhase.WorldParams, SetupPhase.WorldTransfer })
+    coop38.AdvanceSetup(cHost38, next);
+coop38.SetHostWorld(cHost38, sWorld); coop38.ReportWorld(cGuest38, sWorld); coop38.AdvanceSetup(cHost38, SetupPhase.SiteSelection);
+Expect(6, () => coop38.ChooseFactionSite(cGuest38, new SiteTile(1, 0)));
+Expect(6, () => coop38.ClearFactionChoice(cHost38, 0, FactionChoiceKind.Site, "x"));
+Expect(6, () => coop38.RestoreFactions(cHost38, new FactionRestore(new[] { new FactionRestoreEntry(PlayerKey.Local(Guid.NewGuid()), 0, "Randy") })));
+Assert(coop38.SetSiteFlag(cGuest38, new SiteTile(3, 0)).State!.Players.Single(p => p.Id == cGuest38).Flag == new SiteTile(3, 0), "Coop flags still work");
+Assert(coop38.DecideSite(cHost38, new SiteTile(3, 0)).State!.Site == new SiteTile(3, 0), "Coop: the host still decides the site");
+Expect(6, () => coop38.ChooseIdeology(cGuest38, "Ideo", new byte[] { 1 }));
+Console.WriteLine("PASS: faction sites and ideologies: own faction only, no shared site, host's rejection with reason, done rules, stable slots, reconnect, Coop unchanged (ADR 0038)");
+
+// ADR 0038 (SAVE-002, Factions part): continue a saved Factions game.
+foreach (bool unlocked in new[] { true, false })
+{
+    var cont = new LobbyRegistry(8, 2, factionsSetupEnabled: unlocked);
+    Guid kHost = Guid.NewGuid(), kGuest = Guid.NewGuid(), kStranger = Guid.NewGuid(), kAbsent = Guid.NewGuid(), kEarly = Guid.NewGuid();
+    PlayerKey kHostKey = PlayerKey.Local(Guid.NewGuid()), kGuestKey = PlayerKey.Local(Guid.NewGuid()), kAbsentKey = PlayerKey.Local(Guid.NewGuid());
+    cont.AddMember(kHost, "Host", kHostKey); cont.AddMember(kGuest, "Guest", kGuestKey); cont.AddMember(kStranger, "Fremd", PlayerKey.Local(Guid.NewGuid()));
+    cont.AddMember(kAbsent, "Später", kAbsentKey); cont.AddMember(kEarly, "Früh", PlayerKey.Local(Guid.NewGuid()));
+    Guid kRoom = cont.Create(kHost, "Fortsetzen", 6, LobbyMode.Factions(FactionRelation.Allied)).State!.Id;
+    cont.Join(kEarly, kRoom);                                                          // joined before the save was restored
+    var table = new FactionRestore(new[] { new FactionRestoreEntry(kHostKey, 0, "Randy"), new FactionRestoreEntry(kGuestKey, 3, "Phoebe"),
+        new FactionRestoreEntry(kAbsentKey, 5, "Cassandra") });
+    Expect(3, () => cont.RestoreFactions(kEarly, table));                              // only the host restores
+    Expect(6, () => cont.RestoreFactions(kHost, new FactionRestore(new[] { new FactionRestoreEntry(kGuestKey, 3, "Phoebe") })));  // host missing
+    LobbyView restored = cont.RestoreFactions(kHost, table).State!;
+    Assert(restored.FactionsRestored && restored.Players.Single(p => p.Id == kHost).FactionSlot == 0 &&
+        restored.Players.Single(p => p.Id == kHost).Storyteller == "Randy", "the save's table is in the lobby");
+    Assert(LobbyRegistry.FactionSetupBlockReason(restored) == "Kein Platz im Spielstand: Früh", "the reason names who has no faction in the save");
+    Expect(6, () => cont.Join(kStranger, kRoom));                                      // not a player of this save
+    LobbyView contJoined = cont.Join(kGuest, kRoom).State!;
+    Assert(contJoined.Players.Single(p => p.Id == kGuest).FactionSlot == 3 && contJoined.Players.Single(p => p.Id == kGuest).Storyteller == "Phoebe",
+        "a player of the save gets their own slot back, gaps and all");
+    cont.Leave(kGuest);
+    Assert(cont.Join(kGuest, kRoom).State!.Players.Single(p => p.Id == kGuest).FactionSlot == 3, "leaving before the start keeps a saved faction");
+    foreach (Guid id in new[] { kHost, kGuest, kEarly }) cont.Ready(id, true);
+    Expect(6, () => cont.AdvanceSetup(kHost, SetupPhase.Generating));                  // "Früh" has no faction
+    cont.Leave(kEarly);
+    Expect(6, () => cont.AdvanceSetup(kHost, SetupPhase.Scenario));                    // a continued game skips the new-game setup
+    LobbyView restoredRead = LobbyPayloads.ReadState(LobbyPayloads.State(cont.Ready(kHost, true).State!));
+    Assert(restoredRead.FactionsRestored && restoredRead.Players.Single(p => p.Key == kGuestKey).FactionSlot == 3, "the restored lobby survives the state payload");
+    if (!unlocked) { Expect(6, () => cont.AdvanceSetup(kHost, SetupPhase.Generating)); continue; }   // the Factions lock covers continuing
+    LobbyView generating = cont.AdvanceSetup(kHost, SetupPhase.Generating).State!;
+    Assert(generating.Phase == SetupPhase.Generating && !generating.FactionsRestored && generating.Players.Single(p => p.Id == kGuest).FactionSlot == 3,
+        "a continued game goes straight to the game transfer and keeps its slots");
+    Expect(6, () => cont.RestoreFactions(kHost, table));                               // only before the start
+    cont.SetHostGame(kHost, sWorld); cont.ReportGame(kGuest, sWorld);
+    cont.AdvanceSetup(kHost, SetupPhase.Playing);
+    Assert(cont.Join(kAbsent, kRoom).State!.Players.Single(p => p.Id == kAbsent).FactionSlot == 5, "an absent player of the save joins the running game later");
+    Expect(6, () => cont.Join(kStranger, kRoom));
+}
+Console.WriteLine("PASS: continue a saved Factions game: host restores the table, only its players join, slots stay, start goes to the game transfer, locked without the switch (ADR 0038)");
+
+
+// ADR 0038: from SiteSelection in the Factions mode, every member chooses an own site and ideology, then the host goes on
+// to Characters.
+static void ChooseOwnSitesAndIdeologies(LobbyRegistry registry, Guid host, params Guid[] guests)
+{
+    Guid[] everyone = new[] { host }.Concat(guests).ToArray();
+    for (int i = 0; i < everyone.Length; i++) { registry.ChooseFactionSite(everyone[i], new SiteTile(100 + i * 10, 0)); registry.Ready(everyone[i], true); }
+    registry.AdvanceSetup(host, SetupPhase.Ideology);
+    foreach (Guid id in everyone) { registry.ChooseIdeology(id, "Ideo", new byte[] { 1, 2, 3 }); registry.Ready(id, true); }
+    registry.AdvanceSetup(host, SetupPhase.Characters);
+}
 static PawnRoster RosterFor(params PlayerKey[] owners) => new PawnRoster(owners.Select((owner, i) => new PawnCard(100 + i, true, owner,
     "Pawn " + i, "P" + i, "Age 30", "", "", Array.Empty<string>(), Array.Empty<(string, byte, byte)>(),
     Array.Empty<string>(), Array.Empty<string>())).ToArray());

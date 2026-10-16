@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Fraktionsmodus: Startort und Ideologie je Fraktion, Fortsetzen (Arbeitsbranch `claude/faction-sites`, FACTION-006)
+
+- Im Fraktionsmodus wählt jeder Spieler Startort und Ideologie seiner eigenen Fraktion. Zwei Fraktionen können nicht auf demselben Feld beginnen. Das Spiel des Hosts kann eine ungültige Wahl mit Begründung zurückweisen; der Spieler sieht den Grund und wählt neu. Weiter geht es erst, wenn alle gewählt haben und fertig sind.
+- Die Daten der Ideologie erhält nur der Host, der die Welt erzeugt; alle anderen sehen Bezeichnung und Prüfsumme.
+- Ein gespeichertes Fraktionsspiel kann fortgesetzt werden: Der Host spielt die Fraktionen aus seinem Spielstand ein, nur diese Spieler können beitreten, und der Start geht direkt zur Übertragung des Spielstands.
+- Coop ändert sich nicht. Der Fraktionsstart bleibt gesperrt; im Spiel ist davon noch nichts sichtbar.
+
 ### Fraktions-Storyteller-Auswahl im Spiel (`codex/faction-ui`, FACTION-003)
 
 - Die Spieloberfläche zeigt im Fraktionsmodus die gemeinsame Schwierigkeit, Fraktionsplätze, Erzählerwahl und den Fertig-Status. Der Host veröffentlicht die auf seiner RimWorld-Seite gewählte Schwierigkeit samt kompatibler Erzählerliste; Spieler wählen daraus ihren eigenen Erzähler. Die vorhandenen Servernachrichten 96/97 übertragen die Auswahl.

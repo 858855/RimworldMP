@@ -15,7 +15,7 @@
   - klarer Datenvertrag für die Spielseite
 - **Nicht-Ziele:**
   - **Spielseite (Codex):** mehrere Erzähler-Instanzen; Trennung von `Faction.OfPlayer`; Anwenden der Wahl beim Generieren.
-  - **Später (`FACTION-001`):** eigener Startort und eigene Ideologie je Fraktion.
+  - **Später (`FACTION-001`):** eigener Startort und eigene Ideologie je Fraktion. Die Koordinator-Seite steht inzwischen in ADR 0038.
   - **Fortsetzen eines Spielstands:** `SAVE-002`.
   - **Freischalten des Fraktionsstarts.**
 - **Geprüft an RimWorld 1.6.4871 rev598** (Regel 5, per Reflection gegen die lokale `Assembly-CSharp.dll`):
@@ -157,7 +157,7 @@
 
 ## Persistenz, Leistung, Konflikte
 
-- **Persistenz:** Der Koordinator speichert nichts. Plätze und Wahlen leben im Speicher des Host-Servers. Nach dem Start sind die Werte im Spielstand bindend (Spielseite). Beim Fortsetzen (`SAVE-002`) muss das Spiel des Hosts die Plätze wieder einspielen; dafür braucht es eine weitere Nachricht, **offen**.
+- **Persistenz:** Der Koordinator speichert nichts. Plätze und Wahlen leben im Speicher des Host-Servers. Nach dem Start sind die Werte im Spielstand bindend (Spielseite). Beim Fortsetzen (`SAVE-002`) spielt das Spiel des Hosts die Plätze wieder ein, mit `FactionRestore` (101, ADR 0038).
 - **Leistung:** vernachlässigbar.
 - **Konflikte:**
   - `LobbyPayloads.State` hat den Fraktionsblock nach den Regeln oben. Die Spielseite liest über dieselbe Bibliothek; wer selbst eine `LobbyView` mit Fraktionsdaten außerhalb einer begonnenen Fraktionseinrichtung baut, erhält eine `ProtocolException`.

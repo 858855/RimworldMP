@@ -8,10 +8,10 @@ namespace Multiplayer.Foundation.Protocol
     {
         public PlayerView(Guid id, string name, bool ready, PlayerKey key, SiteTile? flag = null,
             ModStatus modStatus = ModStatus.Unchecked, WorldStatus worldStatus = WorldStatus.None, byte? factionSlot = null,
-            string? storyteller = null)
+            string? storyteller = null, SiteTile? factionSite = null, IdeologySummary? ideology = null, string? factionNote = null)
         {
             Id = id; Name = name; Ready = ready; Key = key; Flag = flag; ModStatus = modStatus; WorldStatus = worldStatus;
-            FactionSlot = factionSlot; Storyteller = storyteller;
+            FactionSlot = factionSlot; Storyteller = storyteller; FactionSite = factionSite; Ideology = ideology; FactionNote = factionNote;
         }
         /// <summary>Session ID of this connection; changes on every reconnect.</summary>
         public Guid Id { get; }
@@ -30,15 +30,22 @@ namespace Multiplayer.Foundation.Protocol
         public byte? FactionSlot { get; }
         /// <summary>Factions mode (ADR 0037): defName of the storyteller chosen for the own faction, or null.</summary>
         public string? Storyteller { get; }
+        /// <summary>Factions mode (ADR 0038): starting site of the own faction; unique among the factions.</summary>
+        public SiteTile? FactionSite { get; }
+        /// <summary>Factions mode (ADR 0038): label and SHA-256 of the own faction's ideology; the data goes to the host only.</summary>
+        public IdeologySummary? Ideology { get; }
+        /// <summary>Factions mode (ADR 0038): why the host's game rejected this player's last choice, until the next one.</summary>
+        public string? FactionNote { get; }
     }
 
     public sealed class LobbyView
     {
         public LobbyView(Guid id, string name, Guid hostId, ulong revision, byte capacity, IReadOnlyList<PlayerView> players,
-            SetupPhase phase = SetupPhase.Lobby, SiteTile? site = null, LobbyMode? mode = null, FactionOptions? factionOptions = null)
+            SetupPhase phase = SetupPhase.Lobby, SiteTile? site = null, LobbyMode? mode = null, FactionOptions? factionOptions = null,
+            bool factionsRestored = false)
         {
             Id = id; Name = name; HostId = hostId; Revision = revision; Capacity = capacity; Players = players; Phase = phase; Site = site;
-            Mode = mode ?? LobbyMode.CoopHost; FactionOptions = factionOptions;
+            Mode = mode ?? LobbyMode.CoopHost; FactionOptions = factionOptions; FactionsRestored = factionsRestored;
         }
         public Guid Id { get; }
         public string Name { get; }
@@ -53,6 +60,11 @@ namespace Multiplayer.Foundation.Protocol
         public LobbyMode Mode { get; }
         /// <summary>Factions mode (ADR 0037): shared difficulty and selectable storytellers, once the host sent them.</summary>
         public FactionOptions? FactionOptions { get; }
+        /// <summary>
+        /// ADR 0038: a Factions lobby that continues a saved game; its slots and storytellers come from the host's save.
+        /// Only meaningful in the Lobby phase; such a lobby starts straight into Generating.
+        /// </summary>
+        public bool FactionsRestored { get; }
     }
 
     public sealed class LobbySummary
@@ -207,9 +219,12 @@ namespace Multiplayer.Foundation.Protocol
                 writer.WriteByte((byte)player.WorldStatus);
             }
             state.Mode.Write(writer);
-            // ADR 0037: only a Factions lobby whose setup has started carries the faction block. Every other state keeps the
-            // bytes it had before, and faction data there is an error rather than something to drop silently.
-            if (HasFactionBlock(state.Mode, state.Phase))
+            // ADR 0037/0038: only a Factions lobby whose setup has started, or that continues a saved game, carries the
+            // faction block. Every other state keeps the bytes it had before, and faction data there is an error rather than
+            // something to drop silently.
+            if (state.FactionsRestored && (state.Mode.Mode != GameMode.Factions || state.Phase != SetupPhase.Lobby))
+                throw new ProtocolException("Only a Factions lobby before its start continues a saved game.");
+            if (HasFactionBlock(state.Mode, state.Phase) || state.FactionsRestored)
             {
                 writer.WriteBool(state.FactionOptions != null); state.FactionOptions?.Write(writer);
                 foreach (PlayerView player in state.Players)
@@ -219,16 +234,26 @@ namespace Multiplayer.Foundation.Protocol
                     if (player.FactionSlot.HasValue) writer.WriteByte(player.FactionSlot.Value);
                     writer.WriteBool(player.Storyteller != null);
                     if (player.Storyteller != null) DefNames.Write(writer, player.Storyteller);
+                    SiteTile.WriteOptional(writer, player.FactionSite);
+                    writer.WriteBool(player.Ideology != null); player.Ideology?.Write(writer);
+                    writer.WriteBool(player.FactionNote != null);
+                    if (player.FactionNote != null)
+                    {
+                        FactionPayloads.ValidateText(player.FactionNote, FactionPayloads.MaximumNoteBytes, "note");
+                        writer.WriteString(player.FactionNote, FactionPayloads.MaximumNoteBytes);
+                    }
                 }
             }
-            else if (state.FactionOptions != null || state.Players.Any(p => p.FactionSlot.HasValue || p.Storyteller != null))
+            else if (state.FactionOptions != null || state.Players.Any(p => p.FactionSlot.HasValue || p.Storyteller != null ||
+                p.FactionSite.HasValue || p.Ideology != null || p.FactionNote != null))
                 throw new ProtocolException("Faction data belongs to a Factions lobby whose setup has started.");
             return writer.ToArray();
         }
 
         /// <summary>
         /// ADR 0037: the faction block follows the mode exactly when the lobby is in the Factions mode and its setup has started
-        /// (faction slots exist from then on). It is then required; in any other state extra bytes are refused.
+        /// (faction slots exist from then on). It is then required; in any other state extra bytes are refused. The one addition
+        /// (ADR 0038): a Factions lobby that continues a saved game carries it in the Lobby phase too (<see cref="LobbyView.FactionsRestored"/>).
         /// </summary>
         public static bool HasFactionBlock(LobbyMode mode, SetupPhase phase) => mode.Mode == GameMode.Factions && phase != SetupPhase.Lobby;
 
@@ -253,7 +278,9 @@ namespace Multiplayer.Foundation.Protocol
             }
             LobbyMode mode = LobbyMode.Read(reader);
             FactionOptions? options = null;
-            if (HasFactionBlock(mode, phase))
+            // ADR 0038: in the Lobby phase a Factions state carries the block only when it continues a saved game.
+            bool restored = mode.Mode == GameMode.Factions && phase == SetupPhase.Lobby && reader.Remaining > 0;
+            if (HasFactionBlock(mode, phase) || restored)
             {
                 options = reader.ReadBool() ? FactionOptions.Read(reader) : null;
                 for (int i = 0; i < players.Count; i++)
@@ -261,13 +288,25 @@ namespace Multiplayer.Foundation.Protocol
                     byte? slot = reader.ReadBool() ? reader.ReadByte() : (byte?)null;
                     if (slot >= 64) throw new ProtocolException("Invalid faction slot.");
                     string? storyteller = reader.ReadBool() ? DefNames.Read(reader) : null;
+                    SiteTile? factionSite = SiteTile.ReadOptional(reader);
+                    IdeologySummary? ideology = reader.ReadBool() ? IdeologySummary.Read(reader) : null;
+                    string? note = null;
+                    if (reader.ReadBool())
+                    {
+                        note = reader.ReadString(FactionPayloads.MaximumNoteBytes);
+                        FactionPayloads.ValidateText(note, FactionPayloads.MaximumNoteBytes, "note");
+                    }
                     PlayerView p = players[i];
-                    players[i] = new PlayerView(p.Id, p.Name, p.Ready, p.Key, p.Flag, p.ModStatus, p.WorldStatus, slot, storyteller);
+                    players[i] = new PlayerView(p.Id, p.Name, p.Ready, p.Key, p.Flag, p.ModStatus, p.WorldStatus, slot, storyteller,
+                        factionSite, ideology, note);
                 }
                 byte[] slots = players.Where(p => p.FactionSlot.HasValue).Select(p => p.FactionSlot!.Value).ToArray();
                 if (slots.Distinct().Count() != slots.Length) throw new ProtocolException("Faction slots must be distinct.");
+                SiteTile[] sites = players.Where(p => p.FactionSite.HasValue).Select(p => p.FactionSite!.Value).ToArray();
+                if (sites.Distinct().Count() != sites.Length) throw new ProtocolException("Faction sites must be distinct.");
             }
-            reader.EnsureComplete(); return new LobbyView(id, name, host, revision, capacity, players, phase, site, mode, options);
+            reader.EnsureComplete();
+            return new LobbyView(id, name, host, revision, capacity, players, phase, site, mode, options, restored);
         }
         public static byte[] List(IReadOnlyList<LobbySummary> lobbies)
         {

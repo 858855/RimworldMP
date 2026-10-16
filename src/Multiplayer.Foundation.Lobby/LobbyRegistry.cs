@@ -111,6 +111,33 @@ namespace Multiplayer.Foundation.Lobby
             return null;
         }
 
+        /// <summary>
+        /// ADR 0038: first reason why a Factions step cannot continue yet, or null: storytellers, own sites, own ideologies,
+        /// and in a lobby that continues a saved game, members without a faction in that save. The same rules the server enforces.
+        /// </summary>
+        public static string? FactionSetupBlockReason(LobbyView lobby)
+        {
+            if (lobby.Mode.Mode != GameMode.Factions) return null;
+            string[] waiting = lobby.Players.Where(p => !p.Ready).Select(p => p.Name).ToArray();
+            string? Missing(string what, Func<PlayerView, bool> has)
+            {
+                string[] missing = lobby.Players.Where(p => !has(p)).Select(p => p.Name).ToArray();
+                if (missing.Length > 0) return what + " fehlt: " + string.Join(", ", missing);
+                return waiting.Length > 0 ? "Warte auf: " + string.Join(", ", waiting) : null;
+            }
+            switch (lobby.Phase)
+            {
+                case SetupPhase.Lobby:
+                    if (!lobby.FactionsRestored) return null;
+                    string[] strangers = lobby.Players.Where(p => p.FactionSlot == null).Select(p => p.Name).ToArray();
+                    return strangers.Length > 0 ? "Kein Platz im Spielstand: " + string.Join(", ", strangers) : null;
+                case SetupPhase.Storyteller: return StorytellerBlockReason(lobby);
+                case SetupPhase.SiteSelection: return Missing("Startort", p => p.FactionSite.HasValue);
+                case SetupPhase.Ideology: return Missing("Ideologie", p => p.Ideology != null);
+                default: return null;
+            }
+        }
+
         public (Guid LobbyId, IReadOnlyList<Guid> Recipients) ChatRecipients(Guid actor)
         {
             lock (gate)
@@ -151,6 +178,9 @@ namespace Multiplayer.Foundation.Lobby
                 // ADR 0037: a running Factions game has exactly the factions it started with; a player returns to theirs.
                 if (room.Phase == SetupPhase.Playing && room.Mode.Mode == GameMode.Factions && !room.FactionSlots.ContainsKey(member.Key))
                     throw new LobbyRuleException(6, "This game has no faction for this player.");
+                // ADR 0038: a lobby that continues a saved Factions game admits exactly the players of that save.
+                if (room.Phase == SetupPhase.Lobby && room.FactionsRestored && !room.FactionSlots.ContainsKey(member.Key))
+                    throw new LobbyRuleException(6, "This saved game has no faction for this player.");
                 room.Members.Add(actor); member.Room = room.Id; room.Revision++;
                 return Change(room, actor);
             }
@@ -161,13 +191,19 @@ namespace Multiplayer.Foundation.Lobby
             lock (gate)
             {
                 Member member = GetMember(actor); Room room = GetCurrentRoom(member);
-                // Ready means "ready to start" in the lobby and "done" in character selection, and in the Factions mode
-                // also "done" choosing the own storyteller (ADR 0037); nowhere else.
-                bool storytellerStep = room.Phase == SetupPhase.Storyteller && room.Mode.Mode == GameMode.Factions;
-                if (room.Phase != SetupPhase.Lobby && room.Phase != SetupPhase.Characters && !storytellerStep)
+                // Ready means "ready to start" in the lobby and "done" in character selection. In the Factions mode it is also
+                // "done" with the own storyteller (ADR 0037), site and ideology (ADR 0038); nowhere else.
+                bool factions = room.Mode.Mode == GameMode.Factions;
+                bool factionStep = factions && room.Phase is SetupPhase.Storyteller or SetupPhase.SiteSelection or SetupPhase.Ideology;
+                if (room.Phase != SetupPhase.Lobby && room.Phase != SetupPhase.Characters && !factionStep)
                     throw new LobbyRuleException(6, "Ready is not used in this setup step.");
-                if (ready && storytellerStep && (room.FactionOptions == null || !room.FactionOptions.Offers(StorytellerOf(room, member))))
+                if (ready && factionStep && room.Phase == SetupPhase.Storyteller &&
+                    (room.FactionOptions == null || !room.FactionOptions.Offers(StorytellerOf(room, member))))
                     throw new LobbyRuleException(6, "Choose a storyteller before you are done.");
+                if (ready && factionStep && room.Phase == SetupPhase.SiteSelection && !room.FactionSites.ContainsKey(member.Key))
+                    throw new LobbyRuleException(6, "Choose your starting site before you are done.");
+                if (ready && factionStep && room.Phase == SetupPhase.Ideology && !room.Ideologies.ContainsKey(member.Key))
+                    throw new LobbyRuleException(6, "Choose your ideology before you are done.");
                 // SETUP-004: "done" needs a pawn of your own in the starting group (ADR 0015).
                 if (ready && room.Phase == SetupPhase.Characters && (room.Roster == null || !room.Roster.OwnsSelectedPawn(member.Key)))
                     throw new LobbyRuleException(6, "Take a pawn before you are done.");
@@ -188,9 +224,9 @@ namespace Multiplayer.Foundation.Lobby
             {
                 Member member = GetMember(actor); Room room = GetCurrentRoom(member);
                 member.Room = null; member.Ready = false; member.Flag = null; room.Members.Remove(actor); room.Revision++;
-                // ADR 0037: before the game exists a departed player cannot come back, so no faction is made for them.
-                // From Generating on the faction exists and waits for its player.
-                if (room.Phase < SetupPhase.Generating) { room.FactionSlots.Remove(member.Key); room.Storytellers.Remove(member.Key); }
+                // ADR 0037/0038: before a new game exists a departed player cannot come back, so no faction is made for them.
+                // From Generating on, and in a lobby that continues a saved game, the faction exists and waits for its player.
+                if (room.Phase < SetupPhase.Generating && !room.FactionsRestored) ForgetFaction(room, member.Key);
                 if (room.Members.Count == 0) { rooms.Remove(room.Id); return new LobbyChange(null, Array.Empty<Guid>(), actor); }
                 // Only the host holds the generated setup state, so it ends before the host role moves (plan §6.2).
                 if (room.Host == actor) { ResetSetup(room); room.Host = room.Members[0]; ClearReadyWithoutMatch(room); }
@@ -218,18 +254,21 @@ namespace Multiplayer.Foundation.Lobby
             {
                 Room room = GetHostedRoom(actor);
                 if (room.Phase == SetupPhase.Playing) throw new LobbyRuleException(6, "Setup is complete; time runs with lockstep (SYNC-001).");
+                // ADR 0038 (SAVE-002, Factions part): a continued game skips the new-game setup and goes to the game transfer.
+                if (room.Phase == SetupPhase.Lobby && room.FactionsRestored)
+                {
+                    if (target != SetupPhase.Generating) throw new LobbyRuleException(6, "This lobby continues a saved game; start it with the game transfer.");
+                    RequireStartConditions(room);
+                    if (room.Members.Any(id => !room.FactionSlots.ContainsKey(members[id].Key)))
+                        throw new LobbyRuleException(6, "A player has no faction in the saved game.");
+                    EnterPhase(room, SetupPhase.Generating);
+                    return Change(room, actor);
+                }
                 if (target != room.Phase + 1) throw new LobbyRuleException(6, "Unexpected setup step.");
                 switch (room.Phase)
                 {
                     case SetupPhase.Lobby:
-                        // ADR 0031/0037: Coop is built first; the Factions setup stays refused until its game side exists.
-                        if (room.Mode.Mode == GameMode.Factions && !factionsSetupEnabled)
-                            throw new LobbyRuleException(6, "The Factions mode is not available yet.");
-                        if (room.Members.Count < minimumStartPlayers) throw new LobbyRuleException(6, "At least 2 players are needed.");
-                        // MOD-001: start again checks that every member's mods match the host's.
-                        if (room.Members.Any(id => StatusOf(room, members[id]) is ModStatus.Checking or ModStatus.Mismatch))
-                            throw new LobbyRuleException(8, "Mods do not match for every player.");
-                        RequireEveryoneReady(room, "Not every player is ready.");
+                        RequireStartConditions(room);
                         break;
                     case SetupPhase.Storyteller when room.Mode.Mode == GameMode.Factions:
                         // ADR 0037: the host's shared difficulty, a storyteller of the list for everyone, everyone done.
@@ -247,8 +286,19 @@ namespace Multiplayer.Foundation.Lobby
                         if (room.Members.Any(id => WorldStatusOf(room, members[id]) != WorldStatus.Match))
                             throw new LobbyRuleException(6, "Not every player has loaded the world yet.");
                         break;
+                    case SetupPhase.SiteSelection when room.Mode.Mode == GameMode.Factions:
+                        // ADR 0038: every faction has its own site, checked by the host's game before it continues.
+                        if (room.Members.Any(id => !room.FactionSites.ContainsKey(members[id].Key)))
+                            throw new LobbyRuleException(6, "Not every player has chosen a starting site.");
+                        RequireEveryoneReady(room, "Not every player is done choosing a starting site.");
+                        break;
                     case SetupPhase.SiteSelection:
                         throw new LobbyRuleException(6, "Choose the starting site to continue.");
+                    case SetupPhase.Ideology when room.Mode.Mode == GameMode.Factions:
+                        if (room.Members.Any(id => !room.Ideologies.ContainsKey(members[id].Key)))
+                            throw new LobbyRuleException(6, "Not every player has chosen an ideology.");
+                        RequireEveryoneReady(room, "Not every player is done choosing an ideology.");
+                        break;
                     case SetupPhase.Characters:
                         // ADR 0015: everyone must be done; the host cannot force-start.
                         RequireEveryoneReady(room, "Not every player is done choosing characters.");
@@ -305,6 +355,99 @@ namespace Multiplayer.Foundation.Lobby
             }
         }
 
+        /// <summary>
+        /// ADR 0038: the starting site of the actor's own faction (null withdraws it). No two factions share a site; whether the
+        /// tile can be settled is for the host's game to check (<see cref="ClearFactionChoice"/>).
+        /// </summary>
+        public LobbyChange ChooseFactionSite(Guid actor, SiteTile? tile)
+        {
+            lock (gate)
+            {
+                Member member = GetMember(actor); Room room = GetCurrentRoom(member);
+                RequireFactionStep(room, SetupPhase.SiteSelection, "Sites are chosen during site selection.");
+                RequireSlot(room, member);
+                room.FactionSites.TryGetValue(member.Key, out SiteTile current);
+                bool has = room.FactionSites.ContainsKey(member.Key);
+                if (tile == null ? !has : has && current == tile.Value) return Change(room, actor);
+                if (tile != null && room.FactionSites.Any(entry => entry.Key != member.Key && entry.Value == tile.Value))
+                    throw new LobbyRuleException(6, "Another faction already starts on this site.");
+                if (tile == null) room.FactionSites.Remove(member.Key); else room.FactionSites[member.Key] = tile.Value;
+                room.Notes.Remove(member.Key); member.Ready = false; room.Revision++;
+                return Change(room, actor);
+            }
+        }
+
+        /// <summary>
+        /// ADR 0038: the ideology of the actor's own faction. The lobby keeps the label and the SHA-256; when the choice changed,
+        /// the caller forwards the data to <c>Host</c> with the actor's slot and key (only the host generates the world).
+        /// </summary>
+        public (LobbyChange Change, bool Forward, Guid Host, byte Slot, PlayerKey Player) ChooseIdeology(Guid actor, string label, byte[] data)
+        {
+            if (!FactionPayloads.IsValidText(label, FactionPayloads.MaximumIdeologyLabelBytes) || data == null || data.Length == 0 ||
+                data.Length > FactionPayloads.MaximumIdeologyBytes)
+                throw new LobbyRuleException(1, "Invalid ideology choice.");
+            IdeologySummary summary = IdeologySummary.Of(label, data);
+            lock (gate)
+            {
+                Member member = GetMember(actor); Room room = GetCurrentRoom(member);
+                RequireFactionStep(room, SetupPhase.Ideology, "Ideologies are chosen in the ideology step.");
+                byte slot = RequireSlot(room, member);
+                if (room.Ideologies.TryGetValue(member.Key, out IdeologySummary? current) && current.SameAs(summary))
+                    return (Change(room, actor), false, room.Host, slot, member.Key);
+                room.Ideologies[member.Key] = summary;
+                room.Notes.Remove(member.Key); member.Ready = false; room.Revision++;
+                return (Change(room, actor), true, room.Host, slot, member.Key);
+            }
+        }
+
+        /// <summary>
+        /// ADR 0038: the host's game rejects a faction's site or ideology it found invalid. The choice and that player's "done"
+        /// are cleared, and the reason is shown with the player until their next choice.
+        /// </summary>
+        public LobbyChange ClearFactionChoice(Guid actor, byte slot, FactionChoiceKind kind, string reason)
+        {
+            // Checked before any change: an invalid note would make every later lobby state unencodable.
+            if (!FactionPayloads.IsValidText(reason, FactionPayloads.MaximumNoteBytes)) throw new LobbyRuleException(1, "Invalid reason.");
+            if (kind != FactionChoiceKind.Site && kind != FactionChoiceKind.Ideology) throw new LobbyRuleException(1, "Unknown faction choice.");
+            lock (gate)
+            {
+                Room room = GetHostedRoom(actor);
+                SetupPhase phase = kind == FactionChoiceKind.Site ? SetupPhase.SiteSelection : SetupPhase.Ideology;
+                RequireFactionStep(room, phase, "This choice is not made in the current step.");
+                PlayerKey? owner = room.FactionSlots.Where(entry => entry.Value == slot).Select(entry => (PlayerKey?)entry.Key).FirstOrDefault();
+                if (owner == null) throw new LobbyRuleException(6, "No faction has this slot.");
+                if (kind == FactionChoiceKind.Site) room.FactionSites.Remove(owner.Value); else room.Ideologies.Remove(owner.Value);
+                room.Notes[owner.Value] = reason;
+                foreach (Guid id in room.Members.Where(id => members[id].Key == owner.Value)) members[id].Ready = false;
+                room.Revision++;
+                return Change(room, actor);
+            }
+        }
+
+        /// <summary>
+        /// ADR 0038 (SAVE-002, Factions part): the host's game restores the faction table of the saved game it loaded. The lobby
+        /// then admits only those players and starts straight into the game transfer.
+        /// </summary>
+        public LobbyChange RestoreFactions(Guid actor, FactionRestore restore)
+        {
+            if (restore == null) throw new ArgumentNullException(nameof(restore));
+            lock (gate)
+            {
+                Room room = GetHostedRoom(actor);
+                if (room.Mode.Mode != GameMode.Factions) throw new LobbyRuleException(6, "Only a Factions game restores faction slots.");
+                if (room.Phase != SetupPhase.Lobby) throw new LobbyRuleException(6, "Factions are restored before the game starts.");
+                if (!restore.Entries.Any(entry => entry.Player == members[actor].Key))
+                    throw new LobbyRuleException(6, "The host has no faction in this saved game.");
+                ClearFactions(room);
+                foreach (FactionRestoreEntry entry in restore.Entries)
+                { room.FactionSlots[entry.Player] = entry.Slot; room.Storytellers[entry.Player] = entry.Storyteller; }
+                room.FactionsRestored = true;
+                foreach (Guid id in room.Members) members[id].Ready = false;
+                room.Revision++;
+                return Change(room, actor);
+            }
+        }
+
         public LobbyChange AbortSetup(Guid actor)
         {
             lock (gate)
@@ -323,6 +466,8 @@ namespace Multiplayer.Foundation.Lobby
             {
                 Member member = GetMember(actor); Room room = GetCurrentRoom(member);
                 if (room.Phase != SetupPhase.SiteSelection) throw new LobbyRuleException(6, "Flags are only placed during site selection.");
+                // ADR 0038: in the Factions mode every player chooses their own site instead of suggesting one.
+                if (room.Mode.Mode == GameMode.Factions) throw new LobbyRuleException(6, "In the Factions mode every player chooses their own site.");
                 member.Flag = tile; room.Revision++;
                 return Change(room, actor);
             }
@@ -440,6 +585,7 @@ namespace Multiplayer.Foundation.Lobby
             {
                 Room room = GetHostedRoom(actor);
                 if (room.Phase != SetupPhase.SiteSelection) throw new LobbyRuleException(6, "The site is chosen during site selection.");
+                if (room.Mode.Mode == GameMode.Factions) throw new LobbyRuleException(6, "In the Factions mode every player chooses their own site.");
                 room.Site = tile;
                 EnterPhase(room, SetupPhase.Ideology);
                 return Change(room, actor);
@@ -497,12 +643,44 @@ namespace Multiplayer.Foundation.Lobby
             if (room.Mode.Mode != GameMode.Factions) throw new LobbyRuleException(6, "In Coop the host chooses the storyteller.");
             if (room.Phase != SetupPhase.Storyteller) throw new LobbyRuleException(6, "Storytellers are chosen in the storyteller step.");
         }
+        private static void RequireFactionStep(Room room, SetupPhase phase, string wrongPhase)
+        {
+            if (room.Mode.Mode != GameMode.Factions) throw new LobbyRuleException(6, "Only the Factions mode has a choice per faction.");
+            if (room.Phase != phase) throw new LobbyRuleException(6, wrongPhase);
+        }
+        private static byte RequireSlot(Room room, Member member)
+        {
+            if (!room.FactionSlots.TryGetValue(member.Key, out byte slot)) throw new LobbyRuleException(6, "You have no faction in this game.");
+            return slot;
+        }
+        // ADR 0031/0037/0038: the checks of every start, new game or continued one.
+        private void RequireStartConditions(Room room)
+        {
+            // Coop is built first; the Factions start stays refused until its game side exists.
+            if (room.Mode.Mode == GameMode.Factions && !factionsSetupEnabled)
+                throw new LobbyRuleException(6, "The Factions mode is not available yet.");
+            if (room.Members.Count < minimumStartPlayers) throw new LobbyRuleException(6, "At least 2 players are needed.");
+            // MOD-001: start again checks that every member's mods match the host's.
+            if (room.Members.Any(id => StatusOf(room, members[id]) is ModStatus.Checking or ModStatus.Mismatch))
+                throw new LobbyRuleException(8, "Mods do not match for every player.");
+            RequireEveryoneReady(room, "Not every player is ready.");
+        }
+        private static void ForgetFaction(Room room, PlayerKey key)
+        {
+            room.FactionSlots.Remove(key); room.Storytellers.Remove(key); room.FactionSites.Remove(key);
+            room.Ideologies.Remove(key); room.Notes.Remove(key);
+        }
+        private static void ClearFactions(Room room)
+        {
+            room.FactionSlots.Clear(); room.Storytellers.Clear(); room.FactionOptions = null; room.FactionSites.Clear();
+            room.Ideologies.Clear(); room.Notes.Clear(); room.FactionsRestored = false;
+        }
         private static string? StorytellerOf(Room room, Member member) =>
             room.Storytellers.TryGetValue(member.Key, out string? storyteller) ? storyteller : null;
         // ADR 0037: host first, then everyone else in joining order. Slots stay with the player key and are never renumbered.
         private void AssignFactionSlots(Room room)
         {
-            room.FactionSlots.Clear(); room.Storytellers.Clear(); room.FactionOptions = null;
+            ClearFactions(room);
             byte slot = 0;
             foreach (Guid id in new[] { room.Host }.Concat(room.Members.Where(id => id != room.Host)))
                 room.FactionSlots[members[id].Key] = slot++;
@@ -512,13 +690,13 @@ namespace Multiplayer.Foundation.Lobby
         // Ready and flags belong to one phase; a lobby "ready" must never count as "done" later.
         private void EnterPhase(Room room, SetupPhase phase)
         {
-            room.Phase = phase; room.Revision++; room.Roster = null;
+            room.Phase = phase; room.Revision++; room.Roster = null; room.Notes.Clear();
             foreach (Guid id in room.Members) { members[id].Ready = false; members[id].Flag = null; members[id].PawnHash = null; }
         }
         private void ResetSetup(Room room)
         {
             room.Phase = SetupPhase.Lobby; room.Site = null; room.HostWorld = null; room.Roster = null; room.HostGame = null;
-            room.FactionSlots.Clear(); room.Storytellers.Clear(); room.FactionOptions = null;
+            ClearFactions(room);
             foreach (Guid id in room.Members)
             {
                 members[id].Ready = false; members[id].Flag = null; members[id].World = null; members[id].PawnHash = null;
@@ -548,10 +726,17 @@ namespace Multiplayer.Foundation.Lobby
         {
             var players = room.Members.Select(id => new PlayerView(id, members[id].Name, members[id].Ready, members[id].Key,
                 members[id].Flag, StatusOf(room, members[id]), WorldStatusOf(room, members[id]), SlotOf(room, members[id]),
-                StorytellerOf(room, members[id]))).ToArray();
+                StorytellerOf(room, members[id]), SiteOf(room, members[id]), IdeologyOf(room, members[id]), NoteOf(room, members[id]))).ToArray();
             return new LobbyChange(new LobbyView(room.Id, room.Name, room.Host, room.Revision, room.Capacity, players,
-                room.Phase, room.Site, room.Mode, room.FactionOptions), room.Members.ToArray(), actor);
+                room.Phase, room.Site, room.Mode, room.FactionOptions, room.FactionsRestored && room.Phase == SetupPhase.Lobby),
+                room.Members.ToArray(), actor);
         }
+        private static SiteTile? SiteOf(Room room, Member member) =>
+            room.FactionSites.TryGetValue(member.Key, out SiteTile site) ? site : (SiteTile?)null;
+        private static IdeologySummary? IdeologyOf(Room room, Member member) =>
+            room.Ideologies.TryGetValue(member.Key, out IdeologySummary? ideology) ? ideology : null;
+        private static string? NoteOf(Room room, Member member) =>
+            room.Notes.TryGetValue(member.Key, out string? note) ? note : null;
         private static byte? SlotOf(Room room, Member member) =>
             room.FactionSlots.TryGetValue(member.Key, out byte slot) ? slot : (byte?)null;
         private sealed class Member
@@ -588,6 +773,11 @@ namespace Multiplayer.Foundation.Lobby
             public Dictionary<PlayerKey, byte> FactionSlots { get; } = new Dictionary<PlayerKey, byte>();
             public Dictionary<PlayerKey, string> Storytellers { get; } = new Dictionary<PlayerKey, string>();
             public FactionOptions? FactionOptions { get; set; }
+            // ADR 0038: site, ideology and the host's rejection note per player key; whether the lobby continues a saved game.
+            public Dictionary<PlayerKey, SiteTile> FactionSites { get; } = new Dictionary<PlayerKey, SiteTile>();
+            public Dictionary<PlayerKey, IdeologySummary> Ideologies { get; } = new Dictionary<PlayerKey, IdeologySummary>();
+            public Dictionary<PlayerKey, string> Notes { get; } = new Dictionary<PlayerKey, string>();
+            public bool FactionsRestored { get; set; }
         }
     }
 }

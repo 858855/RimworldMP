@@ -1,6 +1,6 @@
 # Übergabe Claude (Koordinator und Protokoll)
 
-- **Bahn:** siehe `docs/ai/ASSIGNMENTS.md`. Branch-Präfix `claude/`, ADR 0032–0039, Nachrichtencodes 71–79 und 96–111 (zweiter Bereich, Benutzer 2026-10-16; belegt 96–97). Worktree `/mnt/Arbeit/Git Projekte/RimworldMP-claude`.
+- **Bahn:** siehe `docs/ai/ASSIGNMENTS.md`. Branch-Präfix `claude/`, ADR 0032–0039, Nachrichtencodes 71–79 und 96–111 (zweiter Bereich, Benutzer 2026-10-16; belegt 96–101, frei 102–111). Worktree `/mnt/Arbeit/Git Projekte/RimworldMP-claude`.
 - **Stand auf `main` (`85af3a9`):**
   - Chunk-Kanal (ADR 0014), PlayerKey (ADR 0016), Setup-Regeln (ADR 0017).
   - Lockstep-Koordinator (ADR 0030): `LockstepSession`, `LockstepClient`, `LockstepHost`, `OrderedOutbox`; Codes 64–70.
@@ -58,7 +58,36 @@
     - Die Beschreibung von `FACTION-001` (ohne Besitzer) nennt noch „Erzähler wählt der Host“; das gilt nach ADR 0037 nur für Coop.
   - **Offen für die Benutzer-Entscheidung:** Regel R4 in ADR 0037. Wirken Weltbedingungen nur auf die Karten der auslösenden Fraktion, oder plant sie ein einziger Erzähler für alle? Bis dahin gilt „keine“.
   - **Weitere offene Punkte:** Plätze beim Fortsetzen eines Spielstands wieder einspielen (`SAVE-002`; braucht eine weitere Nachricht aus 98–111); neue Fraktionen mitten im Spiel.
+- **C7, Branch `claude/faction-sites` von `main` @ `9fc1519`, ADR 0038, Aufgabe `FACTION-006`:** Koordinator-Seite von `FACTION-001` und der Fraktionsteil von `SAVE-002`, auf Codex' Wunsch aus ADR 0046. **Nicht gepusht, nicht gemergt.**
+  - **Neu:** Startort (98) und Ideologie (99) je Fraktion; Zurückweisen durch das Spiel des Hosts (100); Fortsetzen eines Fraktions-Spielstands (101).
+  - **Unverändert:** Codes 96/97, der Coop-Ablauf (Fähnchen, `SiteDecided`) und die Fraktionssperre. `HostConfig.EnableFactionsSetup` bleibt `internal`.
+  - **Tests:** alle acht Projekte, Hosting dreimal; Mod- und Server-Build; Validator. Siehe `docs/verification/2026-10-16-faction-sites.md`.
+  - **Mögliche Konflikte:**
+    - Codex' `codex/faction-setup` (`71ccda1`) hat `FACTION-005` und ADR 0046. Hier heißt die Aufgabe `FACTION-006`; keine Dateien der Spielseite angefasst.
+    - `CHANGELOG.md`, `CODEMAP.md` und `TASKS.yaml` ergeben beim Zusammenführen höchstens Anfügekonflikte.
+- **Vertrag für Codex zu ADR 0038** (genau so im Code):
+
+  | Schnittstelle | Richtung, Rechte, Phase | Spielseite muss |
+  |---|---|---|
+  | `MessageType.FactionSiteChoice` (98), `FactionPayloads.SiteChoice(SiteTile?)` | C→S, jeder für die **eigene** Fraktion, nur Fraktionsmodus, `SiteSelection` | Vor dem Senden selbst prüfen (Siedelbarkeit, Abstand zu den Startorten in `PlayerView.FactionSite` der anderen). `null` zieht zurück. Antwort: Lobbyzustand; 6, wenn das Feld schon ein anderer Platz hat. |
+  | `MessageType.FactionIdeologyChoice` (99), `FactionPayloads.IdeologyChoice(label, data)` | C→S, eigene Fraktion, `Ideology`; Bezeichnung 1–96 Byte, Daten 1–49 152 Byte | Format der Daten festlegen (Vorlage oder bearbeitete Ideologie; ggf. komprimieren). **Ohne Ideology-DLC trotzdem eine feste Wahl senden**, denn der Koordinator verlangt eine. |
+  | dieselbe Nummer 99 S→C, `FactionPayloads.ReadIdeologyForHost` | nur an den Host: `(Slot, Player, Label, Data)`, auch für die eigene Wahl des Hosts; nur bei geänderten Daten | Daten je Platz merken; mit `IdeologySummary.Of(label, data).SameAs(view.Players[i].Ideology)` gegen den Lobbyzustand prüfen. |
+  | `MessageType.FactionChoiceClear` (100), `FactionPayloads.ClearChoice(slot, kind, reason)` | C→S, **nur Host**, in der Phase der Art (`Site` → `SiteSelection`, `Ideology` → `Ideology`) | Vor jedem `SetupAdvance` alle Wahlen prüfen; ungültige mit Grund (1–128 Byte) zurückweisen, ebenso fehlende Ideologie-Daten. |
+  | `PlayerView.FactionSite`, `PlayerView.Ideology` (`Label`, `Hash`), `PlayerView.FactionNote` | im Lobbyzustand für alle | Anzeige; `FactionNote` als Grund der Zurückweisung beim Betroffenen. |
+  | `LobbyRegistry.FactionSetupBlockReason(view)` | statisch | Statuszeile für Erzähler, Startort, Ideologie und fortgesetzte Lobby. `StorytellerBlockReason` bleibt. |
+  | `PlayerReadyChanged` (14) | im Fraktionsmodus auch in `SiteSelection` und `Ideology`; verlangt die eigene Wahl | Knopf „Fertig“ auf beiden Seiten. |
+  | `SiteFlag` (26), `SiteDecided` (27) | im Fraktionsmodus abgelehnt (6) | Im Fraktionsmodus nicht senden; Coop unverändert. `LobbyView.Site` ist dort `null`. |
+  | `MessageType.FactionRestore` (101), `new FactionRestore(entries).ToPayload()` | C→S, **nur Host**, Phase `Lobby` einer Fraktionslobby; 1–64 Einträge `(PlayerKey, Slot, Storyteller)`, Host muss darin stehen | Nach dem Laden eines Fraktions-Spielstands die gespeicherte Tabelle senden, nach einem Abbruch erneut. |
+  | `LobbyView.FactionsRestored` | Lobby setzt einen Spielstand fort | Start mit `SetupAdvance(Generating)` (nicht `Scenario`), dann wie SETUP-005 den geladenen Spielstand senden. |
+  | Beitritt | fortgesetzte Lobby und `Playing`: nur Schlüssel mit Platz (6 sonst) | Meldung im Beitrittsfenster. |
+
+  - **Feste Regeln:**
+    - Plätze werden nie neu nummeriert; Lücken sind möglich (Fortsetzen).
+    - Austritt vor `Generating` löscht die Fraktion eines neuen Spiels. In einer fortgesetzten Lobby und ab `Generating` bleibt sie.
+    - Die Fraktionen in **aufsteigender Platzreihenfolge** erzeugen; im Spielstand `PlayerKey → Slot → Faction.loadID → Erzähler, Startort` ablegen (ADR 0046).
+    - Zwei Fraktionen dürfen dieselbe Ideologie wählen; jede erhält ihre eigene Instanz.
 - **Wünsche an Codex:**
+  - **Fraktionsmodus, Startort und Ideologie (ADR 0038):** Vertrag oben. Danach Host-Generierung vor `PrepForMapGen` je Platz (ADR 0046) und Fortsetzen über 101.
   - **Fraktionsmodus, Erzähler (ADR 0037)**, alles Spielseite:
     - **Lesen:**
       - Wahl und Optionen kommen über den Lobbyzustand: `LobbyView.FactionOptions` (Schwierigkeit, Liste), `PlayerView.FactionSlot`, `PlayerView.Storyteller`.

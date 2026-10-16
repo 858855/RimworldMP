@@ -63,6 +63,10 @@ Strings sind `length:u16` plus strikt gültige UTF-8-Bytes. Allgemeine Strings: 
 | 79 | VoteState | S→C | Nummer, Schlüssel, Optionen, offen, Ergebnis (255 = keins), Stimmen je Spieler |
 | 96 | FactionOptions | C→S, nur Host | Fraktionsmodus, Phase `Storyteller`: defName der Schwierigkeit, Anzahl `u8` (1–32), defNames der Erzähler |
 | 97 | StorytellerChoice | C→S | Fraktionsmodus, Phase `Storyteller`: defName des Erzählers der eigenen Fraktion |
+| 98 | FactionSiteChoice | C→S | Fraktionsmodus, Phase `SiteSelection`: `bool` + Feld des eigenen Startorts (leer = zurückziehen) |
+| 99 | FactionIdeologyChoice | C→S; S→C nur an den Host | C→S: Bezeichnung (≤ 96 Byte), Daten (`u32`-Länge, 1–49 152 Byte); an den Host zusätzlich vorne Platz `u8` und PlayerKey |
+| 100 | FactionChoiceClear | C→S, nur Host | Platz `u8`, Art `u8` (1 Startort, 2 Ideologie), Grund (≤ 128 Byte) |
+| 101 | FactionRestore | C→S, nur Host | Anzahl `u8` (1–64), je PlayerKey, Platz `u8`, Erzähler-defName; nur in `Lobby` einer Fraktionslobby |
 
 Listen- und Zustandsupdates sind in `LobbyPayloads.cs` kodiert: Liste mit `count:u8`, je Lobby GUID, Name, Hostname, Spielerzahl und Kapazität; Snapshot mit GUID, Name, Host-GUID, Revision `u64`, Kapazität, Setup-Phase `u8`, optional gewähltes Feld und Spielerarray (Session-GUID, Name, Ready, PlayerKey, optional Fähnchen). Die Liste trägt je Lobby zusätzlich die Phase. Der TCP-Server verwendet diese Payloads; zwei unabhängige TCP-Testclients bestanden die Integrationstests. RimWorld-Client-Kompatibilität ist noch offen. Fehlercodes: `1=InvalidMessage`, `2=VersionMismatch`, `3=Unauthorized`, `4=NotFound`, `5=Capacity`, `6=InvalidState`, `7=ServerBusy`.
 
@@ -185,3 +189,22 @@ Wer einen Snapshot laden soll (Beitritt oder Resync), muss `SnapshotLoaded` binn
   - Ältere Builds kennen 96/97 nicht und lehnen sie als unbekannten Typ ab. Sie erhalten sie aber auch nie, denn beide Nachrichten laufen nur vom Client zum Server.
 - **Bereit/Fertig (14):** gilt im Fraktionsmodus auch in der Phase `Storyteller` und verlangt dort eine Wahl.
 - **Beitritt in `Playing`:** Im Fraktionsmodus nur mit vorhandenem Fraktionsplatz zum `PlayerKey`; sonst Code 6.
+
+## Fraktionsmodus: Startort, Ideologie, Fortsetzen (ADR 0038)
+
+- **Startort (98):** Nur die eigene Fraktion (der Server nimmt den Platz zum PlayerKey des Absenders), nur in `SiteSelection`. Ein Feld, das schon ein anderer Platz hat, wird abgelehnt (6).
+  - Fähnchen (26) und `SiteDecided` (27) bleiben Coop und werden im Fraktionsmodus abgelehnt (6).
+  - `LobbyView.Site` bleibt dort `null`.
+- **Ideologie (99):** Nur die eigene Fraktion, nur in `Ideology`.
+  - Der Lobbyzustand trägt Bezeichnung und SHA-256 der Daten. Die Daten selbst gehen nur an den Host, mit Platz und PlayerKey, und nur wenn sie sich geändert haben.
+  - Das Format der Daten gehört der Spielseite.
+- **Zurückweisen (100):** Nur der Host, nur in der Phase der jeweiligen Art. Die Wahl und das Fertig dieses Spielers fallen weg; der Grund steht als `FactionNote` in seinem Eintrag, bis zu seiner nächsten Wahl oder dem Phasenwechsel.
+- **Fertig (14):** Im Fraktionsmodus gilt es auch in `SiteSelection` und `Ideology` und verlangt dort die eigene Wahl. Weiter geht es erst, wenn alle gewählt haben und fertig sind.
+- **Fortsetzen (101):** Der Host spielt die Tabelle aus seinem Spielstand ein; danach gilt `LobbyView.FactionsRestored`.
+  - Beitreten können nur Schlüssel aus der Tabelle; Plätze bleiben auch beim Verlassen vor dem Start.
+  - Start: `SetupAdvance(Generating)` direkt aus `Lobby`. `Scenario` wird abgelehnt.
+  - Die Fraktionssperre gilt auch hier.
+- **Lobbyzustand:** Der Fraktionsblock ist je Spieler erweitert um Startort (`bool` + Feld), Ideologie (`bool` + Bezeichnung + 32 Byte Hash) und Hinweis (`bool` + Text ≤ 128 Byte).
+  - Er steht zusätzlich in der Phase `Lobby` einer fortgesetzten Fraktionslobby; seine Anwesenheit dort bedeutet `FactionsRestored`.
+  - Startorte sind im Zustand eindeutig.
+- **Reserviert:** 102–111 sind ungültig bis zur Belegung.

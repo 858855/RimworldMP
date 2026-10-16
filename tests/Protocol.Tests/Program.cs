@@ -408,7 +408,7 @@ await Run("faction storytellers and shared difficulty (ADR 0037)", () =>
         new[] { new PlayerView(Guid.NewGuid(), "A", false, hostKey, factionSlot: 64) }, SetupPhase.Storyteller, null, factions.Mode)));
     return Task.CompletedTask;
 });
-await Run("faction message codes 96/97 in the frame, 98 not yet (ADR 0037)", async () =>
+await Run("faction message codes 96/97 in the frame (ADR 0037)", async () =>
 {
     Equal((byte)96, (byte)MessageType.FactionOptions); Equal((byte)97, (byte)MessageType.StorytellerChoice);
     using var stream = new FragmentingStream();
@@ -419,7 +419,87 @@ await Run("faction message codes 96/97 in the frame, 98 not yet (ADR 0037)", asy
     WireMessage first = (await FrameCodec.ReadAsync(stream))!, second = (await FrameCodec.ReadAsync(stream))!;
     Equal(MessageType.StorytellerChoice, first.Type); Equal("Randy", FactionPayloads.ReadStorytellerChoice(first.Payload));
     Equal(MessageType.FactionOptions, second.Type); Equal("Rough", FactionOptions.FromPayload(second.Payload).Difficulty);
-    await Reject<ProtocolException>(new byte[] { 0, 0, 0, 6, 3, 98, 0, 0, 0, 0 });   // rest of 96-111 is reserved, not valid
+    await Reject<ProtocolException>(new byte[] { 0, 0, 0, 6, 3, 102, 0, 0, 0, 0 });  // rest of 96-111 is reserved, not valid
+});
+await Run("faction sites, ideologies, host rejection and restore (ADR 0038)", () =>
+{
+    Equal((byte)98, (byte)MessageType.FactionSiteChoice); Equal((byte)99, (byte)MessageType.FactionIdeologyChoice);
+    Equal((byte)100, (byte)MessageType.FactionChoiceClear); Equal((byte)101, (byte)MessageType.FactionRestore);
+    Equal((SiteTile?)new SiteTile(5, 1), FactionPayloads.ReadSiteChoice(FactionPayloads.SiteChoice(new SiteTile(5, 1))));
+    Equal((SiteTile?)null, FactionPayloads.ReadSiteChoice(FactionPayloads.SiteChoice(null)));
+
+    byte[] data = Enumerable.Range(0, 300).Select(i => (byte)i).ToArray();
+    var (label, back) = FactionPayloads.ReadIdeologyChoice(FactionPayloads.IdeologyChoice("Gemeinschaft der Ahnen", data));
+    Equal("Gemeinschaft der Ahnen", label); Equal(true, back.SequenceEqual(data));
+    Equal(FactionPayloads.MaximumIdeologyBytes, FactionPayloads.ReadIdeologyChoice(FactionPayloads.IdeologyChoice("Groß",
+        new byte[FactionPayloads.MaximumIdeologyBytes])).Data.Length);
+    Throws<ProtocolException>(() => FactionPayloads.IdeologyChoice("Zu groß", new byte[FactionPayloads.MaximumIdeologyBytes + 1]));
+    Throws<ProtocolException>(() => FactionPayloads.IdeologyChoice("Leer", Array.Empty<byte>()));
+    Throws<ProtocolException>(() => FactionPayloads.IdeologyChoice(" ", data));
+    Throws<ProtocolException>(() => FactionPayloads.IdeologyChoice("Zeile\nzwei", data));
+    Throws<ProtocolException>(() => FactionPayloads.IdeologyChoice(new string('ä', 49), data));                       // 98 bytes > 96
+    var oversize = new PayloadWriter(); oversize.WriteString("Ideo"); oversize.WriteUInt32(FactionPayloads.MaximumIdeologyBytes + 1);
+    Throws<ProtocolException>(() => FactionPayloads.ReadIdeologyChoice(oversize.ToArray()));
+    using (var sha = System.Security.Cryptography.SHA256.Create())
+        Equal(true, IdeologySummary.Of("Ideo", data).Hash.SequenceEqual(sha.ComputeHash(data)));
+    Equal(true, IdeologySummary.Of("Ideo", data).SameAs(IdeologySummary.Of("Ideo", data.ToArray())));
+    Equal(false, IdeologySummary.Of("Ideo", data).SameAs(IdeologySummary.Of("Ideo", data.Take(10).ToArray())));
+
+    PlayerKey key = PlayerKey.Steam(76561198000000500UL);
+    var relay = FactionPayloads.ReadIdeologyForHost(FactionPayloads.IdeologyForHost(3, key, "Ideo", data));
+    Equal((byte)3, relay.Slot); Equal(key, relay.Player); Equal("Ideo", relay.Label); Equal(true, relay.Data.SequenceEqual(data));
+    Throws<ProtocolException>(() => FactionPayloads.IdeologyForHost(64, key, "Ideo", data));
+    // The relay form sent the other way is not a choice: its first bytes are no valid label.
+    Throws<ProtocolException>(() => FactionPayloads.ReadIdeologyChoice(FactionPayloads.IdeologyForHost(1, PlayerKey.Local(Guid.NewGuid()), "Ideo", data)));
+
+    var clear = FactionPayloads.ReadClearChoice(FactionPayloads.ClearChoice(2, FactionChoiceKind.Site, "Zu nah an Platz 1"));
+    Equal((byte)2, clear.Slot); Equal(FactionChoiceKind.Site, clear.Kind); Equal("Zu nah an Platz 1", clear.Reason);
+    Throws<ProtocolException>(() => FactionPayloads.ClearChoice(2, (FactionChoiceKind)3, "x"));
+    Throws<ProtocolException>(() => FactionPayloads.ClearChoice(64, FactionChoiceKind.Site, "x"));
+    Throws<ProtocolException>(() => FactionPayloads.ClearChoice(1, FactionChoiceKind.Ideology, ""));
+    Throws<ProtocolException>(() => FactionPayloads.ClearChoice(1, FactionChoiceKind.Ideology, new string('x', 129)));
+    Throws<ProtocolException>(() => FactionPayloads.ReadClearChoice(new byte[] { 1, 9, 0, 1, (byte)'x' }));              // unknown kind on the wire
+
+    PlayerKey a = PlayerKey.Local(Guid.NewGuid()), b = PlayerKey.Steam(76561198000000501UL);
+    var restore = FactionRestore.FromPayload(new FactionRestore(new[] { new FactionRestoreEntry(a, 0, "Randy"), new FactionRestoreEntry(b, 4, "Phoebe") }).ToPayload());
+    Equal(2, restore.Entries.Count); Equal(b, restore.Entries[1].Player); Equal((byte)4, restore.Entries[1].Slot); Equal("Phoebe", restore.Entries[1].Storyteller);
+    Throws<ProtocolException>(() => new FactionRestore(Array.Empty<FactionRestoreEntry>()));
+    Throws<ProtocolException>(() => new FactionRestore(new[] { new FactionRestoreEntry(a, 0, "Randy"), new FactionRestoreEntry(a, 1, "Randy") }));  // key twice
+    Throws<ProtocolException>(() => new FactionRestore(new[] { new FactionRestoreEntry(a, 0, "Randy"), new FactionRestoreEntry(b, 0, "Randy") }));  // slot twice
+    Throws<ProtocolException>(() => new FactionRestoreEntry(a, 64, "Randy"));
+    Throws<ProtocolException>(() => new FactionRestoreEntry(a, 0, "Ran dy"));
+    Throws<ProtocolException>(() => new FactionRestore(Enumerable.Range(0, 65).Select(i => new FactionRestoreEntry(PlayerKey.Local(Guid.NewGuid()), (byte)(i % 64), "Randy")).ToArray()));
+    Throws<ProtocolException>(() => FactionRestore.FromPayload(new byte[] { 0 }));
+
+    // Lobby state: site, ideology and note per player; sites unique; the restored Lobby phase carries the block.
+    var factionsMode = LobbyMode.Factions(FactionRelation.Hostile);
+    var players = new[]
+    {
+        new PlayerView(Guid.NewGuid(), "Host", true, a, factionSlot: 0, storyteller: "Randy", factionSite: new SiteTile(10, 0), ideology: IdeologySummary.Of("Ahnen", data)),
+        new PlayerView(Guid.NewGuid(), "Gast", false, b, factionSlot: 1, storyteller: "Phoebe", factionNote: "Zu nah an Platz 0")
+    };
+    var state = new LobbyView(Guid.NewGuid(), "F", players[0].Id, 9, 4, players, SetupPhase.SiteSelection, null, factionsMode);
+    LobbyView read = LobbyPayloads.ReadState(LobbyPayloads.State(state));
+    Equal((SiteTile?)new SiteTile(10, 0), read.Players[0].FactionSite); Equal("Ahnen", read.Players[0].Ideology!.Label);
+    Equal(true, read.Players[0].Ideology!.SameAs(players[0].Ideology)); Equal("Zu nah an Platz 0", read.Players[1].FactionNote);
+    Equal((SiteTile?)null, read.Players[1].FactionSite); Equal(false, read.FactionsRestored);
+    var twice = new[] { players[0], new PlayerView(players[1].Id, "Gast", false, b, factionSlot: 1, factionSite: new SiteTile(10, 0)) };
+    Throws<ProtocolException>(() => LobbyPayloads.ReadState(LobbyPayloads.State(new LobbyView(state.Id, "F", players[0].Id, 9, 4, twice,
+        SetupPhase.SiteSelection, null, factionsMode))));                                                            // one site per faction
+    var restoredView = new LobbyView(state.Id, "F", players[0].Id, 9, 4,
+        new[] { new PlayerView(players[0].Id, "Host", false, a, factionSlot: 0, storyteller: "Randy") }, SetupPhase.Lobby, null, factionsMode,
+        factionsRestored: true);
+    LobbyView restoredRead = LobbyPayloads.ReadState(LobbyPayloads.State(restoredView));
+    Equal(true, restoredRead.FactionsRestored); Equal((byte?)0, restoredRead.Players[0].FactionSlot); Equal("Randy", restoredRead.Players[0].Storyteller);
+    Throws<ProtocolException>(() => LobbyPayloads.State(new LobbyView(state.Id, "C", players[0].Id, 9, 4, Array.Empty<PlayerView>(),
+        SetupPhase.Lobby, null, LobbyMode.CoopHost, factionsRestored: true)));                                     // Coop never continues factions
+    Throws<ProtocolException>(() => LobbyPayloads.State(new LobbyView(state.Id, "F", players[0].Id, 9, 4, Array.Empty<PlayerView>(),
+        SetupPhase.Storyteller, null, factionsMode, factionsRestored: true)));                                     // only before the start
+    Throws<ProtocolException>(() => LobbyPayloads.State(new LobbyView(state.Id, "C", players[0].Id, 9, 4,
+        new[] { new PlayerView(players[0].Id, "Host", false, a, factionSite: new SiteTile(1, 0)) }, SetupPhase.SiteSelection, null, LobbyMode.CoopHost)));
+    Throws<ProtocolException>(() => LobbyPayloads.State(new LobbyView(state.Id, "C", players[0].Id, 9, 4,
+        new[] { new PlayerView(players[0].Id, "Host", false, a, factionNote: "x") }, SetupPhase.SiteSelection, null, LobbyMode.CoopHost)));
+    return Task.CompletedTask;
 });
 Console.WriteLine($"PASS: {passed} protocol test groups");
 

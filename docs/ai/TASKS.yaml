@@ -1590,6 +1590,34 @@ tasks:
   - docs/decisions/0037-faction-storytellers-coordinator.md
   blocker: 'Koordinator-Seite fertig: Codes 96/97 (Claude-Bereich 96–111, Benutzer 2026-10-16), Server-Verdrahtung, Ende-zu-Ende-Tests. Fraktionsstart bleibt gesperrt (Test-Schalter intern). Offen: Spielseite (Codex, FACTION-003), Regel R4 für weltweite Ereignisse (Benutzer), Wiederherstellen der Plätze beim Fortsetzen (SAVE-002).'
   plan_ref: docs/decisions/0037-faction-storytellers-coordinator.md
+- id: FACTION-006
+  title: 'Fraktionsmodus: Startort und Ideologie je Fraktion, Fortsetzen (Koordinator)'
+  goal: 'Je PlayerKey über den stabilen Fraktionsplatz eine autoritative Wahl von Startort und Ideologie; Wiederherstellung bei Reconnect und beim Fortsetzen eines Fraktions-Spielstands.'
+  description: 'ADR 0038. Koordinator-Seite von FACTION-001 und der Fraktionsteil von SAVE-002. Spielseite: FACTION-005 (Codex, ADR 0046).'
+  priority: high
+  owner: claude
+  components:
+  - lobby_core
+  - protocol
+  - dedicated_server
+  depends_on:
+  - FACTION-004
+  acceptance:
+  - 'Startort und Ideologie nur für die eigene Fraktion; kein Feld für zwei Fraktionen'
+  - 'Nur der Host weist eine Wahl mit Grund zurück; Fertig verlangt die eigene Wahl; Weiter erst, wenn alle fertig sind'
+  - 'Plätze bleiben über Wahlen, Austritte, Reconnect und Fortsetzen stabil'
+  - 'Fortsetzen: Tabelle nur vom Host, Beitritt nur aus der Tabelle, Start direkt zur Spielübertragung; Fraktionsstart weiter gesperrt'
+  implementation: in_progress
+  verification: tests_passed
+  integration: not_submitted
+  branch: claude/faction-sites
+  base_branch: main
+  base_commit: 9fc1519
+  evidence:
+  - docs/verification/2026-10-16-faction-sites.md
+  - docs/decisions/0038-faction-sites-ideology-and-continue.md
+  blocker: 'Koordinator-Seite fertig und Ende zu Ende getestet (Codes 98–101). Offen: Spielseite (Codex, FACTION-005: Prüfung von Feld und Ideologie, Zurückweisen, Generierung je Platz, Tabelle im Spielstand), Fortsetzen im Coop (Rest von SAVE-002), Regel R4.'
+  plan_ref: docs/decisions/0038-faction-sites-ideology-and-continue.md
 - id: FACTION-002
   title: 'Fraktionsmodus: getrennte Kolonien, Spieler-Fenster, Weltereignisse für alle'
   goal: 'Jede Fraktion spielt ihre eigene Kolonie; ein einklappbares Spieler-Fenster wechselt die Ansicht zu anderen Kolonien; Weltereignisse wie das Gravship gehen an alle.'

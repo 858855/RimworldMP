@@ -320,6 +320,35 @@ public sealed class FoundationServer : IAsyncDisposable
                 await PublishAsync(lobbies.ChooseStoryteller(peer.Id, FactionPayloads.ReadStorytellerChoice(message.Payload)), null, token,
                     message.RequestId).ConfigureAwait(false);
                 break;
+            case MessageType.FactionSiteChoice:
+                // ADR 0038: the sender's own faction only; the lobby core refuses a site another faction already holds.
+                await PublishAsync(lobbies.ChooseFactionSite(peer.Id, FactionPayloads.ReadSiteChoice(message.Payload)), null, token,
+                    message.RequestId).ConfigureAwait(false);
+                break;
+            case MessageType.FactionIdeologyChoice:
+                // ADR 0038: the lobby keeps label and hash; the data goes to the host only, stamped with the sender's slot and key,
+                // before the state that names the new hash.
+                var (ideologyLabel, ideologyData) = FactionPayloads.ReadIdeologyChoice(message.Payload);
+                var ideology = lobbies.ChooseIdeology(peer.Id, ideologyLabel, ideologyData);
+                if (ideology.Forward && peers.TryGetValue(ideology.Host, out Peer? ideologyHost))
+                    try
+                    {
+                        await ideologyHost.Connection.SendAsync(new WireMessage(MessageType.FactionIdeologyChoice, 0,
+                            FactionPayloads.IdeologyForHost(ideology.Slot, ideology.Player, ideologyLabel, ideologyData)), token).ConfigureAwait(false);
+                    }
+                    catch (IOException) { ideologyHost.Connection.Dispose(); }
+                    catch (ObjectDisposedException) { }
+                await PublishAsync(ideology.Change, null, token, message.RequestId).ConfigureAwait(false);
+                break;
+            case MessageType.FactionChoiceClear:
+                var clear = FactionPayloads.ReadClearChoice(message.Payload);
+                await PublishAsync(lobbies.ClearFactionChoice(peer.Id, clear.Slot, clear.Kind, clear.Reason), null, token,
+                    message.RequestId).ConfigureAwait(false);
+                break;
+            case MessageType.FactionRestore:
+                await PublishAsync(lobbies.RestoreFactions(peer.Id, FactionRestore.FromPayload(message.Payload)), null, token,
+                    message.RequestId).ConfigureAwait(false);
+                break;
             case MessageType.PawnRoster:
                 var (rosterChange, rosterViewers) = lobbies.SetRoster(peer.Id, PawnRoster.Read(message.Payload));
                 foreach (Guid viewer in rosterViewers)
