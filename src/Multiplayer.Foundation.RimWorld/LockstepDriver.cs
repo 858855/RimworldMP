@@ -39,13 +39,16 @@ namespace Multiplayer.Foundation.RimWorld
         private float nextReportAt, lastRequestAt = -10f;
         private SessionSpeed lastRequested;
 
-        internal LockstepDriver(Game game, ulong sessionSeed, bool isHost, Action<MessageType, byte[]> send, Func<PlayerKey, string> nameOf)
+        internal LockstepDriver(Game game, ulong sessionSeed, bool isHost, PlayerKey localKey, Action<MessageType, byte[]> send,
+            Func<PlayerKey, string> nameOf)
         {
-            Game = game; this.sessionSeed = sessionSeed; IsHost = isHost; this.send = send; this.nameOf = nameOf;
+            Game = game; this.sessionSeed = sessionSeed; IsHost = isHost; LocalKey = localKey; this.send = send; this.nameOf = nameOf;
         }
 
         internal Game Game { get; }
         internal bool IsHost { get; }
+        /// <summary>This player's key: commands they issued keep their selection after running (ADR 0025).</summary>
+        internal PlayerKey LocalKey { get; }
         internal LockstepClientState State { get; } = new LockstepClientState();
         /// <summary>The speed in effect at the game's current tick (from the last speed command that ran).</summary>
         internal SessionSpeed Speed { get; private set; } = SessionSpeed.Paused;
@@ -123,6 +126,10 @@ namespace Multiplayer.Foundation.RimWorld
 
         internal void RequestTogglePause() => RequestSpeed(Speed == SessionSpeed.Paused ? ToTimeSpeed(LastRunning) : TimeSpeed.Paused);
 
+        /// <summary>A captured player action (ADR 0025), sent to the server for every player.</summary>
+        internal void SendCommand(ushort kind, byte[] payload) =>
+            send(MessageType.LockstepCommand, new LockstepCommand(kind, payload).ToPayload());
+
         internal void SendMarker(string text) =>
             send(MessageType.LockstepCommand, new LockstepCommand(LockstepCommandKind.Marker, LockstepCommandKind.MarkerText(text)).ToPayload());
 
@@ -133,8 +140,8 @@ namespace Multiplayer.Foundation.RimWorld
             string own = summaries.FirstOrDefault(s => s.Tick == desync.Tick).Summary ?? "(not kept)";
             Log.Warning("Multiplayer Foundation: lockstep desync at tick " + desync.Tick + " (" + desync.Players.Count +
                 " player(s) differ from the host); own state: " + own);
-            Messages.Message("Abweichung bei Tick " + desync.Tick + ": " + who + ". Spieleraktionen werden noch nicht geteilt (SYNC-002).",
-                MessageTypeDefOf.NegativeEvent, false);
+            Messages.Message("Abweichung bei Tick " + desync.Tick + ": " + who + ". Ursache: eine noch nicht geteilte Aktion oder ein " +
+                "Unterschied im Spiel (siehe Log).", MessageTypeDefOf.NegativeEvent, false);
         }
 
         private void RunTick(TickManager tickManager)
@@ -184,14 +191,19 @@ namespace Multiplayer.Foundation.RimWorld
                         Log.Message("Multiplayer Foundation: lockstep marker #" + command.Seq + " ran before tick " + command.Tick);
                         break;
                     default:
-                        // game commands come with SYNC-002; until then a known no-op on every player
-                        Log.Message("Multiplayer Foundation: lockstep command kind " + command.Kind + " is not supported yet; ignored before tick " + command.Tick);
+                        if (command.Kind >= LockstepCommandKind.FirstGameKind) LockstepCommands.Execute(command, this);
+                        else Log.Message("Multiplayer Foundation: lockstep command kind " + command.Kind + " is not supported; ignored before tick " + command.Tick);
                         break;
                 }
             }
             catch (ProtocolException error)
             {
                 Log.Error("Multiplayer Foundation: invalid lockstep command #" + command.Seq + ": " + error.Message);
+            }
+            catch (Exception error) when (command.Kind >= LockstepCommandKind.FirstGameKind)
+            {
+                // the same game code fails the same way for every player; the session goes on
+                Log.Error("Multiplayer Foundation: lockstep command #" + command.Seq + " (kind " + command.Kind + ") failed: " + error);
             }
             finally { Rand.PopState(); }
             CommandsRun++;

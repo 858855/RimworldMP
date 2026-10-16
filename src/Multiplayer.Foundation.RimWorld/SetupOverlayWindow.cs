@@ -23,7 +23,7 @@ namespace Multiplayer.Foundation.RimWorld
         }
 
         // Tall enough for the flag list during site selection (SETUP-003) and the lockstep lines in the game (SYNC-001).
-        public override Vector2 InitialSize => new Vector2(340f, 330f);
+        public override Vector2 InitialSize => new Vector2(360f, 380f);
 
         public override void PostOpen()
         {

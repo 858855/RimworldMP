@@ -21,7 +21,7 @@ namespace Multiplayer.Foundation.RimWorld
     /// - determinism: the same save loaded four times, N ticks each. With the per-tick seed, random draws between the
     ///   ticks (as UI code makes them) must not change any hash; without it they must (the control).
     /// </summary>
-    internal static class LockstepSelfTest
+    internal static partial class LockstepSelfTest
     {
         private const int DefaultTicks = 6000;
         private static readonly Stopwatch clock = new Stopwatch();
@@ -65,6 +65,7 @@ namespace Multiplayer.Foundation.RimWorld
             public int Found { get; set; }
             public int NotReady { get; set; }
             public int OffThread { get; set; }
+            public bool ScriptApplied { get; set; }
             public List<(int Tick, uint Iterations, int[] Calls)> Draws { get; } = new List<(int, uint, int[])>();
             public Dictionary<int, (GameStateHash.ThingRecord[] Things, Dictionary<int, string> Pawns)> Records { get; } =
                 new Dictionary<int, (GameStateHash.ThingRecord[], Dictionary<int, string>)>();
@@ -202,7 +203,7 @@ namespace Multiplayer.Foundation.RimWorld
             {
                 startTick = guestTick = guestHorizon = tm.TicksGame;
                 sequencer = new LockstepSequencer(Guid.NewGuid(), HostId, new[] { (HostId, HostKey), (GuestId, GuestKey) });
-                driver = new LockstepDriver(Current.Game, SessionSeed.FromSessionId("selftest"), true, Send,
+                driver = new LockstepDriver(Current.Game, SessionSeed.FromSessionId("selftest"), true, HostKey, Send,
                     key => key == HostKey ? "Test-Host" : "Test-Gast");
                 driver.CommandRan = (command, at) => ran.Add((command.Seq, command.Kind, command.Tick, at));
                 ran.Clear(); toGuest.Clear(); hostHashes.Clear(); violations = submitted = refused = 0; guestFrozen = wrongGuestHashes = false;
@@ -281,6 +282,10 @@ namespace Multiplayer.Foundation.RimWorld
                     Check("neverPastHorizon", violations == 0);
                     Check("noMissedCommands", d.MissedCommands == 0 && refused == 0);
                     results.Add("driver(ticks=" + d.TicksRun + " commands=" + d.CommandsRun + " submitted=" + submitted + ")");
+                    cmdStep = 0;
+                    Next(); return false;
+                case 11: // shared player actions (ADR 0025), while paused
+                    if (!RunCommands(d)) return false;
                     StopDriver();
                     return true;
             }
@@ -339,7 +344,7 @@ namespace Multiplayer.Foundation.RimWorld
             runStart = Find.TickManager.TicksGame;
             foreach (Pawn pawn in Find.Maps.SelectMany(m => m.mapPawns.AllPawnsSpawned)) result.StartCells[pawn.thingIDNumber] = pawn.Position;
             pathsBefore = (LockstepPathRequestPatch.Answered, LockstepPathRequestPatch.Found, LockstepPathRequestPatch.NotReady);
-            runDriver = new LockstepDriver(Current.Game, SessionSeed.FromSessionId("selftest"), true, (type, payload) =>
+            runDriver = new LockstepDriver(Current.Game, SessionSeed.FromSessionId("selftest"), true, HostKey, (type, payload) =>
             {
                 if (type != MessageType.StateHash) return;
                 StateHash hash = StateHash.Read(payload);
@@ -365,6 +370,9 @@ namespace Multiplayer.Foundation.RimWorld
                 new LockstepCommand(LockstepCommandKind.SetSpeed, LockstepCommandKind.Speed(SessionSpeed.Superfast))));
             runDriver.State.OnHorizon(new TickHorizon(runStart + ticks, SessionSpeed.Superfast, Guid.Empty, 0, -1));
             FoundationMod.Instance!.TestLockstep = runDriver;
+            // the same player actions at the same ticks in every run (ADR 0025); built once, with the test driver installed
+            if (runIndex == 0) BuildScript(Find.CurrentMap);
+            QueueScript(runDriver, runStart);
             runDriver.Start();
             runWatch.Restart(); stepAt = UnityEngine.Time.realtimeSinceStartup;
             stage = 5;
@@ -379,6 +387,7 @@ namespace Multiplayer.Foundation.RimWorld
                 if (Since < 900f) return false;
                 Check("runFinished", false); runIndex = runs.Count; diagnosed = true;
             }
+            current.ScriptApplied = ScriptApplied(Find.CurrentMap);
             d.Stop();
             FoundationMod.Instance!.TestLockstep = null;
             current.Ms = runWatch.ElapsedMilliseconds;
@@ -405,8 +414,9 @@ namespace Multiplayer.Foundation.RimWorld
             Check("controlDiffers", controlDiff >= 0);
             // the path patch must not stop the game: pawns move, every request is answered and ready at once
             Check("pawnsMove", finished[0].Moved > 0);
+            if (ticks >= 1500) Check("scriptApplied", finished[0].ScriptApplied && finished[1].ScriptApplied);
             if (!asyncPaths) Check("pathsAnswered", finished[0].Answered > 0 && finished.All(f => f.NotReady == 0));
-            results.Add("determinism(" + ticks + " ticks, " + a.Count + " hashes per run, asyncPaths=" + asyncPaths +
+            results.Add("determinism(" + ticks + " ticks, " + a.Count + " hashes per run, script " + script.Count + " commands, asyncPaths=" + asyncPaths +
                 ", visualIsolation=" + !LockstepVisualRandPatch.Disabled + " (" + LockstepVisualRandPatch.Isolated + " calls)" +
                 ", tickRates=" + (LockstepTickRatePatch.Disabled ? "vanilla" : "fixed (" + LockstepTickRatePatch.Forced + " changed)") +
                 ", ticksPerFrame=" + (ticksPerFrame == 0 ? "pacer" : ticksPerFrame.ToString()) +

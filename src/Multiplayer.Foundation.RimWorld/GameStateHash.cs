@@ -26,9 +26,10 @@ namespace Multiplayer.Foundation.RimWorld
             foreach (Map map in game.Maps.OrderBy(m => m.uniqueID))
             {
                 List<Thing> things = map.listerThings.AllThings;
-                int count = things.Count;
-                if (buffer.Length < count) buffer = new Thing[count + count / 2];
-                things.CopyTo(buffer);
+                if (buffer.Length < things.Count) buffer = new Thing[things.Count + things.Count / 2];
+                // things without an ID (motes) are view effects, not game state
+                int count = 0;
+                foreach (Thing thing in things) if (thing.def.HasThingIDNumber) buffer[count++] = thing;
                 Array.Sort(buffer, 0, count, ById);
                 hasher.Add(map.uniqueID); hasher.Add(count);
                 int pawns = 0;
@@ -42,12 +43,51 @@ namespace Multiplayer.Foundation.RimWorld
                     if (thing is Pawn pawn) { pawns++; AddPawn(hasher, pawn); }
                 }
                 Array.Clear(buffer, 0, count);
-                parts.Add("map " + map.uniqueID + ": " + count + " things, " + pawns + " pawns");
+                int designations = AddPlayerMarks(hasher, map);
+                parts.Add("map " + map.uniqueID + ": " + count + " things, " + pawns + " pawns, " + designations + " designations, " +
+                    map.zoneManager.AllZones.Count + " zones");
                 parts.AddRange(map.mapPawns.FreeColonistsSpawned.OrderBy(p => p.thingIDNumber)
-                    .Select(p => "colonist " + p.thingIDNumber + " at " + p.Position.x + "," + p.Position.z + " " + (p.CurJobDef?.defName ?? "no job")));
+                    .Select(p => "colonist " + p.thingIDNumber + " at " + p.Position.x + "," + p.Position.z + " " + (p.CurJobDef?.defName ?? "no job") +
+                        (p.Drafted ? " drafted" : "")));
             }
+            AddColonySettings(hasher, game);
             parts.Add("values " + hasher.Count);
             return (hasher.Value, string.Join("; ", parts));
+        }
+
+        // SYNC-002 (ADR 0025): what shared player actions change besides things: designations, zones, areas.
+        private static int AddPlayerMarks(StateHasher hasher, Map map)
+        {
+            var designations = map.designationManager.AllDesignations
+                .Select(d => (Def: (int)d.def.index, Thing: d.target.HasThing ? d.target.Thing.thingIDNumber : -1, d.target.Cell.x, d.target.Cell.z))
+                .OrderBy(d => d.Def).ThenBy(d => d.Thing).ThenBy(d => d.z).ThenBy(d => d.x).ToList();
+            hasher.Add(designations.Count);
+            foreach (var (def, thing, x, z) in designations) { hasher.Add(def); hasher.Add(thing); hasher.Add(x); hasher.Add(z); }
+            List<Zone> zones = map.zoneManager.AllZones;
+            hasher.Add(zones.Count);
+            foreach (Zone zone in zones.OrderBy(z => z.ID))
+            {
+                hasher.Add(zone.ID); hasher.Add(zone.Cells.Count);
+                hasher.Add(zone is Zone_Growing growing ? growing.GetPlantDefToGrow()?.index ?? -1 : -2);
+            }
+            List<Area> areas = map.areaManager.AllAreas;
+            hasher.Add(areas.Count);
+            foreach (Area area in areas.OrderBy(a => a.ID)) { hasher.Add(area.ID); hasher.Add(area.TrueCount); }
+            return designations.Count;
+        }
+
+        // Drafted, work priorities and schedule of every colonist, and the research project.
+        private static void AddColonySettings(StateHasher hasher, Game game)
+        {
+            List<WorkTypeDef> workTypes = DefDatabase<WorkTypeDef>.AllDefsListForReading;
+            foreach (Pawn pawn in game.Maps.SelectMany(m => m.mapPawns.FreeColonistsSpawned).OrderBy(p => p.thingIDNumber))
+            {
+                hasher.Add(pawn.thingIDNumber); hasher.Add(pawn.Drafted);
+                if (pawn.workSettings != null && pawn.workSettings.Initialized && pawn.workSettings.EverWork)
+                    foreach (WorkTypeDef work in workTypes) hasher.Add(pawn.workSettings.GetPriority(work));
+                if (pawn.timetable?.times != null) foreach (TimeAssignmentDef assignment in pawn.timetable.times) hasher.Add(assignment?.index ?? -1);
+            }
+            hasher.Add(Find.ResearchManager.GetProject(null)?.index ?? -1);
         }
 
         /// <summary>One thing's hashed values, compact enough to keep for every hash tick (self-test diagnosis).</summary>
@@ -79,7 +119,7 @@ namespace Multiplayer.Foundation.RimWorld
             var things = new List<ThingRecord>();
             var pawns = new Dictionary<int, string>();
             foreach (Map map in game.Maps)
-                foreach (Thing thing in map.listerThings.AllThings)
+                foreach (Thing thing in map.listerThings.AllThings.Where(t => t.def.HasThingIDNumber))
                 {
                     ulong pawnValue = 0;
                     if (thing is Pawn pawn)

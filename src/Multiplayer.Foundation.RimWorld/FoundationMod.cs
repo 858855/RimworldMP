@@ -144,7 +144,7 @@ namespace Multiplayer.Foundation.RimWorld
             MultiplayerSession? session = MultiplayerSession.ForCurrentGame;
             if (session == null || session.SessionId != lobby.Id.ToString("N")) return;
             LobbyView room = lobby;
-            lockstep = new LockstepDriver(Current.Game, SessionSeed.FromSessionId(session.SessionId), room.HostId == client.SessionId,
+            lockstep = new LockstepDriver(Current.Game, SessionSeed.FromSessionId(session.SessionId), room.HostId == client.SessionId, client.PlayerKey,
                 (type, payload) => SendBackground(new WireMessage(type, type == MessageType.LockstepCommand ? requestId++ : 0, payload)),
                 key => lobby?.Players.FirstOrDefault(p => p.Key == key)?.Name ?? "?");
             lockstep.Start();
@@ -801,9 +801,11 @@ namespace Multiplayer.Foundation.RimWorld
                 if (session != null)
                     foreach (var (pawnId, owner) in session.Owners)
                         if (owner == key) pawn = " – " + (colonists.FirstOrDefault(p => p.thingIDNumber == pawnId)?.Name?.ToStringShort ?? "?");
-                string line = player.Name + pawn + ": " + WorldStatusText(player.WorldStatus, lobby.Phase, out Color color);
+                // in the running game the load status is old news: name and pawn only (the long line was cut off)
+                Color color = Color.white;
+                string line = driver != null ? player.Name + pawn : player.Name + pawn + ": " + WorldStatusText(player.WorldStatus, lobby.Phase, out color);
                 GUI.color = color;
-                Widgets.Label(new Rect(inRect.x, y, inRect.width, 24f), line);
+                Widgets.Label(new Rect(inRect.x, y, inRect.width, 24f), line.Truncate(inRect.width));
                 GUI.color = Color.white;
                 y += 24f;
             }
@@ -847,13 +849,19 @@ namespace Multiplayer.Foundation.RimWorld
             else if (state.CheckedTick >= 0) Line("Prüfsummen gleich bis Tick " + state.CheckedTick, green);
             else Line("Prüfsummen: noch kein Vergleich", Color.white);
             if (driver.LastMarker.Length > 0) Line(driver.LastMarker, Color.white);
+            // ADR 0025: what is shared, what is not yet, and how many actions went out
             Text.Font = GameFont.Tiny;
+            Widgets.Label(new Rect(inRect.x, y, inRect.width, 30f),
+                "Geteilt: Einziehen, Rechtsklick-Befehle, Bezeichnungen, Bauen, Zonen, Bereiche, Verbieten, Prioritäten, Zeitplan, Forschung");
             GUI.color = yellow;
-            Widgets.Label(new Rect(inRect.x, y, inRect.width, 32f),
-                "Befehle wie Bauen, Zeichnen oder Einziehen werden noch nicht geteilt (SYNC-002): jede solche Aktion führt zur Abweichung.");
+            Widgets.Label(new Rect(inRect.x, y + 28f, inRect.width, 30f),
+                "Noch nicht: Rechnungen, Lager-Filter, Richtlinien, Medizin, Handel, Gebäude-Knöpfe" +
+                (LockstepCommands.NotShared > 0 ? " · zuletzt lokal: " + LockstepCommands.LastNotShared : ""));
             GUI.color = Color.white;
+            Widgets.Label(new Rect(inRect.x, y + 56f, inRect.width, 16f), "Aktionen gesendet: " + LockstepCommands.Sent +
+                " · ausgeführt: " + LockstepCommands.ExecutedEntries + (LockstepCommands.NotShared > 0 ? " · nur lokal: " + LockstepCommands.NotShared : ""));
             Text.Font = GameFont.Small;
-            return y + 34f;
+            return y + 74f;
         }
 
         // SETUP-004, host: claim the pawn shown on the vanilla page, mark yourself done, see who owns what.
@@ -1638,6 +1646,7 @@ namespace Multiplayer.Foundation.RimWorld
                 if (action.IsFaulted) status = "Aktion fehlgeschlagen: " + action.Exception?.GetBaseException().Message;
                 action = null;
             }
+            LockstepCommands.Flush(Lockstep); // what the player did last frame goes out first (ADR 0025)
             WorldSelfTest.TryStart();
             UpdateManifestAndTransfers();
             UpdateHostSetup();
