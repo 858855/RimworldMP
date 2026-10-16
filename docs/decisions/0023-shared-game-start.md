@@ -14,3 +14,4 @@
 - **Persistenz:** `MultiplayerSession` ist Teil des Spielstands; OWN-001 (Besitzanzeige) und späteres Fortsetzen bauen darauf auf. Ohne die Mod geladen, fehlt nur diese Komponente.
 - **Tests:** Lobby-, Hosting- und Protokolltests für die Regeln. Selbsttest im Spiel: frisches Host-Spiel mit `InitGameStart`, speichern, als Host neu laden, als Gast laden, Fingerabdruck gleich, Pause hält (keine Ticks in 2 s), 0 Fehler. Zwei-Spieler-Lauf: **offen**.
 - **Rollback:** Commits zurücknehmen; der letzte Start ist dann wieder gesperrt (Stand SETUP-004).
+- **Nachtrag 2026-10-16:** Der Hauptmenü-Befund gilt auch für den Host. Vanilla schließt die Figurenseite, während die Startanfrage beim Server liegt. Deshalb öffnet die Mod beim Anfragen das Multiplayer-Fenster und hält es offen, bis die Antwort kommt. Ohne `GameInitData` startet sie nicht und bricht die Einrichtung ab. Fehlerbild und Nachweis: `docs/verification/2026-10-16-start-keeps-setup.md`.
