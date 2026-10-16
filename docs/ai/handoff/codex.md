@@ -4,6 +4,17 @@
 - **Erste Aufgabe:** X1 `VER-001` (Rest) oder X2 Tick-Treiber; Liste in `ASSIGNMENTS.md`.
 - **Wünsche an Claude:** (noch keine)
 
+## X2 – Aufgabenvertrag und Ergebnis
+
+- **Branch/Basis:** `codex/tick-driver` von `main`/`e4501df`; `SYNC-001` und `SYNC-003` (Spielseite).
+- **Ziel:** Nach der Landung Tick `c+1` erst nach Befehlsübernahme und Freigabe durch `LockstepClient.MayRunTick(c)`; Pause/Tempo über den Koordinator; „Warte auf …“ anzeigen.
+- **Umfang/Nicht-Ziele:** Nur RimWorld-Adapter, eigene Übergabe, ADR 0040 und Prüfnachweis. Kein Koordinator-Code, keine Spielbefehls-Serializer (`SYNC-002`), kein vollständiger Zustands-Hash/Rand (`X3`).
+- **Abhängigkeiten:** `LockstepClient`/ADR 0030 auf `main`; `Playing` und gemeinsamer Save aus `SETUP-005`. `DET-001` bleibt offen.
+- **Umgesetzt:** `SessionTickDriver` verbindet den Verse-Tickpfad mit `LockstepClient`; die Harmony-Hooks bearbeiten Grenzbefehle, Tickfreigabe und Koordinator-Pause/-Tempo. Overlay zeigt Sitzungstick und Wartezustand. Fortschritt etwa 10/s und vorläufiger Kernhash alle 60 Ticks. Paketliste enthält `Session.dll` bereits.
+- **Prüfung:** Lokale 1.6-API per Reflection, Mod-Build ohne Warnungen, `Session.Tests` und `Client.Tests` bestanden; Mod-ZIP mit 10 Dateien einschließlich `Session.dll` geprüft. Details: `docs/verification/2026-10-16-codex-tick-driver.md`. Spieltest mit zwei Clients laut Projektstatus nicht möglich.
+- **Risiken:** Harmony-Reihenfolge, automatisch ausgelöste Vanilla-Pause, noch fehlender Ausführer für Spielbefehle. Design: `docs/decisions/0040-rimworld-tick-driver.md`.
+- **Offen / nächster Schritt:** X2 im Spiel mit zwei Clients prüfen, insbesondere Pause, Host-Tempo, langsamen Client, Tick-/Hash-Gleichheit und Disconnect. Danach X3 oder X4 auf eigenem `codex/…`-Branch von aktuellem `main` gemäß `ASSIGNMENTS.md`. `main` nicht ohne menschliche Freigabe mergen.
+
 ## Vorgeschichte der Spielseite (bisherige gemeinsame Übergabe, unverändert übernommen)
 
 - **Spielmodus (`feat/game-mode`, ADR 0031, MODE-001):**

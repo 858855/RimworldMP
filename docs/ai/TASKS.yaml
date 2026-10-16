@@ -932,16 +932,18 @@ tasks:
   acceptance:
   - 'Server-Unit-Tests für Reihenfolge und Flusskontrolle'
   - 'Zwei Clients laufen im Lockstep; der langsamste bestimmt das Tempo'
-  implementation: in_progress
-  verification: tests_passed
-  integration: merged
-  branch: feat/lockstep-session
-  base_branch: feat/mod-check-setup-ui
-  base_commit: 08e7f9b
+  implementation: implemented
+  verification: build_passed
+  integration: ready_for_human_review
+  branch: codex/tick-driver
+  base_branch: main
+  base_commit: e4501df
   evidence:
   - docs/verification/2026-10-16-lockstep-coordinator.md
   - docs/decisions/0030-lockstep-coordinator.md
-  blocker: 'Koordinator-Seite fertig und getestet (Sequencer, Horizont, Flusssteuerung, Pause/Geschwindigkeit, geordnete Zustellung; LockstepClient für den Tick-Treiber). Fehlt: Tick-Treiber im Spiel statt Dauerpause (Spielseite, zweiter Beitragender). DET-001 offen.'
+  - docs/verification/2026-10-16-codex-tick-driver.md
+  - docs/decisions/0040-rimworld-tick-driver.md
+  blocker: 'Spielseite gebaut, aber zwei echte RimWorld-Clients, Tick-Gleichlauf und DET-001 noch ungeprüft. Spielbefehle stoppen bis SYNC-002 fail-closed.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: SYNC-002
   title: 'Befehls-Pipeline und Serializer-Registry'
@@ -978,11 +980,16 @@ tasks:
   acceptance:
   - 'Pause, Geschwindigkeit und Richtlinien mit zwei Clients geprüft'
   - 'Vanilla-Geschwindigkeitstasten werden abgefangen'
-  implementation: planned
-  verification: not_tested
-  integration: not_submitted
-  branch: null
-  evidence: []
+  implementation: implemented
+  verification: build_passed
+  integration: ready_for_human_review
+  branch: codex/tick-driver
+  base_branch: main
+  base_commit: e4501df
+  evidence:
+  - docs/verification/2026-10-16-codex-tick-driver.md
+  - docs/decisions/0040-rimworld-tick-driver.md
+  blocker: 'Vanilla-Eingaben im Mod-Build abgefangen; Pause, Tempo und Host-Recht mit zwei RimWorld-Clients noch nicht laufzeitgeprüft.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: SYNC-004
   title: 'Tier-1-Abdeckung (Grundkolonie spielbar)'

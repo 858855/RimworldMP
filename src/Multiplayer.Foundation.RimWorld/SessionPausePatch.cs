@@ -3,45 +3,42 @@ using Verse;
 
 namespace Multiplayer.Foundation.RimWorld
 {
-    /// <summary>
-    /// SETUP-005: until lockstep exists (SYNC-001) the shared game stays paused for everyone (plan §7.7). Before each
-    /// frame's ticks the game is set back to paused; asking for another speed or toggling pause only shows why.
-    /// Resetting the speed alone is not enough: inside the update the game sometimes runs again (self-test 2026-10-15:
-    /// 50 of 239 frames), so <see cref="SessionPauseTickPatch"/> stops the tick itself.
-    /// Only while a multiplayer session runs; single-player games are untouched.
-    /// </summary>
+    /// <summary>Frames process commands even while paused; vanilla still owns tick timing.</summary>
     [HarmonyPatch(typeof(TickManager), nameof(TickManager.TickManagerUpdate))]
     internal static class SessionPauseUpdatePatch
     {
-        // Counted for the self-test: how often the check ran, how often it had to pause again, and how often the
-        // game was running again right after the update.
+        // Kept for the existing game self-test's pause probe.
         internal static int Calls, Resets, RunningAfter;
 
         private static void Prefix(TickManager __instance)
         {
             Calls++;
-            if (FoundationMod.Instance?.SessionPaused != true || __instance.Paused) return;
-            Resets++;
-            __instance.CurTimeSpeed = TimeSpeed.Paused;
+            if (FoundationMod.Instance?.PrepareSessionFrame(__instance) == true) Resets++;
         }
 
         private static void Postfix(TickManager __instance)
         {
+            FoundationMod.Instance?.RestoreSessionSpeed(__instance);
             if (FoundationMod.Instance?.SessionPaused == true && !__instance.Paused) RunningAfter++;
         }
     }
 
-    /// <summary>The hard stop: no game tick runs while the session is paused, whatever set the speed.</summary>
+    /// <summary>Hard boundary: no tick runs before its commands and coordinator horizon.</summary>
     [HarmonyPatch(typeof(TickManager), nameof(TickManager.DoSingleTick))]
     internal static class SessionPauseTickPatch
     {
         internal static int Blocked;
 
-        private static bool Prefix()
+        private static bool Prefix(TickManager __instance, out bool __state)
         {
-            if (FoundationMod.Instance?.SessionPaused != true) return true;
-            Blocked++;
-            return false;
+            __state = FoundationMod.Instance?.MayRunSessionTick(__instance) ?? true;
+            if (!__state) Blocked++;
+            return __state;
+        }
+
+        private static void Postfix(TickManager __instance, bool __state)
+        {
+            if (__state) FoundationMod.Instance?.AfterSessionTick(__instance);
         }
     }
 
@@ -50,9 +47,7 @@ namespace Multiplayer.Foundation.RimWorld
     {
         private static void Prefix(ref TimeSpeed value)
         {
-            if (value == TimeSpeed.Paused || FoundationMod.Instance?.SessionPaused != true) return;
-            value = TimeSpeed.Paused;
-            FoundationMod.Instance.NotifySessionPaused();
+            FoundationMod.Instance?.InterceptSessionSpeed(ref value);
         }
     }
 
@@ -61,9 +56,7 @@ namespace Multiplayer.Foundation.RimWorld
     {
         private static bool Prefix()
         {
-            if (FoundationMod.Instance?.SessionPaused != true) return true;
-            FoundationMod.Instance.NotifySessionPaused();
-            return false;
+            return FoundationMod.Instance?.InterceptSessionToggle() ?? true;
         }
     }
 }
