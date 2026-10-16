@@ -6,6 +6,7 @@
 
 - Draft/Undraft aus dem Spiel-UI wird als geplanter Befehl mit Karten- und Pawn-ID gesendet und an der gemeinsamen Tickgrenze ausgeführt. Fehlt die Figur beim Ausführen, wird der Befehl protokolliert und ausgelassen. Codec-Roundtrip und Mod-Build bestanden; das Verhalten in zwei laufenden RimWorld-Clients ist noch nicht geprüft. Weitere Spielaktionen bleiben offen.
 - Forbid/Unforbid verwendet nun denselben Befehlsweg mit Karten- und Thing-ID. Der Codec und die lokale 1.6-API wurden geprüft; die tatsächliche Erfassung im laufenden Spiel bleibt offen.
+- Ein einfacher Goto-Auftrag wird mit Zielzelle, JobTag und Queue-Flag geordnet übertragen. Noch nicht kodierte Spieleraufträge werden in der gemeinsamen Sitzung abgewiesen, damit sie nicht nur lokal wirken. Bewegung und Pfadsuche sind im Spiel weiterhin ungeprüft.
 
 ### Zeitgrenze beim Laden (Arbeitsbranch `claude/snapshot-timeout`)
 

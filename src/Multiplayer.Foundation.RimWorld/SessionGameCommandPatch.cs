@@ -1,6 +1,7 @@
 using HarmonyLib;
 using RimWorld;
 using Verse;
+using Verse.AI;
 
 namespace Multiplayer.Foundation.RimWorld
 {
@@ -19,5 +20,24 @@ namespace Multiplayer.Foundation.RimWorld
     {
         private static bool Prefix(Thing t, bool value) =>
             FoundationMod.Instance?.CaptureForbidden(t, value) ?? true;
+    }
+
+    /// <summary>Only a simple Goto order is encoded yet. Other UI orders stay blocked in shared games.</summary>
+    [HarmonyPatch(typeof(Pawn_JobTracker), nameof(Pawn_JobTracker.TryTakeOrderedJob),
+        new[] { typeof(Job), typeof(JobTag?), typeof(bool) })]
+    internal static class SessionOrderedJobPatch
+    {
+        private static readonly AccessTools.FieldRef<Pawn_JobTracker, Pawn> PawnOf =
+            AccessTools.FieldRefAccess<Pawn_JobTracker, Pawn>("pawn");
+
+        private static bool Prefix(Pawn_JobTracker __instance, Job job, JobTag? tag,
+            bool requestQueueing, ref bool __result)
+        {
+            FoundationMod? mod = FoundationMod.Instance;
+            if (mod == null) return true;
+            bool runOriginal = mod.CaptureOrderedJob(PawnOf(__instance), job, tag, requestQueueing, out bool accepted);
+            if (!runOriginal) __result = accepted;
+            return runOriginal;
+        }
     }
 }

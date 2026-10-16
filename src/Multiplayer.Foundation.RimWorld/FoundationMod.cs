@@ -14,6 +14,7 @@ using Multiplayer.Foundation.Protocol;
 using Steamworks;
 using UnityEngine;
 using Verse;
+using Verse.AI;
 
 namespace Multiplayer.Foundation.RimWorld
 {
@@ -218,6 +219,22 @@ namespace Multiplayer.Foundation.RimWorld
             byte[] data = GameCommandCodec.Forbid(thing.Map.uniqueID, thing.thingIDNumber, forbidden);
             if (!SendBackground(LockstepClient.CommandMessage(data)))
                 status = "Forbid-Befehl konnte nicht gesendet werden.";
+            return false;
+        }
+
+        internal bool CaptureOrderedJob(Pawn pawn, Job job, JobTag? tag, bool queued, out bool accepted)
+        {
+            accepted = false;
+            if (!SharedGame || lobby?.Phase != SetupPhase.Playing || GameCommandCodec.Executing ||
+                Event.current == null) return true;
+            if (tickDriver == null || tickDriver.Faulted || pawn.Map == null)
+            { status = "Spielauftrag konnte nicht gesendet werden."; return false; }
+            if (job == null || job.def != JobDefOf.Goto || job.targetA.HasThing)
+            { status = "Dieser Spielauftrag ist noch nicht für Multiplayer verfügbar."; return false; }
+            byte[] data = GameCommandCodec.Goto(pawn.Map.uniqueID, pawn.thingIDNumber,
+                job.targetA.Cell, tag, queued);
+            accepted = SendBackground(LockstepClient.CommandMessage(data));
+            if (!accepted) status = "Spielauftrag konnte nicht gesendet werden.";
             return false;
         }
 

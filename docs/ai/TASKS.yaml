@@ -969,7 +969,7 @@ tasks:
   evidence:
   - docs/decisions/0043-command-pipeline-first-action.md
   - docs/verification/2026-10-16-command-pipeline-first-action.md
-  blocker: 'Draft/Undraft und Forbid/Unforbid kodiert; übrige Referenztypen, Ordered Jobs, Designatoren und Zwei-Client-Spieltest fehlen.'
+  blocker: 'Draft/Undraft, Forbid/Unforbid und einfaches Goto kodiert; übrige Referenztypen, Ordered Jobs, Designatoren und Zwei-Client-Spieltest fehlen. Pfadsuche bleibt deterministisch ungeprüft.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: SYNC-003
   title: 'Geschwindigkeit und Pause'

@@ -25,3 +25,10 @@
 - `GameReferenceCodec` kodiert für beide Befehle Karten- und Thing-ID und löst die Referenz erst bei Ausführung gegen die aktuell geladene Karte auf. Fehlende Ziele bleiben ein protokollierter No-op; Welt-Pawns und weitere Referenzarten sind noch nicht unterstützt.
 - Nach der Umstellung erneut `DOTNET_BIN=/home/fabiok/.local/share/dotnet-rimworldmp/dotnet bash scripts/build-mod.sh`: Exit 0, 0 Warnungen, 0 Fehler.
 - Temporäres Reflection-Programm erneut ausgeführt: Exit 0 für Draft- und Forbid-Roundtrip (je 11 Byte) sowie abgeschnittene/ungültige Forbid-Payloads. Dies prüft den Codec, nicht den Spielzustand.
+
+## Einfacher Goto-Auftrag
+
+- **Lokale API-Prüfung:** `Pawn_JobTracker.TryTakeOrderedJob(Job job, JobTag? tag, bool requestQueueing)` ist öffentlich; privates `pawn`-Feld per Reflection bestätigt. `JobDefOf.Goto`, `JobMaker.MakeJob(JobDef, LocalTargetInfo)`, `LocalTargetInfo(IntVec3)` und `IntVec3`-Koordinaten sind in der installierten 1.6-Assembly vorhanden.
+- **Build:** Erster `build-mod.sh`-Lauf Exit 1, weil `pawn` privat ist und die Nullable-Harmony-Abfrage `accepted` nicht sicher initialisierte. Nach `AccessTools.FieldRefAccess` und expliziter Instanzprüfung zweiter Lauf Exit 0, 0 Warnungen, 0 Fehler.
+- **Codec:** Temporäres Reflection-Programm `dotnet run --project /tmp/rimworld-api-inspect/Inspect.csproj --no-restore`: erster Lauf Exit 134 wegen `Enum.IsDefined` mit `int` statt dem lokalen `byte`-Basistyp von `JobTag`. Nach Korrektur Exit 0: Goto-Payload mit Zelle (3,0,4), `DraftedOrder` und Queue-Flag roundtrip-geprüft; abgeschnittene Daten und ungültiger Tag abgewiesen.
+- **Grenze:** Keine RimWorld-Instanz gestartet. Ob die Benutzeroberfläche den Hook trifft, der Auftrag wirklich ausgeführt wird und die Pfadsuche auf zwei Clients gleich bleibt, ist offen. Andere geordnete UI-Jobs werden bis zu ihrer Kodierung abgewiesen.

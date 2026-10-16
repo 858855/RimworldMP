@@ -2,6 +2,7 @@ using System;
 using Multiplayer.Foundation.Protocol;
 using RimWorld;
 using Verse;
+using Verse.AI;
 
 namespace Multiplayer.Foundation.RimWorld
 {
@@ -11,6 +12,7 @@ namespace Multiplayer.Foundation.RimWorld
         private const byte Version = 1;
         private const byte SetDraft = 1;
         private const byte SetForbidden = 2;
+        private const byte OrderedGoto = 3;
 
         [ThreadStatic] private static bool executing;
         internal static bool Executing => executing;
@@ -57,6 +59,42 @@ namespace Multiplayer.Foundation.RimWorld
             return (mapId, thingId, forbidden);
         }
 
+        internal static byte[] Goto(int mapId, int pawnId, IntVec3 cell, JobTag? tag, bool queued)
+        {
+            var writer = new PayloadWriter();
+            writer.WriteByte(Version);
+            writer.WriteByte(OrderedGoto);
+            GameReferenceCodec.WriteThing(writer, mapId, pawnId);
+            writer.WriteUInt32(unchecked((uint)cell.x));
+            writer.WriteUInt32(unchecked((uint)cell.y));
+            writer.WriteUInt32(unchecked((uint)cell.z));
+            writer.WriteBool(tag.HasValue);
+            if (tag.HasValue) writer.WriteUInt32(unchecked((uint)tag.Value));
+            writer.WriteBool(queued);
+            return writer.ToArray();
+        }
+
+        internal static (int MapId, int PawnId, IntVec3 Cell, JobTag? Tag, bool Queued) ReadGoto(byte[] data)
+        {
+            var reader = new PayloadReader(data);
+            if (reader.ReadByte() != Version || reader.ReadByte() != OrderedGoto)
+                throw new ProtocolException("Unbekannter Spielbefehl oder Codec-Version.");
+            var (mapId, pawnId) = GameReferenceCodec.ReadThing(reader);
+            var cell = new IntVec3(unchecked((int)reader.ReadUInt32()), unchecked((int)reader.ReadUInt32()),
+                unchecked((int)reader.ReadUInt32()));
+            JobTag? tag = null;
+            if (reader.ReadBool())
+            {
+                uint raw = reader.ReadUInt32();
+                if (raw > byte.MaxValue || !Enum.IsDefined(typeof(JobTag), (byte)raw))
+                    throw new ProtocolException("Ungültiger JobTag.");
+                tag = (JobTag)raw;
+            }
+            bool queued = reader.ReadBool();
+            reader.EnsureComplete();
+            return (mapId, pawnId, cell, tag, queued);
+        }
+
         internal static void Execute(ScheduledCommand command)
         {
             if (command.Data.Length < 2 || command.Data[0] != Version)
@@ -72,6 +110,21 @@ namespace Multiplayer.Foundation.RimWorld
                 }
                 executing = true;
                 try { ForbidUtility.SetForbidden(thing, forbidden, false); }
+                finally { executing = false; }
+                return;
+            }
+            if (command.Data[1] == OrderedGoto)
+            {
+                var (gotoMapId, gotoPawnId, cell, tag, queued) = ReadGoto(command.Data);
+                Pawn? orderedPawn = GameReferenceCodec.ResolveThing(gotoMapId, gotoPawnId) as Pawn;
+                if (orderedPawn?.jobs == null || orderedPawn.Map == null || !cell.InBounds(orderedPawn.Map))
+                {
+                    Log.Warning("Multiplayer Foundation: Goto-Befehl ohne gültigen Pawn, Map oder Ziel als No-op ausgeführt.");
+                    return;
+                }
+                Job job = JobMaker.MakeJob(JobDefOf.Goto, new LocalTargetInfo(cell));
+                executing = true;
+                try { orderedPawn.jobs.TryTakeOrderedJob(job, tag, queued); }
                 finally { executing = false; }
                 return;
             }
