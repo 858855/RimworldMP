@@ -49,7 +49,28 @@ CheckCall("RimWorld.Storyteller", "get_AllIncidentTargets", "Verse.Find", "get_M
 CheckCall("RimWorld.Storyteller", "get_AllIncidentTargets", "Verse.Find", "get_WorldObjects");
 CheckCall("RimWorld.IncidentQueue", "IncidentQueueTick", "Verse.Find", "get_Storyteller");
 Console.WriteLine("PASS: vanilla tick, global incident targets and global queued-incident owner paths confirmed.");
+PrintSurface("RimWorld.Storyteller", "StorytellerTick", "TryFire", "get_AllIncidentTargets", "ExposeData");
+PrintSurface("RimWorld.IncidentQueue", "IncidentQueueTick", "ExposeData");
 return 0;
+
+void PrintSurface(string typeName, params string[] methodNames)
+{
+    Type type = game.GetType(typeName, throwOnError: true)!;
+    const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
+    foreach (string name in methodNames)
+    {
+        MethodInfo[] matches = type.GetMethods(flags)
+            .Where(candidate => candidate.DeclaringType == type && candidate.Name == name).ToArray();
+        if (matches.Length == 0) throw new InvalidOperationException($"Missing method {typeName}.{name}.");
+        foreach (MethodInfo method in matches)
+            Console.WriteLine("SURFACE: " + method);
+    }
+    if (typeName == "RimWorld.Storyteller")
+    {
+        foreach (ConstructorInfo constructor in type.GetConstructors(flags))
+            Console.WriteLine("SURFACE: " + constructor);
+    }
+}
 
 void CheckCall(string typeName, string methodName, string calleeType, string calleeName)
 {

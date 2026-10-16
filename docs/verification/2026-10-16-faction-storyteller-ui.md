@@ -15,5 +15,6 @@
 | `/home/fabiok/.local/share/dotnet-rimworldmp/dotnet run --project tests/Hosting.Tests/Hosting.Tests.csproj -c Release --nologo` | Exit 0; Nachrichten 96/97, Server-Routing, Ablehnungen und Reconnect bestanden. |
 | `python3 scripts/validate_project_state.py` | Exit 0; 22 Pflichtdateien, 64 Aufgaben, Status, Abhängigkeiten und Referenzen geprüft. |
 | `git diff --check` | Exit 0; keine Whitespace-Fehler. |
+| `/home/fabiok/.local/share/dotnet-rimworldmp/dotnet run --project scripts/faction-storyteller-probe/faction-storyteller-probe.csproj -c Release --no-launch-profile -- /mnt/Spiele_1/SteamLibrary/steamapps/common/RimWorld/RimWorldLinux_Data/Managed src/Multiplayer.Foundation.RimWorld/bin/Release/netstandard2.1/Multiplayer.Foundation.RimWorld.dll` | Exit 0; 51 Difficulty-Felder und globale Vanilla-Aufrufpfade bestätigt; Signaturen von `StorytellerTick`, `TryFire(FiringIncident, bool)`, `AllIncidentTargets`, `IncidentQueueTick`, `ExposeData` und drei Storyteller-Konstruktoren ausgegeben. Kein Gameplay-Test. |
 
 **Nicht geprüft:** Klickpfad in laufendem RimWorld, tatsächlicher Save/Load der neuen Fraktionsdaten, mehrere Storyteller im Tick, Ereignisziele und zwei Spielclients. Die Tests prüfen den Vertrag und Server, nicht das UI zur Laufzeit. Der produktive Fraktionsstart ist wegen FACTION-001 und Incident-Isolation noch nicht freigegeben.
