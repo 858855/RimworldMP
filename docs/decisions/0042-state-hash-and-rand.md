@@ -1,6 +1,6 @@
 # ADR 0042 – Kanonischer Zustands-Hash und Rand je Tick
 
-- **Status:** umgesetzt, Laufzeit noch ungeprüft auf `codex/state-hash`; RimWorld 1.6.4871 rev598, Unity/Mono. Plan §7.4 und §7.9; `DESYNC-001` (Spielseite).
+- **Status:** umgesetzt, Laufzeit noch ungeprüft auf `codex/resync-game`; RimWorld 1.6.4871 rev598, Unity/Mono. Plan §7.4 und §7.9; `DESYNC-001` (Spielseite).
 - **Ziel:** UI- und Frame-Zufall von replizierten Ticks trennen und alle im Plan genannten Kernfelder in den Vergleich aufnehmen.
 - **Klassen:** `SessionRandom`, `SessionStateHash`, `SessionTickDriver`, Harmony-Hooks in `SessionPausePatch`.
 - **Rand:** Vor Tick `c+1` wird `Verse.Rand.PushState(FNV-1a(Lobby-GUID, c+1, Tick-Marker))` aufgerufen; nach dem Vanilla-Tick `PopState`. Bei Exception räumt ein Harmony-Finalizer auf. Für den späteren `SYNC-002`-Ausführer liegen `BeginCommandRandom(boundary, sequence)` und `EndCommandRandom()` mit eigenem Marker bereit. Diese Schnittstelle ist noch nicht mit Spielbefehlen verbunden.

@@ -12,6 +12,7 @@ namespace Multiplayer.Foundation.RimWorld
     {
         private readonly LockstepClient lockstep;
         private readonly Action<IReadOnlyList<ScheduledCommand>> saveAtBoundary;
+        private readonly Guid localSession;
         private readonly int landingTicksGame;
         private readonly SessionRandom random;
         private int lastHashTick;
@@ -22,10 +23,11 @@ namespace Multiplayer.Foundation.RimWorld
         private bool tickRandomActive;
         private int currentTick;
 
-        internal SessionTickDriver(Guid lobbyId, int landingTicksGame, Action<IReadOnlyList<ScheduledCommand>> saveAtBoundary,
+        internal SessionTickDriver(Guid lobbyId, Guid localSession, int landingTicksGame, Action<IReadOnlyList<ScheduledCommand>> saveAtBoundary,
             JoinSnapshot? join = null)
         {
-            LobbyId = lobbyId; this.landingTicksGame = landingTicksGame; this.saveAtBoundary = saveAtBoundary;
+            LobbyId = lobbyId; this.localSession = localSession;
+            this.landingTicksGame = landingTicksGame; this.saveAtBoundary = saveAtBoundary;
             lockstep = join == null ? new LockstepClient() : LockstepClient.ForJoin(join);
             random = new SessionRandom(lobbyId);
             catchingUp = join != null;
@@ -54,7 +56,7 @@ namespace Multiplayer.Foundation.RimWorld
             if (Faulted) return;
             lockstep.Receive(message);
             if (message.Type == MessageType.DesyncDetected)
-                awaitingResync = true;
+                awaitingResync = LockstepPayloads.ReadDesync(message.Payload).Sessions.Contains(localSession);
         }
 
         internal void Stop(string reason) { Faulted = true; Failure = reason; }

@@ -2,16 +2,16 @@
 
 - **Bahn:** siehe `docs/ai/ASSIGNMENTS.md`. Branch-Präfix `codex/`, ADR 0040–0049, Nachrichtencodes 80–95. Arbeitsverzeichnis `/mnt/Arbeit/Git Projekte/RimworldMP`.
 - **Erste Aufgabe:** X1 `VER-001` (Rest) oder X2 Tick-Treiber; Liste in `ASSIGNMENTS.md`.
-- **Wünsche an Claude:** Für C2 bitte die Reihenfolge von `DesyncDetected`, Reparatur-`JoinSnapshot`, `TickHorizon` und folgenden `ScheduledCommand`-Nachrichten sowie den Umgang mit fehlgeschlagenem Snapshot/Neuladen festlegen. Die Spielseite setzt `LockstepClient.ForJoin` erst nach dem Laden; der Sender braucht bis dahin eine klare Puffergrenze.
+- **Wünsche an Claude:** C2 liegt nun auf `origin/claude/resync` (ADR 0033); offene Anschlussfrage: zeitlich begrenzte Wiederholung oder Abbruch, wenn `SnapshotLoaded` wegen Ladefehler oder Transportausfall ausbleibt. Die Spielseite hält dann weiterhin an.
 
 ## Aktuell – ADR 0032 auf Spielseite und X3
 
-- **Branch/Basis:** `codex/state-hash` von `origin/claude/save-join` @ `2e6b77d`; X2 mit Cherry-Picks `3e93df0`, `6de8e65`. Damit abhängig von zwei noch nicht gemergten Bahnen. `codex/tick-driver` @ `19b3bf7` wurde auf `origin` gepusht; `codex/state-hash` bleibt lokal bis zu eigener Push-Freigabe.
+- **Branch/Basis:** `codex/resync-game` von `origin/claude/resync` @ `bd4c98e` (enthält C1 @ `2e6b77d`); X2-Cherry-Picks `18f9627`, `e26d2ef`, X3/Save/Join-Cherry-Pick `7c4e76a`. Abhängig von Claudes ungemergtem C1/C2 und X2. `codex/tick-driver` @ `19b3bf7` wurde auf `origin` gepusht; die beiden Folgebranches bleiben lokal bis zu eigener Push-Freigabe.
 - **Aufgabenvertrag:** `SAVE-003`, `JOIN-002`, `DESYNC-001` (Spielseite). Ziel: Save-Befehle und Join-Snapshots im Verse-Spielpfad ausführen; Zustand gemäß Plan §7.9 hashen; `Rand` nach §7.4 isolieren. Nicht-Ziele: Spielbefehle (`SYNC-002`), C2-Koordinator, vollständige modübergreifende Determinismus-Zusage.
-- **Umfang:** Nur `src/Multiplayer.Foundation.RimWorld/`, eigene Docs/Task-Einträge. Nach Save-Befehl wartet der Tick-Treiber auf die geschriebene Datei; Host versendet gezielt `TransferKind.Snapshot`. Joiner lädt die Datei, nutzt `ForJoin`, überspringt den ersten teilweisen Hash-Abschnitt und holt mit `Ultrafast` bis zum Horizont auf. `DesyncDetected` sperrt Ticks bis zu einem neuen Snapshot. Vanilla-Autosave wird während `Playing` unterdrückt.
+- **Umfang:** Nur `src/Multiplayer.Foundation.RimWorld/`, eigene Docs/Task-Einträge. Nach Save-Befehl wartet der Tick-Treiber auf die geschriebene Datei; Host versendet gezielt `TransferKind.Snapshot`. Joiner lädt die Datei, nutzt `ForJoin`, überspringt den ersten teilweisen Hash-Abschnitt, bestätigt `SnapshotLoaded` und holt mit `Ultrafast` bis zum Horizont auf. Bei `DesyncDetected` wartet nur ein abweichender Client auf den Reparatur-Snapshot; unbetroffene folgen der Koordinator-Pause. `DesyncResolved`/`ResyncGaveUp` erscheinen als Status. Vanilla-Autosave wird während `Playing` unterdrückt.
 - **X3:** `SessionRandom` setzt `Verse.Rand` pro Tick und bietet einen Command-Scope für X4. `SessionStateHash` erfasst Dinge, Pawn-Jobs/Health/Needs, Faction-Goodwill, Quest-State, Rand-Ziehungen. ADR 0041/0042; Prüfprotokoll `docs/verification/2026-10-16-codex-save-join-hash.md`.
 - **Prüfstrategie/Ergebnis:** Lokale 1.6.4871 rev598-API per Reflection/IL, Mod-Build, `Session.Tests`, `Hosting.Tests`, Dokumentationsvalidator. Kein RimWorld-Zwei-Client-Test. Die Testprotokolle sind für tatsächlich ausgeführte Befehle maßgeblich.
-- **Risiken/Nächster Schritt:** Save/Load und Harmony unter realer Spiel-Last prüfen; im ersten Zwei-Client-Test Rand-Desync erwarten und ersten abweichenden Zustand protokollieren. C2-Reparatur nach Claudes Protokoll anschließen. Danach X4 Spielbefehle. `main` nicht ohne neue menschliche Merge-Freigabe verändern.
+- **Risiken/Nächster Schritt:** Save/Load und Harmony unter realer Spiel-Last prüfen; im ersten Zwei-Client-Test Rand-Desync erwarten und ersten abweichenden Zustand protokollieren. Insbesondere C2-Snapshot und automatische Fortsetzung prüfen. Danach X4 Spielbefehle. `main` nicht ohne neue menschliche Merge-Freigabe verändern.
 
 ## X2 – Aufgabenvertrag und Ergebnis
 

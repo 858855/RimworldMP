@@ -14,10 +14,11 @@
 - Weicht ein Spiel dreimal hintereinander ab, gibt der Koordinator auf und lässt die Zeit angehalten; der Host entscheidet.
 - Im Spiel noch nicht aktiv: Neuladen und Anzeigen gehören zur Spielseite.
 
-### Spielseite für Save/Join und Zustands-Hash (lokaler Arbeitsbranch `codex/state-hash`)
+### Spielseite für Save/Join, C2-Reparatur und Zustands-Hash (lokaler Arbeitsbranch `codex/resync-game`)
 
 - Geplante Speicherbefehle unterbrechen den Gleichlauf nicht mehr. Alle Spieler speichern am selben Tick; der Host kann seinen Stand als Snapshot gezielt an einen neuen Spieler senden. Der neue Spieler lädt ihn, holt auf und zeigt seinen Fortschritt an. Nach einer Desync-Meldung bleibt ein Neuladen möglich.
 - Die Spielzufallsfolge wird je gemeinsamem Tick neu gesetzt. Der Vergleichshash berücksichtigt nun die im Entwicklungsplan genannten Dinge, Pawns, Fraktionen und Quests sowie die Rand-Ziehungen. Vanilla-Autosaves außerhalb der Koordinator-Regel sind während der Sitzung abgeschaltet.
+- Nach dem Laden bestätigt der Client den Snapshot; nur betroffene Spieler warten bei einer Desync-Meldung auf die Reparatur. Erfolg und Abbruch der Reparatur werden angezeigt.
 - Der Mod-Build und spielunabhängige Koordinator-/Host-Tests bestanden. Save, Join, Wiederverbindung, C2-Reparatur und Hash-Gleichheit in zwei RimWorld-Instanzen sind noch nicht geprüft.
 
 ### Speichern und Beitritt im laufenden Spiel (Arbeitsbranch `claude/save-join`, SAVE-001/JOIN-001)

@@ -113,6 +113,7 @@ namespace Multiplayer.Foundation.RimWorld
         private bool applyingSessionSpeed;
         private bool? requestedPause;
         private byte? requestedSpeed;
+        private bool saveRequested;
         internal bool HostSetupActive => hostSetupActive;
         internal bool GuestSiteMapActive => guestSiteMapActive;
 
@@ -149,7 +150,8 @@ namespace Multiplayer.Foundation.RimWorld
             MultiplayerSession? session = MultiplayerSession.ForCurrentGame;
             if (session?.Active != true || session.SessionId != lobby.Id.ToString("N")) return false;
             JoinSnapshot? join = pendingJoinSnapshot;
-            tickDriver = new SessionTickDriver(lobby.Id, manager.TicksGame - (join?.Boundary ?? 0), SaveAtBoundary, join);
+            tickDriver = new SessionTickDriver(lobby.Id, client!.SessionId,
+                manager.TicksGame - (join?.Boundary ?? 0), SaveAtBoundary, join);
             pendingJoinSnapshot = null;
             joinSnapshotReady = false;
             try
@@ -174,17 +176,18 @@ namespace Multiplayer.Foundation.RimWorld
         {
             if (lobby == null || client == null || scheduledSaveFile != null)
                 throw new InvalidOperationException("Ein koordiniertes Speichern läuft bereits oder die Lobby fehlt.");
+            saveRequested = false;
             snapshotRecipients.Clear();
             foreach (ScheduledCommand command in commands)
             {
-                if (command.Data.Length % 16 != 0 || command.Data.Length > 16 * 64)
+                if (command.Data.Length > 16 * 64)
                     throw new ProtocolException("Ungültige Empfängerliste für den Snapshot.");
-                for (int offset = 0; offset < command.Data.Length; offset += 16)
+                foreach (Guid recipient in LockstepPayloads.SaveTargets(command.Data))
                 {
-                    var bytes = new byte[16];
-                    Buffer.BlockCopy(command.Data, offset, bytes, 0, 16);
-                    Guid recipient = new Guid(bytes);
                     if (recipient == Guid.Empty) throw new ProtocolException("Leerer Snapshot-Empfänger.");
+                    // C2: an affected player waits for the host's copy and must not save its diverged state.
+                    if (recipient == client.SessionId && lobby.HostId != client.SessionId)
+                    { tickDriver?.FinishSave(); return; }
                     if (lobby.HostId == client.SessionId && !snapshotRecipients.Contains(recipient)) snapshotRecipients.Enqueue(recipient);
                 }
             }
@@ -270,7 +273,8 @@ namespace Multiplayer.Foundation.RimWorld
 
         internal void AfterSessionTick(TickManager manager)
         {
-            if (!SharedGame || tickDriver == null) return;
+            if (tickDriver == null) return;
+            if (!SharedGame) { tickDriver.AbortTickRandom(); return; }
             try
             {
                 tickDriver.EndTick(manager);
@@ -280,7 +284,7 @@ namespace Multiplayer.Foundation.RimWorld
                 ReportTickProgress(manager);
             }
             catch (Exception error)
-            { StopTickDriver("Tick-Bericht fehlgeschlagen: " + error.Message); }
+            { tickDriver.AbortTickRandom(); StopTickDriver("Tick-Bericht fehlgeschlagen: " + error.Message); }
         }
 
         internal void AbortSessionTick(Exception error)
@@ -324,6 +328,12 @@ namespace Multiplayer.Foundation.RimWorld
                 bool desired = value == 1;
                 if (tickDriver.Paused == desired || requestedPause == desired) return;
                 if (SendBackground(LockstepClient.ControlMessage(kind, value))) requestedPause = desired;
+            }
+            else if (kind == ScheduledKind.Save)
+            {
+                if (lobby?.HostId != client?.SessionId) { status = "Nur der Host darf gemeinsam speichern."; return; }
+                if (!tickDriver.SavePending && !saveRequested && SendBackground(LockstepClient.ControlMessage(kind, 0)))
+                    saveRequested = true;
             }
             else
             {
@@ -1006,6 +1016,9 @@ namespace Multiplayer.Foundation.RimWorld
                 y += 24f;
             }
             if (Widgets.ButtonText(new Rect(inRect.x, inRect.yMax - 30f, 140f, 28f), "Chat / Lobby")) OpenWindow();
+            if (isHost && lobby.Phase == SetupPhase.Playing &&
+                Widgets.ButtonText(new Rect(inRect.x + 150f, inRect.yMax - 64f, 160f, 28f), "Gemeinsam speichern"))
+                RequestControl(ScheduledKind.Save, 0);
             if (Widgets.ButtonText(new Rect(inRect.x + 150f, inRect.yMax - 30f, 160f, 28f), isHost ? "Sitzung beenden" : "Sitzung verlassen"))
             {
                 if (isHost) ConfirmAbort();
@@ -1508,7 +1521,9 @@ namespace Multiplayer.Foundation.RimWorld
                 joinSnapshotLoading = false;
                 joinSnapshotReady = true;
                 gameText = "Snapshot geladen; Gleichlauf wird aufgeholt …";
-                TryStartTickDriver(Find.TickManager);
+                if (!TryStartTickDriver(Find.TickManager) || tickDriver?.Faulted == true ||
+                    !SendBackground(LockstepClient.SnapshotLoadedMessage()))
+                    StopTickDriver("Snapshot geladen, aber die Bestätigung an den Koordinator schlug fehl.");
                 return;
             }
             Find.TickManager.CurTimeSpeed = TimeSpeed.Paused;
@@ -1526,7 +1541,8 @@ namespace Multiplayer.Foundation.RimWorld
 
         private void ResetGame()
         {
-            tickDriver = null; pendingTickMessages.Clear(); requestedPause = null; requestedSpeed = null;
+            tickDriver?.AbortTickRandom();
+            tickDriver = null; pendingTickMessages.Clear(); requestedPause = null; requestedSpeed = null; saveRequested = false;
             pendingJoinSnapshot = null; joinSnapshotLoading = false; joinSnapshotReady = false;
             scheduledSaveFile = null; snapshotRecipients.Clear(); snapshotQueue.Clear(); snapshotUpload = null; snapshotDownload = null;
             startRequested = false; allowGameStart = false; resendGame = false; startOwners = null; startPlayers = null;
@@ -2011,6 +2027,16 @@ namespace Multiplayer.Foundation.RimWorld
                             if (synced == client?.SessionId)
                             { tickDriver?.MarkSynced(); status = "Gemeinsamer Tick erreicht."; }
                             break;
+                        case MessageType.DesyncResolved:
+                            status = "Desync behoben (Tick " + LockstepPayloads.ReadTickPayload(message.Payload) + ").";
+                            break;
+                        case MessageType.ResyncGaveUp:
+                            var gaveUp = LockstepPayloads.ReadDesync(message.Payload);
+                            string names = string.Join(", ", gaveUp.Sessions.Select(id =>
+                                lobby?.Players.FirstOrDefault(p => p.Id == id)?.Name ?? "unbekannt"));
+                            status = "Desync-Reparatur nach Tick " + gaveUp.Tick + " aufgegeben: " + names;
+                            Messages.Message(status, MessageTypeDefOf.RejectInput, false);
+                            break;
                         case MessageType.ModManifestRequest:
                         case MessageType.TransferBegin:
                         case MessageType.TransferChunk:
@@ -2021,7 +2047,7 @@ namespace Multiplayer.Foundation.RimWorld
                             var reader = new PayloadReader(message.Payload);
                             byte code = reader.ReadByte(); string reason = reader.ReadString(); reader.EnsureComplete();
                             advancePending = false;
-                            requestedPause = null; requestedSpeed = null;
+                            requestedPause = null; requestedSpeed = null; saveRequested = false;
                             if (startRequested)
                             {
                                 startRequested = false;

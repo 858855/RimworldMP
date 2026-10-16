@@ -1047,9 +1047,9 @@ tasks:
   implementation: in_progress
   verification: build_passed
   integration: not_submitted
-  branch: codex/state-hash
-  base_branch: claude/save-join
-  base_commit: 2e6b77d
+  branch: codex/resync-game
+  base_branch: claude/resync
+  base_commit: bd4c98e
   evidence:
   - docs/verification/2026-10-16-lockstep-coordinator.md
   - docs/decisions/0030-lockstep-coordinator.md
@@ -1429,9 +1429,9 @@ tasks:
   implementation: in_progress
   verification: build_passed
   integration: not_submitted
-  branch: codex/state-hash
-  base_branch: claude/save-join
-  base_commit: 2e6b77d
+  branch: codex/resync-game
+  base_branch: claude/resync
+  base_commit: bd4c98e
   evidence:
   - docs/decisions/0041-save-and-join-game-adapter.md
   - docs/verification/2026-10-16-codex-save-join-hash.md
@@ -1454,9 +1454,9 @@ tasks:
   implementation: in_progress
   verification: build_passed
   integration: not_submitted
-  branch: codex/state-hash
-  base_branch: claude/save-join
-  base_commit: 2e6b77d
+  branch: codex/resync-game
+  base_branch: claude/resync
+  base_commit: bd4c98e
   evidence:
   - docs/decisions/0041-save-and-join-game-adapter.md
   - docs/verification/2026-10-16-codex-save-join-hash.md
