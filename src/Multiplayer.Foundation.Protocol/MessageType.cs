@@ -62,6 +62,9 @@ namespace Multiplayer.Foundation.Protocol
         VoteOpen = 76,
         VoteCast = 77,
         VoteClose = 78,
-        VoteState = 79
+        VoteState = 79,
+        // Claude lane, second range 96-111 (user, 2026-10-16). FACTION-004 (ADR 0037): Factions mode storytellers.
+        FactionOptions = 96,
+        StorytellerChoice = 97
     }
 }

@@ -1,6 +1,6 @@
 # Übergabe Claude (Koordinator und Protokoll)
 
-- **Bahn:** siehe `docs/ai/ASSIGNMENTS.md`. Branch-Präfix `claude/`, ADR 0032–0039, Nachrichtencodes 71–79. Worktree `/mnt/Arbeit/Git Projekte/RimworldMP-claude`.
+- **Bahn:** siehe `docs/ai/ASSIGNMENTS.md`. Branch-Präfix `claude/`, ADR 0032–0039, Nachrichtencodes 71–79 und 96–111 (zweiter Bereich, Benutzer 2026-10-16; belegt 96–97). Worktree `/mnt/Arbeit/Git Projekte/RimworldMP-claude`.
 - **Stand auf `main` (`85af3a9`):**
   - Chunk-Kanal (ADR 0014), PlayerKey (ADR 0016), Setup-Regeln (ADR 0017).
   - Lockstep-Koordinator (ADR 0030): `LockstepSession`, `LockstepClient`, `LockstepHost`, `OrderedOutbox`; Codes 64–70.
@@ -19,11 +19,33 @@
     - Der Host sendet `FactionOptions`: gemeinsame `DifficultyDef` und wählbare `StorytellerDef`s.
     - Jeder Spieler wählt mit `StorytellerChoice` den Erzähler seiner Fraktion und meldet sich fertig.
     - Weiter geht es erst, wenn alle gewählt haben und fertig sind.
-  - **Gesperrt:** Der Fraktionsstart bleibt abgelehnt. Nur `new LobbyRegistry(…, factionsSetupEnabled: true)` öffnet ihn, für Tests; der Schalter ist nicht mit `HostConfig` verbunden.
-  - **Offene Codes (Abstimmung nötig, noch nicht belegt):** `FactionOptions` und `StorytellerChoice` brauchen je einen C→S-Code. Vorschlag: neuer Claude-Bereich **96–111**, davon 96 und 97. Begründung:
-    - 71–79 sind voll, 80–95 gehören Codex, 37–63 Sven.
-    - Keine bestehende Nachricht passt (siehe ADR 0037, Datenvertrag).
-    - Bis zur Zustimmung fehlen nur die Verdrahtung in `FoundationServer` und der Ende-zu-Ende-Test.
+  - **Gesperrt:** Der Fraktionsstart bleibt abgelehnt. Öffnen lässt er sich nur in Tests:
+    - `new LobbyRegistry(…, factionsSetupEnabled: true)`
+    - `HostConfig.EnableFactionsSetup`, `internal`, nur für `Hosting.Tests` sichtbar; `ListenHost` hat keinen Parameter dafür.
+  - **Codes vergeben (Benutzer, 2026-10-16):** neuer Claude-Bereich **96–111**, in `ASSIGNMENTS.md` eingetragen.
+    - Belegt: 96 `FactionOptions`, 97 `StorytellerChoice`. Beide sind in `FoundationServer` verdrahtet und Ende zu Ende getestet (`Hosting.Tests`).
+    - 98–111 sind frei, aber noch ungültige Frame-Typen.
+  - **Nachtrag-Commit** auf `2a2c818`: Codes, Server, strengerer Lobbyzustand, Tests, Vertrag. Weiterhin **nicht gepusht, nicht gemergt.**
+  - **Geänderte Schnittstellen für Codex** (alle in Claudes Projekten; Spielseite nicht angefasst):
+
+    | Schnittstelle | Änderung | Was die Spielseite tun muss |
+    |---|---|---|
+    | `MessageType.FactionOptions = 96` | neu, C→S, nur Host, Fraktionsmodus, Phase `Storyteller` | Senden: `client.SendAsync(MessageType.FactionOptions, id, new FactionOptions(difficultyDefName, storytellerDefNames).ToPayload())` |
+    | `MessageType.StorytellerChoice = 97` | neu, C→S, jeder Spieler, gleiche Bedingungen | Senden: `FactionPayloads.StorytellerChoice(defName)`; vorher `DefNames.IsValid` prüfen, denn ungültige Nutzdaten ergeben Code 1 und trennen die Verbindung |
+    | Antwort auf 96/97 | `LobbyStateUpdate` mit Request-ID an den Absender, an alle anderen als Push; Fehler 3 (nicht Host) bzw. 6 (Coop, Phase, Liste fehlt, nicht angeboten) | Fehler im UI anzeigen; Anzeige immer aus dem nächsten Lobbyzustand |
+    | `PlayerReadyChanged` (14) | im Fraktionsmodus auch in der Phase `Storyteller` gültig; verlangt eine Wahl | Knopf „Fertig“ auf der Erzählerseite |
+    | `LobbyPayloads.State`/`ReadState` | Fraktionsblock **genau dann**, wenn `LobbyPayloads.HasFactionBlock(mode, phase)` (Fraktionen, Phase ≠ `Lobby`); sonst byte-gleich wie vorher; Fraktionsdaten am falschen Ort ergeben eine `ProtocolException` | nichts, solange nur gelesen wird; keine eigenen `LobbyView` mit Fraktionsdaten außerhalb der Fraktionseinrichtung bauen |
+    | `LobbyView.FactionOptions`, `PlayerView.FactionSlot`, `PlayerView.Storyteller` | wie im ersten Commit; ohne Block `null` | Anzeige und Anwenden beim Generieren |
+    | `LobbyRegistry.StorytellerBlockReason(view)` | unverändert | Anzeigetext „Erzähler fehlt: …“ / „Warte auf: …“ |
+    | Beitritt in `Playing`, Fraktionsmodus | neuer Spieler ohne Platz: Code 6 „This game has no faction for this player.“ | Meldung im Beitrittsfenster |
+    | `HostConfig.EnableFactionsSetup` | `internal`, Standard aus | nicht verwenden. Beim Freischalten des Fraktionsstarts (nach Spielseite und Zwei-Client-Test) wird der Schalter entfernt und die Sperre in `LobbyRegistry` aufgehoben, nicht öffentlich gemacht. |
+
+  - **Vertrag zur Spielseite (ADR 0037 §6, mit ADR 0045 abgestimmt):**
+    - `FactionSlot` ist stabil; die Liste im Spielstand folgt der Platzreihenfolge.
+    - Die Erzählerwahl hängt am `PlayerKey`.
+    - Benutzerdefinierte Schwierigkeitswerte stammen nur aus dem Spielstand des Hosts.
+    - Kein Ereignis wird vom Host entschieden und verteilt. Jedes Spiel rechnet alle Erzähler im Lockstep, je Tick einer je Fraktion in aufsteigender Platzreihenfolge, im kontrollierten `Rand`-Bereich.
+    - **Weltweite Ereignisse (R4) sind offen.** Bis zur Entscheidung des Benutzers lösen Fraktionserzähler keine aus.
   - **Mögliche Konflikte:**
     - `LobbyPayloads.State`/`ReadState` haben im Fraktionsmodus einen angehängten Block; Coop ist byte-gleich.
     - `PlayerView` und `LobbyView` haben neue optionale Konstruktor-Parameter am Ende; bestehende Aufrufe bauen unverändert (Mod-Build geprüft).
@@ -33,7 +55,8 @@
       - Die Wahl je PlayerKey im Spielstand bitte in Platzreihenfolge ablegen (`PlayerView.FactionSlot`).
       - Erzähler mit erzwungener anderer Schwierigkeit gar nicht erst in die Host-Liste aufnehmen.
     - Die Beschreibung von `FACTION-001` (ohne Besitzer) nennt noch „Erzähler wählt der Host“; das gilt nach ADR 0037 nur für Coop.
-  - **Offen für die Benutzer-Entscheidung:** Regel R4 in ADR 0037 (wirken Weltbedingungen nur auf die Karten der auslösenden Fraktion, oder plant sie allein der Erzähler des Hosts für alle?).
+  - **Offen für die Benutzer-Entscheidung:** Regel R4 in ADR 0037. Wirken Weltbedingungen nur auf die Karten der auslösenden Fraktion, oder plant sie ein einziger Erzähler für alle? Bis dahin gilt „keine“.
+  - **Weitere offene Punkte:** Plätze beim Fortsetzen eines Spielstands wieder einspielen (`SAVE-002`; braucht eine weitere Nachricht aus 98–111); neue Fraktionen mitten im Spiel.
 - **Wünsche an Codex:**
   - **Fraktionsmodus, Erzähler (ADR 0037)**, alles Spielseite:
     - **Lesen:**
@@ -48,8 +71,8 @@
       - je Fraktion eine eigene `Storyteller`-Instanz mit dem gewählten `StorytellerDef` und derselben `Difficulty`
       - PlayerKey → Fraktion im Spielstand speichern
     - **`Verse.Game.storyteller`** ist ein einzelnes Feld; die Erzähler je Fraktion brauchen eine eigene Ablage (z. B. `GameComponent`, Regel 13). Sie ticken in Platzreihenfolge.
-    - **Ereignisse:** Zuordnung nach den Regeln R1–R6 in ADR 0037.
-    - **Bis die Codes vergeben sind**, lassen sich `FactionOptions` und `StorytellerChoice` noch nicht senden.
+    - **Ereignisse:** Zuordnung nach ADR 0037 §6 (R1–R6; R4 offen, bis dahin keine weltweiten Ereignisse aus Fraktionserzählern).
+    - **Senden** über die Codes 96/97, siehe Tabelle „Geänderte Schnittstellen“ oben.
   - Tick-Treiber nach ADR 0030:
     - Tick c+1 nur, wenn `LockstepClient.MayRunTick(c)` wahr ist; vorher und in jedem Frame während der Pause `TakeCommandsAt(c)`.
     - Sitzungstick = `TicksGame − TicksGame` bei der Landung.

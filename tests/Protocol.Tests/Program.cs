@@ -373,19 +373,53 @@ await Run("faction storytellers and shared difficulty (ADR 0037)", () =>
     Equal(guestKey, read.Players[1].Key); Equal(false, read.Players[1].Ready);
     var noOptions = new LobbyView(factions.Id, "F", players[0].Id, 7, 4, players, SetupPhase.Scenario, null, factions.Mode);
     Equal(null, LobbyPayloads.ReadState(LobbyPayloads.State(noOptions)).FactionOptions);
-    // Coop carries no faction block: same bytes as before ADR 0037, and faction fields are left out.
-    var coop = new LobbyView(factions.Id, "C", players[0].Id, 7, 4, players, SetupPhase.Storyteller, null, LobbyMode.CoopHost, options);
-    byte[] coopBytes = LobbyPayloads.State(coop);
-    LobbyView coopRead = LobbyPayloads.ReadState(coopBytes);
-    Equal(null, coopRead.FactionOptions); Equal(null, coopRead.Players[0].FactionSlot); Equal(null, coopRead.Players[0].Storyteller);
-    Equal(coopBytes.Length, LobbyPayloads.State(new LobbyView(factions.Id, "C", players[0].Id, 7, 4,
-        players.Select(p => new PlayerView(p.Id, p.Name, p.Ready, p.Key)).ToArray(), SetupPhase.Storyteller)).Length);
+    // Compatibility: Coop states and Factions states before the setup end with the mode, exactly as before ADR 0037.
+    var plain = players.Select(p => new PlayerView(p.Id, p.Name, p.Ready, p.Key)).ToArray();
+    foreach (LobbyView unchanged in new[]
+    {
+        new LobbyView(factions.Id, "C", players[0].Id, 7, 4, plain, SetupPhase.Storyteller, null, LobbyMode.CoopDemocracy),
+        new LobbyView(factions.Id, "F", players[0].Id, 7, 4, plain, SetupPhase.Lobby, null, factions.Mode)
+    })
+    {
+        byte[] bytes = LobbyPayloads.State(unchanged);
+        var modeOnly = new PayloadWriter(); unchanged.Mode.Write(modeOnly);
+        Equal(true, bytes.Skip(bytes.Length - 3).SequenceEqual(modeOnly.ToArray()));                     // nothing after the mode
+        Equal(false, LobbyPayloads.HasFactionBlock(unchanged.Mode, unchanged.Phase));
+        Throws<ProtocolException>(() => LobbyPayloads.ReadState(bytes.Concat(new byte[] { 0, 0, 0 }).ToArray()));  // extra bytes refused
+    }
+    // Faction data where no block belongs is refused instead of silently dropped.
+    Throws<ProtocolException>(() => LobbyPayloads.State(new LobbyView(factions.Id, "C", players[0].Id, 7, 4, players,
+        SetupPhase.Storyteller, null, LobbyMode.CoopHost)));
+    Throws<ProtocolException>(() => LobbyPayloads.State(new LobbyView(factions.Id, "C", players[0].Id, 7, 4, plain,
+        SetupPhase.Storyteller, null, LobbyMode.CoopHost, options)));
+    Throws<ProtocolException>(() => LobbyPayloads.State(new LobbyView(factions.Id, "F", players[0].Id, 7, 4, players,
+        SetupPhase.Lobby, null, factions.Mode)));
+    // Once the Factions setup has started the block is required: a reader that stops after the mode (as before ADR 0037)
+    // finds extra bytes, and a state cut after the mode is refused by the current reader.
+    byte[] withBlock = LobbyPayloads.State(factions);
+    byte[] sameAsCoop = LobbyPayloads.State(new LobbyView(factions.Id, "F", players[0].Id, 7, 4, plain, SetupPhase.Storyteller,
+        null, LobbyMode.CoopHost));
+    Equal(true, withBlock.Length > sameAsCoop.Length && withBlock.Take(sameAsCoop.Length - 3).SequenceEqual(sameAsCoop.Take(sameAsCoop.Length - 3)));
+    Throws<ProtocolException>(() => LobbyPayloads.ReadState(withBlock.Take(sameAsCoop.Length).ToArray()));
     var twice = new[] { new PlayerView(Guid.NewGuid(), "A", false, hostKey, factionSlot: 2), new PlayerView(Guid.NewGuid(), "B", false, guestKey, factionSlot: 2) };
     Throws<ProtocolException>(() => LobbyPayloads.ReadState(LobbyPayloads.State(new LobbyView(factions.Id, "F", twice[0].Id, 7, 4, twice,
         SetupPhase.Storyteller, null, factions.Mode))));                                                       // one slot per player
     Throws<ProtocolException>(() => LobbyPayloads.State(new LobbyView(factions.Id, "F", players[0].Id, 7, 4,
         new[] { new PlayerView(Guid.NewGuid(), "A", false, hostKey, factionSlot: 64) }, SetupPhase.Storyteller, null, factions.Mode)));
     return Task.CompletedTask;
+});
+await Run("faction message codes 96/97 in the frame, 98 not yet (ADR 0037)", async () =>
+{
+    Equal((byte)96, (byte)MessageType.FactionOptions); Equal((byte)97, (byte)MessageType.StorytellerChoice);
+    using var stream = new FragmentingStream();
+    byte[] choice = FactionPayloads.StorytellerChoice("Randy");
+    await FrameCodec.WriteAsync(stream, new WireMessage(MessageType.StorytellerChoice, 7, choice));
+    await FrameCodec.WriteAsync(stream, new WireMessage(MessageType.FactionOptions, 8, new FactionOptions("Rough", new[] { "Randy" }).ToPayload()));
+    stream.Position = 0;
+    WireMessage first = (await FrameCodec.ReadAsync(stream))!, second = (await FrameCodec.ReadAsync(stream))!;
+    Equal(MessageType.StorytellerChoice, first.Type); Equal("Randy", FactionPayloads.ReadStorytellerChoice(first.Payload));
+    Equal(MessageType.FactionOptions, second.Type); Equal("Rough", FactionOptions.FromPayload(second.Payload).Difficulty);
+    await Reject<ProtocolException>(new byte[] { 0, 0, 0, 6, 3, 98, 0, 0, 0, 0 });   // rest of 96-111 is reserved, not valid
 });
 Console.WriteLine($"PASS: {passed} protocol test groups");
 

@@ -61,6 +61,8 @@ Strings sind `length:u16` plus strikt gültige UTF-8-Bytes. Allgemeine Strings: 
 | 77 | VoteCast | C→S | Abstimmungsnummer, Option |
 | 78 | VoteClose | C→S, nur Host | Abstimmungsnummer |
 | 79 | VoteState | S→C | Nummer, Schlüssel, Optionen, offen, Ergebnis (255 = keins), Stimmen je Spieler |
+| 96 | FactionOptions | C→S, nur Host | Fraktionsmodus, Phase `Storyteller`: defName der Schwierigkeit, Anzahl `u8` (1–32), defNames der Erzähler |
+| 97 | StorytellerChoice | C→S | Fraktionsmodus, Phase `Storyteller`: defName des Erzählers der eigenen Fraktion |
 
 Listen- und Zustandsupdates sind in `LobbyPayloads.cs` kodiert: Liste mit `count:u8`, je Lobby GUID, Name, Hostname, Spielerzahl und Kapazität; Snapshot mit GUID, Name, Host-GUID, Revision `u64`, Kapazität, Setup-Phase `u8`, optional gewähltes Feld und Spielerarray (Session-GUID, Name, Ready, PlayerKey, optional Fähnchen). Die Liste trägt je Lobby zusätzlich die Phase. Der TCP-Server verwendet diese Payloads; zwei unabhängige TCP-Testclients bestanden die Integrationstests. RimWorld-Client-Kompatibilität ist noch offen. Fehlercodes: `1=InvalidMessage`, `2=VersionMismatch`, `3=Unauthorized`, `4=NotFound`, `5=Capacity`, `6=InvalidState`, `7=ServerBusy`.
 
@@ -167,18 +169,19 @@ Wer einen Snapshot laden soll (Beitritt oder Resync), muss `SnapshotLoaded` binn
 
 ## Fraktionsmodus: Erzähler je Fraktion (ADR 0037)
 
-- **Lobbyzustand (11):** Im Fraktionsmodus folgt nach dem Modus ein Block.
+- **Lobbyzustand (11):** Der Fraktionsblock folgt nach dem Modus **genau dann**, wenn die Lobby im Fraktionsmodus ist und ihre Einrichtung begonnen hat (Phase ≠ `Lobby`, `LobbyPayloads.HasFactionBlock`). Dann ist er Pflicht.
   - Optionen des Hosts: `bool`; dann defName der Schwierigkeit, Anzahl `u8` (1–32), defNames der Erzähler.
   - Je Spieler in Spielerreihenfolge: Platz (`bool` + `u8`, 0–63, eindeutig), Erzähler (`bool` + defName).
-  - Im Coop fehlt der Block; der Zustand ist byte-gleich wie vorher.
+  - In jedem anderen Zustand (Coop; Fraktionslobby vor dem Start) endet der Zustand mit dem Modus, byte-gleich wie vorher. Zusätzliche Bytes werden abgelehnt, und Fraktionsdaten in einem solchen Zustand lassen sich nicht kodieren.
 - **defName:** 1–128 Zeichen aus `[A-Za-z0-9_-]` (`Verse.Def.AllowedDefNamesRegex` in 1.6).
-- **Neue Nachrichten, Codes noch nicht vergeben:**
-
-  | Vorschlag | Typ | Richtung | Nutzdaten |
-  |---|---|---|---|
-  | 96 | FactionOptions | C→S, nur Host, Phase `Storyteller` | defName der Schwierigkeit, Anzahl `u8`, defNames der Erzähler |
-  | 97 | StorytellerChoice | C→S, Phase `Storyteller` | defName des Erzählers |
-
-  Antwort jeweils `LobbyStateUpdate` an alle; Fehler Code 3 (nicht Host) oder 6 (Coop, falsche Phase, Liste fehlt, nicht angeboten).
+- **Nachrichten 96 und 97** (Claude-Bereich 96–111, Benutzer 2026-10-16):
+  - Antwort ist jeweils `LobbyStateUpdate` an alle, an den Absender mit dessen Request-ID.
+  - Fehler: Code 3 (nicht Host) oder 6 (Coop, falsche Phase, Liste fehlt, nicht angeboten).
+  - Ungültige Nutzdaten (z. B. defName mit Leerzeichen): Code 1, danach trennt der Server die Verbindung, wie bei jeder anderen Nachricht.
+  - 98–111 sind reserviert und bis zu ihrer Belegung ungültig.
+- **Verträglichkeit, Wire-Version bleibt 3:**
+  - Ein anderer Mod-Build hat eine andere Prüfsumme, denn `ModContentHasher` umfasst `Assemblies/*.dll`. Er gilt deshalb als „Mods stimmen nicht“ (MOD-001) und kann weder bereit werden noch das Spiel starten oder in `Playing` beitreten.
+  - Der Fraktionsblock entsteht erst nach dem Start der Einrichtung und erreicht deshalb nie einen fremden Build.
+  - Ältere Builds kennen 96/97 nicht und lehnen sie als unbekannten Typ ab. Sie erhalten sie aber auch nie, denn beide Nachrichten laufen nur vom Client zum Server.
 - **Bereit/Fertig (14):** gilt im Fraktionsmodus auch in der Phase `Storyteller` und verlangt dort eine Wahl.
 - **Beitritt in `Playing`:** Im Fraktionsmodus nur mit vorhandenem Fraktionsplatz zum `PlayerKey`; sonst Code 6.

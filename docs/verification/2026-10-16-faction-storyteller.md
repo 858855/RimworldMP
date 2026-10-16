@@ -46,3 +46,47 @@ Neu in `Lobby.Tests`, mit `factionsSetupEnabled: true`, drei Spielern und einem 
 - Die Spielseite (Codex).
 
 **Klassifizierung:** `BUILD_ERFOLGREICH`, Koordinator automatisiert getestet. Im Spiel `NICHT_GETESTET`.
+
+## Nachtrag: Transportstrecke (Codes 96/97, Server, Ende zu Ende)
+
+- **Basis:** `claude/faction-storyteller` @ `2a2c818`. Codebereich 96–111 vom Benutzer am 2026-10-16 vergeben (Rückfrage in der Sitzung); 96 `FactionOptions`, 97 `StorytellerChoice`.
+
+| Befehl/Prüfung | Ergebnis |
+|---|---|
+| `Protocol.Tests` | Exit 0; 18 Gruppen |
+| `Lobby.Tests` | Exit 0; 10 Szenarien |
+| `Hosting.Tests` | Exit 0; 28 Gruppen; drei Läufe nacheinander, alle bestanden |
+| `Network`, `Session`, `Client`, `Integration`, `ProcessIntegration` | Exit 0; unverändert bestanden |
+| `DOTNET_BIN=…/dotnet bash scripts/build-mod.sh` | Exit 0; 0 Warnungen, 0 Fehler |
+| `DOTNET_BIN=…/dotnet bash scripts/build-server.sh` | Exit 0 |
+| `python3 scripts/validate_project_state.py` | Exit 0 |
+| Mod-Prüfsumme umfasst DLLs (Code gelesen) | `ModContentHasher`: About.xml, `Assemblies/*.dll`, `Defs`/`Patches`-XML je Lade-Ordner; `ModManifestBuilder` nimmt alle laufenden Mods |
+
+Neu in `Protocol.Tests`:
+- **Coop und Fraktionslobby vor dem Start:** Der Zustand endet mit den drei Modus-Bytes. Drei angehängte Bytes werden abgelehnt.
+- **Fraktionsdaten am falschen Ort** werden beim Kodieren abgelehnt: in Coop (Platz oder Optionen) und in einer Fraktionslobby vor dem Start.
+- **Ab dem Start der Fraktionseinrichtung:**
+  - Der Block hängt hinter einem sonst gleichen Präfix. Ein Leser, der nach dem Modus endet (Stand vor ADR 0037), findet zusätzliche Bytes.
+  - Ein nach dem Modus abgeschnittener Zustand wird abgelehnt.
+- **Frames:** 96 und 97 laufen als Frame hin und zurück; Typ 98 wird als unbekannt abgelehnt.
+
+Neu in `Hosting.Tests`, über einen echten `FoundationServer` per TCP mit `EnableFactionsSetup` (internal) und drei Spielern:
+- **In der Lobby:** keine Plätze; Erzählerwahl abgelehnt (6).
+- **Nach dem Start:** Plätze 0/1/2, auch beim Gast angekommen.
+- **Phase `Storyteller`, Ablehnungen:**
+  - Gast sendet `FactionOptions` (3).
+  - Wahl vor der Liste (6), Fertig ohne Wahl (6), Weiter ohne Optionen (6).
+- **Optionen und Wahl:**
+  - Optionen des Hosts kommen beim Gast an.
+  - „Tutor“ ist nicht angeboten (6).
+  - Host und Gast wählen; `StorytellerBlockReason` meldet „Erzähler fehlt: Third“; Weiter abgelehnt (6).
+  - Neue Schwierigkeit löscht Fertig, die Wahl bleibt.
+- **Ungültige Wahl** von „Third“ (defName mit Leerzeichen): Code 1, Verbindung getrennt. Der Host sieht zwei Spieler; Plätze 0/1 bleiben.
+- **Weiter bis `Playing`:** Danach werden Optionen und Wahl außerhalb der Phase abgelehnt (6). Plätze und Wahl bleiben im laufenden Spiel.
+- **Trennung und Rückkehr:**
+  - Ein neuer Spieler wird abgewiesen (6).
+  - Der Gast verbindet sich mit demselben Schlüssel neu und erhält Platz 1, „Randy“ und „Brutal“.
+- **Coop auf demselben Server:** keine Fraktionsdaten. `FactionOptions`, Wahl und Fertig in `Storyteller` werden abgelehnt (6).
+- **`ListenHost` (Weg der Mod):** Der Fraktionsstart wird abgelehnt (6). `new HostConfig().EnableFactionsSetup` ist falsch.
+
+**Klassifizierung:** `BUILD_ERFOLGREICH`, Koordinator und Server automatisiert Ende zu Ende getestet. Im Spiel `NICHT_GETESTET`; die Spielseite fehlt (Codex).

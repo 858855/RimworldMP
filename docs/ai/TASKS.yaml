@@ -1588,7 +1588,7 @@ tasks:
   evidence:
   - docs/verification/2026-10-16-faction-storyteller.md
   - docs/decisions/0037-faction-storytellers-coordinator.md
-  blocker: 'Payloads, Regeln und Tests fertig. Nachrichtencodes für FactionOptions und StorytellerChoice noch nicht vergeben (Vorschlag 96–97 in einem neuen Claude-Bereich 96–111, Zustimmung des Benutzers ausstehend); bis dahin keine Verdrahtung im Server und kein Ende-zu-Ende-Test. Spielseite (Codex) offen.'
+  blocker: 'Koordinator-Seite fertig: Codes 96/97 (Claude-Bereich 96–111, Benutzer 2026-10-16), Server-Verdrahtung, Ende-zu-Ende-Tests. Fraktionsstart bleibt gesperrt (Test-Schalter intern). Offen: Spielseite (Codex, FACTION-003), Regel R4 für weltweite Ereignisse (Benutzer), Wiederherstellen der Plätze beim Fortsetzen (SAVE-002).'
   plan_ref: docs/decisions/0037-faction-storytellers-coordinator.md
 - id: FACTION-002
   title: 'Fraktionsmodus: getrennte Kolonien, Spieler-Fenster, Weltereignisse für alle'

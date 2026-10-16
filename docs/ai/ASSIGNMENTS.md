@@ -14,7 +14,7 @@
 | Branch-Präfix | `claude/` | `codex/` |
 | Arbeitsverzeichnis | `/mnt/Arbeit/Git Projekte/RimworldMP-claude` (Worktree) | `/mnt/Arbeit/Git Projekte/RimworldMP` |
 | ADR-Nummern | 0032–0039 | 0040–0049 |
-| Nachrichtencodes | 71–79 | 80–95 |
+| Nachrichtencodes | 71–79; 96–111 (Benutzer, 2026-10-16) | 80–95 |
 
 Svens Bereich bleibt, falls er weiterarbeitet: Branches `feat/lobby-hardening` und `feat/mod-check-setup-ui` bleiben bestehen. Seine fortlaufenden Nummern sind ADR 0024–0029 und Nachrichtencodes 37–63.
 

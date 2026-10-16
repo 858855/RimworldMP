@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using Multiplayer.Foundation.Hosting;
+using Multiplayer.Foundation.Lobby;
 using Multiplayer.Foundation.Network;
 using Multiplayer.Foundation.Protocol;
 using Multiplayer.Foundation.Server;
@@ -825,6 +826,99 @@ await using (var pawnHost = await ListenHost.StartAsync("127.0.0.1", 0, "Host", 
 }
 Console.WriteLine("PASS: pawn requests stamped and routed to the host, roster to guests, done needs a pawn (SETUP-004)");
 
+// FACTION-004 (ADR 0037) end to end over TCP. Only a test switch opens the Factions setup. Host options, storyteller
+// choices and done travel with codes 96/97 and Ready; every refusal comes from the server. A player who reconnects to the
+// running game finds their faction slot and storyteller again; a new player finds none.
+PlayerKey fHostKey = PlayerKey.Local(Guid.NewGuid()), fGuestKey = PlayerKey.Local(Guid.NewGuid()),
+    fThirdKey = PlayerKey.Local(Guid.NewGuid()), fNewKey = PlayerKey.Local(Guid.NewGuid());
+await using (var factionServer = new FoundationServer(new HostConfig { BindAddress = "127.0.0.1", Port = 0, EnableFactionsSetup = true }))
+{
+    await factionServer.StartAsync();
+    int fPort = factionServer.BoundPort;
+    using LobbyClient fHost = await LobbyClient.ConnectAsync("127.0.0.1", fPort, "Host", TimeSpan.FromSeconds(4), CancellationToken.None, fHostKey);
+    using LobbyClient fGuest = await LobbyClient.ConnectAsync("127.0.0.1", fPort, "Guest", TimeSpan.FromSeconds(4), CancellationToken.None, fGuestKey);
+    using LobbyClient fThird = await LobbyClient.ConnectAsync("127.0.0.1", fPort, "Third", TimeSpan.FromSeconds(4), CancellationToken.None, fThirdKey);
+    uint f = 2000;
+    byte? SlotOf(LobbyView view, PlayerKey key) => view.Players.Single(p => p.Key == key).FactionSlot;
+    string? TellerOf(LobbyView view, PlayerKey key) => view.Players.Single(p => p.Key == key).Storyteller;
+    LobbyView fRoom = await StateAsync(fHost, MessageType.CreateLobby, ++f, LobbyPayloads.Create("Fraktionen", 4, LobbyMode.Factions(FactionRelation.Allied)));
+    await StateAsync(fGuest, MessageType.JoinLobby, ++f, LobbyPayloads.GuidValue(fRoom.Id));
+    LobbyView fLobby = await StateAsync(fThird, MessageType.JoinLobby, ++f, LobbyPayloads.GuidValue(fRoom.Id));
+    Assert(fLobby.Players.Count == 3 && fLobby.Players.All(p => p.FactionSlot == null) && fLobby.FactionOptions == null, "no factions in the lobby");
+    Assert(await ErrorCodeAsync(fGuest, MessageType.StorytellerChoice, ++f, FactionPayloads.StorytellerChoice("Randy")) == 6, "no choice in the lobby");
+    foreach (LobbyClient member in new[] { fHost, fGuest, fThird })
+        await StateAsync(member, MessageType.PlayerReadyChanged, ++f, LobbyPayloads.Bool(true));
+    LobbyView fScenario = await StateAsync(fHost, MessageType.SetupAdvance, ++f, SetupPayloads.Advance(SetupPhase.Scenario));
+    Assert(SlotOf(fScenario, fHostKey) == 0 && SlotOf(fScenario, fGuestKey) == 1 && SlotOf(fScenario, fThirdKey) == 2, "slots: host first, then joining order");
+    Assert(SlotOf(await UntilStateAsync(fGuest, s => s.Revision >= fScenario.Revision), fGuestKey) == 1, "guests receive their slot");
+    await StateAsync(fHost, MessageType.SetupAdvance, ++f, SetupPayloads.Advance(SetupPhase.Storyteller));
+    var fOptions = new FactionOptions("Rough", new[] { "Cassandra", "Phoebe", "Randy" });
+    Assert(await ErrorCodeAsync(fGuest, MessageType.FactionOptions, ++f, fOptions.ToPayload()) == 3, "a guest cannot set the shared difficulty");
+    Assert(await ErrorCodeAsync(fGuest, MessageType.StorytellerChoice, ++f, FactionPayloads.StorytellerChoice("Randy")) == 6, "no choice before the host's list");
+    Assert(await ErrorCodeAsync(fGuest, MessageType.PlayerReadyChanged, ++f, LobbyPayloads.Bool(true)) == 6, "done needs a choice");
+    Assert(await ErrorCodeAsync(fHost, MessageType.SetupAdvance, ++f, SetupPayloads.Advance(SetupPhase.WorldParams)) == 6, "setup waits for the host's options");
+    LobbyView fOffered = await StateAsync(fHost, MessageType.FactionOptions, ++f, fOptions.ToPayload());
+    Assert(fOffered.FactionOptions!.SameAs(fOptions), "host set difficulty and storytellers");
+    Assert((await UntilStateAsync(fGuest, s => s.FactionOptions != null)).FactionOptions!.Difficulty == "Rough", "guests see the shared difficulty");
+    Assert(await ErrorCodeAsync(fGuest, MessageType.StorytellerChoice, ++f, FactionPayloads.StorytellerChoice("Tutor")) == 6, "only offered storytellers");
+    await StateAsync(fHost, MessageType.StorytellerChoice, ++f, FactionPayloads.StorytellerChoice("Cassandra"));
+    LobbyView guestChose = await StateAsync(fGuest, MessageType.StorytellerChoice, ++f, FactionPayloads.StorytellerChoice("Randy"));
+    Assert(TellerOf(guestChose, fGuestKey) == "Randy" && TellerOf(guestChose, fHostKey) == "Cassandra", "each player chose for their own faction");
+    await StateAsync(fHost, MessageType.PlayerReadyChanged, ++f, LobbyPayloads.Bool(true));
+    LobbyView guestDone = await StateAsync(fGuest, MessageType.PlayerReadyChanged, ++f, LobbyPayloads.Bool(true));
+    Assert(LobbyRegistry.StorytellerBlockReason(guestDone) == "Erzähler fehlt: Third", "the reason names who has no storyteller");
+    Assert(await ErrorCodeAsync(fHost, MessageType.SetupAdvance, ++f, SetupPayloads.Advance(SetupPhase.WorldParams)) == 6, "setup waits for every choice");
+    LobbyView harder = await StateAsync(fHost, MessageType.FactionOptions, ++f, new FactionOptions("Brutal", fOptions.Storytellers).ToPayload());
+    Assert(harder.Players.All(p => !p.Ready) && TellerOf(harder, fGuestKey) == "Randy", "a new difficulty clears done for everyone, choices stay");
+    var malformed = new PayloadWriter(); malformed.WriteString("not a def name", 128);
+    Assert(await ErrorCodeAsync(fThird, MessageType.StorytellerChoice, ++f, malformed.ToArray()) == 1, "a malformed choice is a protocol error");
+    LobbyView withoutThird = await UntilStateAsync(fHost, s => s.Players.Count == 2);
+    Assert(SlotOf(withoutThird, fHostKey) == 0 && SlotOf(withoutThird, fGuestKey) == 1, "the dropped player's slot is gone, the others keep theirs");
+    await StateAsync(fHost, MessageType.PlayerReadyChanged, ++f, LobbyPayloads.Bool(true));
+    await StateAsync(fGuest, MessageType.PlayerReadyChanged, ++f, LobbyPayloads.Bool(true));
+    LobbyView fWorldParams = await StateAsync(fHost, MessageType.SetupAdvance, ++f, SetupPayloads.Advance(SetupPhase.WorldParams));
+    Assert(fWorldParams.Phase == SetupPhase.WorldParams && fWorldParams.FactionOptions!.Difficulty == "Brutal", "all chose and are done: setup continues");
+    Assert(await ErrorCodeAsync(fHost, MessageType.FactionOptions, ++f, fOptions.ToPayload()) == 6, "options only in the storyteller step");
+    Assert(await ErrorCodeAsync(fGuest, MessageType.StorytellerChoice, ++f, FactionPayloads.StorytellerChoice("Phoebe")) == 6, "choice only in the storyteller step");
+    LobbyView fLanded = await FinishSetupAsync(fHost, fGuest, fHostKey, fGuestKey, f += 100);
+    Assert(SlotOf(fLanded, fGuestKey) == 1 && TellerOf(fLanded, fGuestKey) == "Randy", "the running game keeps slots and choices");
+    await fGuest.DisconnectAsync();
+    await UntilStateAsync(fHost, s => s.Players.Count == 1);
+    using (LobbyClient newcomer = await LobbyClient.ConnectAsync("127.0.0.1", fPort, "New", TimeSpan.FromSeconds(4), CancellationToken.None, fNewKey))
+        Assert(await ErrorCodeAsync(newcomer, MessageType.JoinLobby, ++f, LobbyPayloads.GuidValue(fRoom.Id)) == 6, "a running Factions game has no faction for a new player");
+    using LobbyClient fBack = await LobbyClient.ConnectAsync("127.0.0.1", fPort, "Guest", TimeSpan.FromSeconds(4), CancellationToken.None, fGuestKey);
+    LobbyView back = await StateAsync(fBack, MessageType.JoinLobby, ++f, LobbyPayloads.GuidValue(fRoom.Id));
+    Assert(back.Phase == SetupPhase.Playing && SlotOf(back, fGuestKey) == 1 && TellerOf(back, fGuestKey) == "Randy" && back.FactionOptions!.Difficulty == "Brutal",
+        "reconnect: same faction slot, storyteller and shared difficulty");
+
+    // Coop on the same server: no slots, and the faction messages are refused.
+    using LobbyClient cHost = await LobbyClient.ConnectAsync("127.0.0.1", fPort, "CoopHost", TimeSpan.FromSeconds(4), CancellationToken.None, PlayerKey.Local(Guid.NewGuid()));
+    using LobbyClient cGuest = await LobbyClient.ConnectAsync("127.0.0.1", fPort, "CoopGuest", TimeSpan.FromSeconds(4), CancellationToken.None, PlayerKey.Local(Guid.NewGuid()));
+    LobbyView cRoom = await StateAsync(cHost, MessageType.CreateLobby, ++f, LobbyPayloads.Create("Coop", 4, LobbyMode.CoopDemocracy));
+    await StateAsync(cGuest, MessageType.JoinLobby, ++f, LobbyPayloads.GuidValue(cRoom.Id));
+    await StateAsync(cHost, MessageType.PlayerReadyChanged, ++f, LobbyPayloads.Bool(true));
+    await StateAsync(cGuest, MessageType.PlayerReadyChanged, ++f, LobbyPayloads.Bool(true));
+    await StateAsync(cHost, MessageType.SetupAdvance, ++f, SetupPayloads.Advance(SetupPhase.Scenario));
+    LobbyView cStep = await StateAsync(cHost, MessageType.SetupAdvance, ++f, SetupPayloads.Advance(SetupPhase.Storyteller));
+    Assert(cStep.Players.All(p => p.FactionSlot == null && p.Storyteller == null) && cStep.FactionOptions == null, "Coop has no faction data");
+    Assert(await ErrorCodeAsync(cHost, MessageType.FactionOptions, ++f, fOptions.ToPayload()) == 6, "Coop: the host's storyteller page decides, no faction options");
+    Assert(await ErrorCodeAsync(cGuest, MessageType.StorytellerChoice, ++f, FactionPayloads.StorytellerChoice("Randy")) == 6, "Coop: no own storyteller");
+    Assert(await ErrorCodeAsync(cGuest, MessageType.PlayerReadyChanged, ++f, LobbyPayloads.Bool(true)) == 6, "Coop: no done in the storyteller step");
+}
+// The real hosting path cannot open the Factions setup: ListenHost has no switch, so the start stays refused.
+await using (var prodHost = await ListenHost.StartAsync("127.0.0.1", 0, "Host", "Fraktionen", 4, mode: LobbyMode.Factions(FactionRelation.Neutral)))
+{
+    LobbyView prodRoom = LobbyPayloads.ReadState((await ReceiveAsync(prodHost.Client, MessageType.LobbyStateUpdate)).Payload);
+    using LobbyClient prodGuest = await LobbyClient.ConnectAsync("127.0.0.1", prodHost.Port, "Guest", TimeSpan.FromSeconds(4));
+    await StateAsync(prodGuest, MessageType.JoinLobby, 2500, LobbyPayloads.GuidValue(prodRoom.Id));
+    await StateAsync(prodHost.Client, MessageType.PlayerReadyChanged, 2501, LobbyPayloads.Bool(true));
+    await StateAsync(prodGuest, MessageType.PlayerReadyChanged, 2502, LobbyPayloads.Bool(true));
+    Assert(await ErrorCodeAsync(prodHost.Client, MessageType.SetupAdvance, 2503, SetupPayloads.Advance(SetupPhase.Scenario)) == 6,
+        "Factions start refused on the real hosting path");
+    Assert(new HostConfig().EnableFactionsSetup == false, "the switch is off by default");
+}
+Console.WriteLine("PASS: Factions storytellers end to end: host-only options, choices and done over 96/97, refusals, reconnect keeps the faction, Coop unaffected, start refused without the test switch (ADR 0037)");
+
 // Sends a request and returns the error code the server answers with.
 static async Task<byte> ErrorCodeAsync(LobbyClient client, MessageType type, uint requestId, byte[] payload)
 {
@@ -966,8 +1060,15 @@ static async Task ReachPlayingAsync(LobbyClient host, LobbyClient guest, PlayerK
     uint id = 500;
     await StateAsync(host, MessageType.PlayerReadyChanged, ++id, LobbyPayloads.Bool(true));
     await StateAsync(guest, MessageType.PlayerReadyChanged, ++id, LobbyPayloads.Bool(true));
-    foreach (SetupPhase next in new[] { SetupPhase.Scenario, SetupPhase.Storyteller, SetupPhase.WorldParams, SetupPhase.WorldTransfer })
+    foreach (SetupPhase next in new[] { SetupPhase.Scenario, SetupPhase.Storyteller, SetupPhase.WorldParams })
         await StateAsync(host, MessageType.SetupAdvance, ++id, SetupPayloads.Advance(next));
+    await FinishSetupAsync(host, guest, hostKey, guestKey, id);
+}
+
+// From WorldParams on: world, site, characters and the game start, until both landed in Playing.
+static async Task<LobbyView> FinishSetupAsync(LobbyClient host, LobbyClient guest, PlayerKey hostKey, PlayerKey guestKey, uint id)
+{
+    await StateAsync(host, MessageType.SetupAdvance, ++id, SetupPayloads.Advance(SetupPhase.WorldTransfer));
     byte[] world = Enumerable.Repeat((byte)5, 32).ToArray();
     await StateAsync(host, MessageType.WorldReady, ++id, SetupPayloads.Fingerprint(world));
     await StateAsync(guest, MessageType.WorldLoaded, ++id, SetupPayloads.Fingerprint(world));
@@ -983,6 +1084,20 @@ static async Task ReachPlayingAsync(LobbyClient host, LobbyClient guest, PlayerK
     await StateAsync(guest, MessageType.GameLoaded, ++id, SetupPayloads.Fingerprint(game));
     LobbyView landed = await StateAsync(host, MessageType.SetupAdvance, ++id, SetupPayloads.Advance(SetupPhase.Playing));
     if (landed.Phase != SetupPhase.Playing) throw new Exception("FAIL: did not reach Playing");
+    return landed;
+}
+
+// Waits for a pushed lobby state that fulfils the condition; older pushes are skipped.
+static async Task<LobbyView> UntilStateAsync(LobbyClient client, Func<LobbyView, bool> condition)
+{
+    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+    while (true)
+    {
+        while (client.TryDequeue(out WireMessage? message) && message != null)
+            if (message.Type == MessageType.LobbyStateUpdate && LobbyPayloads.ReadState(message.Payload) is LobbyView state && condition(state))
+                return state;
+        await Task.Delay(10, timeout.Token);
+    }
 }
 
 static PawnRoster RosterFor(params PlayerKey[] owners) => new PawnRoster(owners.Select((owner, i) => new PawnCard(100 + i, true, owner,

@@ -207,8 +207,9 @@ namespace Multiplayer.Foundation.Protocol
                 writer.WriteByte((byte)player.WorldStatus);
             }
             state.Mode.Write(writer);
-            // ADR 0037: Factions only, appended so a Coop state stays as before.
-            if (state.Mode.Mode == GameMode.Factions)
+            // ADR 0037: only a Factions lobby whose setup has started carries the faction block. Every other state keeps the
+            // bytes it had before, and faction data there is an error rather than something to drop silently.
+            if (HasFactionBlock(state.Mode, state.Phase))
             {
                 writer.WriteBool(state.FactionOptions != null); state.FactionOptions?.Write(writer);
                 foreach (PlayerView player in state.Players)
@@ -220,8 +221,17 @@ namespace Multiplayer.Foundation.Protocol
                     if (player.Storyteller != null) DefNames.Write(writer, player.Storyteller);
                 }
             }
+            else if (state.FactionOptions != null || state.Players.Any(p => p.FactionSlot.HasValue || p.Storyteller != null))
+                throw new ProtocolException("Faction data belongs to a Factions lobby whose setup has started.");
             return writer.ToArray();
         }
+
+        /// <summary>
+        /// ADR 0037: the faction block follows the mode exactly when the lobby is in the Factions mode and its setup has started
+        /// (faction slots exist from then on). It is then required; in any other state extra bytes are refused.
+        /// </summary>
+        public static bool HasFactionBlock(LobbyMode mode, SetupPhase phase) => mode.Mode == GameMode.Factions && phase != SetupPhase.Lobby;
+
         public static LobbyView ReadState(byte[] bytes)
         {
             var reader = new PayloadReader(bytes);
@@ -243,7 +253,7 @@ namespace Multiplayer.Foundation.Protocol
             }
             LobbyMode mode = LobbyMode.Read(reader);
             FactionOptions? options = null;
-            if (mode.Mode == GameMode.Factions && reader.Remaining > 0)
+            if (HasFactionBlock(mode, phase))
             {
                 options = reader.ReadBool() ? FactionOptions.Read(reader) : null;
                 for (int i = 0; i < players.Count; i++)

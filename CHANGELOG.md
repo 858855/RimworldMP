@@ -6,7 +6,8 @@
 
 - Im Fraktionsmodus wählt jeder Spieler den Erzähler seiner eigenen Fraktion aus einer Liste des Hosts. Der Host legt die gemeinsame Schwierigkeit fest; Gäste können sie nicht ändern. Weiter geht es erst, wenn alle gewählt haben und fertig sind.
 - Jeder Spieler erhält einen festen Fraktionsplatz, der an seiner Kennung hängt. Wer ein laufendes Fraktionsspiel verlässt und zurückkommt, findet seine Fraktion wieder.
-- Im Coop ändert sich nichts. Der Fraktionsstart bleibt gesperrt, bis die Spielseite fertig ist. Die neuen Nachrichten haben noch keine Nummer; im Spiel ist nichts davon sichtbar.
+- Im Coop ändert sich nichts. Der Fraktionsstart bleibt gesperrt, bis die Spielseite fertig ist; im Spiel ist davon noch nichts sichtbar.
+- Die beiden neuen Nachrichten (Optionen des Hosts, Erzählerwahl) haben die Nummern 96 und 97 und sind im Server angeschlossen. Ältere Mod-Versionen fallen schon in der Lobby bei der Mod-Prüfung auf und kommen nie in diese Einrichtung.
 
 ### Gemeinsames Vorschaupaket für den späteren Spieltest (`codex/manual-test-candidate`, PKG-002)
 

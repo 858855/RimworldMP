@@ -22,6 +22,11 @@ public class HostConfig
     public int KeyProofMaxSkewSeconds { get; set; } = 600;
     /// <summary>ADR 0036: a joining or resyncing game must confirm its snapshot within this time.</summary>
     public int SnapshotLoadTimeoutSeconds { get; set; } = 180;
+    /// <summary>
+    /// ADR 0037, tests only: lets a Factions lobby start its setup. Internal on purpose, so neither the mod nor a config
+    /// file can turn it on; the Factions start stays refused until its game side and tests are done.
+    /// </summary>
+    internal bool EnableFactionsSetup { get; set; }
 
     public IPAddress Validate(bool allowEphemeralPort)
     {

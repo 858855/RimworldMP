@@ -28,7 +28,7 @@ public sealed class FoundationServer : IAsyncDisposable
     {
         this.config = config ?? throw new ArgumentNullException(nameof(config));
         Pins = pins ?? new PlayerKeyPinStore();
-        lobbies = new LobbyRegistry(config.MaxPlayersPerLobby, config.AllowSoloStart ? (byte)1 : (byte)2);
+        lobbies = new LobbyRegistry(config.MaxPlayersPerLobby, config.AllowSoloStart ? (byte)1 : (byte)2, config.EnableFactionsSetup);
         lockstep = new LockstepHost((to, message) => { if (peers.TryGetValue(to, out Peer? target)) target.Outbox?.Enqueue(message); },
             new LockstepOptions { SnapshotLoadTimeoutSeconds = config.SnapshotLoadTimeoutSeconds },
             (lobby, session) => _ = TakeOutOfLobbyAsync(session));
@@ -310,6 +310,15 @@ public sealed class FoundationServer : IAsyncDisposable
                 break;
             case MessageType.SiteDecided:
                 await PublishAsync(lobbies.DecideSite(peer.Id, SetupPayloads.ReadSite(message.Payload)), null, token, message.RequestId).ConfigureAwait(false);
+                break;
+            case MessageType.FactionOptions:
+                // ADR 0037: host only, Factions mode, storyteller step; the lobby core checks all three.
+                await PublishAsync(lobbies.SetFactionOptions(peer.Id, FactionOptions.FromPayload(message.Payload)), null, token,
+                    message.RequestId).ConfigureAwait(false);
+                break;
+            case MessageType.StorytellerChoice:
+                await PublishAsync(lobbies.ChooseStoryteller(peer.Id, FactionPayloads.ReadStorytellerChoice(message.Payload)), null, token,
+                    message.RequestId).ConfigureAwait(false);
                 break;
             case MessageType.PawnRoster:
                 var (rosterChange, rosterViewers) = lobbies.SetRoster(peer.Id, PawnRoster.Read(message.Payload));
