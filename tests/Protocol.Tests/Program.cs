@@ -280,6 +280,29 @@ await Run("pawn roster and requests", () =>
     Throws<ProtocolException>(() => new PawnRoster(Enumerable.Range(0, 25).Select(i => card).ToArray()));
     return Task.CompletedTask;
 });
+await Run("game mode (ADR 0031)", () =>
+{
+    foreach (LobbyMode mode in new[] { LobbyMode.CoopHost, LobbyMode.CoopDemocracy, LobbyMode.Factions(FactionRelation.Allied),
+        LobbyMode.Factions(FactionRelation.Neutral), LobbyMode.Factions(FactionRelation.Hostile) })
+    {
+        var created = LobbyPayloads.ReadCreate(LobbyPayloads.Create("Room", 4, mode));
+        Equal(mode, created.Mode); Equal("Room", created.Name);
+    }
+    Equal(LobbyMode.CoopHost, LobbyPayloads.ReadCreate(LobbyPayloads.Create("Room", 4)).Mode);
+    Throws<ArgumentOutOfRangeException>(() => LobbyMode.Factions(FactionRelation.None));
+    foreach (byte[] bad in new[] { new byte[] { 1, 0, 0 }, new byte[] { 1, 1, 1 }, new byte[] { 2, 1, 1 }, new byte[] { 2, 0, 0 }, new byte[] { 3, 1, 0 } })
+    {
+        var writer = new PayloadWriter(); writer.WriteString("Room", 160); writer.WriteByte(4);
+        foreach (byte b in bad) writer.WriteByte(b);
+        Throws<ProtocolException>(() => LobbyPayloads.ReadCreate(writer.ToArray()));
+    }
+    var view = new LobbyView(Guid.NewGuid(), "R", Guid.NewGuid(), 1, 4, Array.Empty<PlayerView>(), SetupPhase.Lobby, null,
+        LobbyMode.Factions(FactionRelation.Hostile));
+    Equal(LobbyMode.Factions(FactionRelation.Hostile), LobbyPayloads.ReadState(LobbyPayloads.State(view)).Mode);
+    var listed = LobbyPayloads.ReadList(LobbyPayloads.List(new[] { new LobbySummary(Guid.NewGuid(), "R", "H", 1, 4, SetupPhase.Lobby, null, LobbyMode.CoopDemocracy) }));
+    Equal(LobbyMode.CoopDemocracy, listed[0].Mode);
+    return Task.CompletedTask;
+});
 Console.WriteLine($"PASS: {passed} protocol test groups");
 
 async Task Run(string name, Func<Task> body)

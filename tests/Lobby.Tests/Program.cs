@@ -254,6 +254,22 @@ Expect(6, () => pawns.AdvanceSetup(pHost, SetupPhase.Generating));
 Console.WriteLine("PASS: pawn roster from the host, done needs an own pawn, changes reset done (SETUP-004)");
 
 // One selected pawn per given owner (SETUP-004 test helper).
+// ADR 0031: the game mode is fixed at creation and visible to everyone; Factions cannot start yet.
+var modes = new LobbyRegistry(8);
+Guid fh = Guid.NewGuid(), fg = Guid.NewGuid(), ch = Guid.NewGuid(), cg = Guid.NewGuid();
+foreach (Guid id in new[] { fh, fg, ch, cg }) modes.AddMember(id, "P" + id.ToString("N")[..4], PlayerKey.Local(Guid.NewGuid()));
+Guid factionRoom = modes.Create(fh, "Factions", 4, LobbyMode.Factions(FactionRelation.Neutral)).State!.Id;
+Guid coopRoom = modes.Create(ch, "Democracy", 4, LobbyMode.CoopDemocracy).State!.Id;
+LobbyView joinedFactions = modes.Join(fg, factionRoom).State!;
+Assert(joinedFactions.Mode == LobbyMode.Factions(FactionRelation.Neutral), "joiner sees the mode in the lobby state");
+Assert(modes.List().Single(r => r.Id == factionRoom).Mode.Mode == GameMode.Factions, "lobby list shows the mode before joining");
+modes.Ready(fh, true); modes.Ready(fg, true);
+Expect(6, () => modes.AdvanceSetup(fh, SetupPhase.Scenario));
+modes.Join(cg, coopRoom); modes.Ready(ch, true); modes.Ready(cg, true);
+LobbyView democracy = modes.AdvanceSetup(ch, SetupPhase.Scenario).State!;
+Assert(democracy.Phase == SetupPhase.Scenario && democracy.Mode == LobbyMode.CoopDemocracy, "Coop starts and keeps its mode");
+Console.WriteLine("PASS: game mode fixed at creation, shown in state and list, Factions start refused for now");
+
 static PawnRoster RosterFor(params PlayerKey[] owners) => new PawnRoster(owners.Select((owner, i) => new PawnCard(100 + i, true, owner,
     "Pawn " + i, "P" + i, "Age 30", "", "", Array.Empty<string>(), Array.Empty<(string, byte, byte)>(),
     Array.Empty<string>(), Array.Empty<string>())).ToArray());

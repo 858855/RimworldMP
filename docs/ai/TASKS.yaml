@@ -1366,11 +1366,16 @@ tasks:
   - 'Ungültige Kombinationen werden abgelehnt'
   - 'Start im Fraktionsmodus wird abgelehnt, solange FACTION-001 nicht fertig ist'
   - 'Beim Laden kommt der Modus aus dem Spielstand'
-  implementation: planned
-  verification: not_tested
+  implementation: in_progress
+  verification: tests_passed
   integration: not_submitted
-  branch: null
-  evidence: []
+  branch: feat/game-mode
+  base_branch: feat/lockstep-session
+  base_commit: 52a6de1
+  evidence:
+  - docs/verification/2026-10-16-game-mode.md
+  - docs/decisions/0031-game-modes.md
+  blocker: 'Koordinator-Seite fertig und getestet. Fehlt Spielseite: Auswahl im Lobby-Fenster, Anzeige in der Liste, Modus im Spielstand und beim Laden.'
   plan_ref: docs/decisions/0031-game-modes.md
 - id: VOTE-001
   title: 'Coop-Demokratie: Abstimmung über Ereignisse im Spiel'

@@ -112,3 +112,11 @@ Ab der Phase `Playing` führt der Koordinator im eingebetteten Server des Hosts 
 - Hashes werden alle 60 Ticks mit dem Host verglichen; eine Abweichung meldet der Koordinator an alle und pausiert.
 
 Codes bewusst ab 64, abseits der fortlaufenden Setup-Codes. Siehe ADR 0030.
+
+## Spielmodus (ADR 0031)
+
+`CreateLobby` trägt nach Name und Kapazität den Modus (`mode:u8`, `decisions:u8`, `relation:u8`):
+- Coop (1) mit Host (1) oder Demokratie (2), ohne Beziehung (0).
+- Fraktionen (2) ohne Entscheidungsregel (0), mit Beziehung verbündet (1), neutral (2) oder verfeindet (3).
+
+Andere Kombinationen sind Protokollfehler. Der Modus ist ab der Erstellung fest; keine Nachricht ändert ihn. Lobbyzustand und Lobbyliste tragen ihn am Ende. Der Start im Fraktionsmodus wird abgelehnt (Code 6), bis die Fraktionseinrichtung existiert.

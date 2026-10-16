@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Spielmodus (Arbeitsbranch `feat/game-mode`, MODE-001)
+
+- Der Host wählt beim Erstellen der Lobby einmalig den Modus: **Coop** (eine gemeinsame Kolonie; Ereignisse entscheidet der Host oder, als Demokratie, die Mehrheit mit dem Host bei Gleichstand) oder **Fraktionen** (jeder seine eigene Kolonie; Beziehung verbündet, neutral oder verfeindet). Danach lässt er sich nicht mehr ändern.
+- Spieler sehen den Modus schon in der Lobbyliste. Der Fraktionsmodus ist wählbar, aber noch nicht startbar.
+- Die Auswahl im Lobby-Fenster folgt auf der Spielseite.
+
 ### Lockstep-Koordinator (Arbeitsbranch `feat/lockstep-session`, SYNC-001/DESYNC-001)
 
 - Der Kern der Synchronität: Der Host ordnet alle Spielerbefehle in eine feste Reihenfolge und gibt vor, bis zu welchem Tick jedes Spiel rechnen darf. Alle Spiele führen dieselben Befehle an derselben Stelle aus. In einer Simulation mit drei Spielen, eines davon fünfmal langsamer, ist das in sechs Läufen nachgewiesen.

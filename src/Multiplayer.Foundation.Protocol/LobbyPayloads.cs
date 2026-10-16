@@ -27,8 +27,11 @@ namespace Multiplayer.Foundation.Protocol
     public sealed class LobbyView
     {
         public LobbyView(Guid id, string name, Guid hostId, ulong revision, byte capacity, IReadOnlyList<PlayerView> players,
-            SetupPhase phase = SetupPhase.Lobby, SiteTile? site = null)
-        { Id = id; Name = name; HostId = hostId; Revision = revision; Capacity = capacity; Players = players; Phase = phase; Site = site; }
+            SetupPhase phase = SetupPhase.Lobby, SiteTile? site = null, LobbyMode? mode = null)
+        {
+            Id = id; Name = name; HostId = hostId; Revision = revision; Capacity = capacity; Players = players; Phase = phase; Site = site;
+            Mode = mode ?? LobbyMode.CoopHost;
+        }
         public Guid Id { get; }
         public string Name { get; }
         public Guid HostId { get; }
@@ -38,13 +41,20 @@ namespace Multiplayer.Foundation.Protocol
         public SetupPhase Phase { get; }
         /// <summary>Starting site chosen by the host; set once SiteSelection ends.</summary>
         public SiteTile? Site { get; }
+        /// <summary>Fixed when the lobby was created (ADR 0031).</summary>
+        public LobbyMode Mode { get; }
     }
 
     public sealed class LobbySummary
     {
         public LobbySummary(Guid id, string name, string hostName, byte playerCount, byte capacity, SetupPhase phase = SetupPhase.Lobby,
-            ModManifestSummary? hostMods = null)
-        { Id = id; Name = name; HostName = hostName; PlayerCount = playerCount; Capacity = capacity; Phase = phase; HostMods = hostMods; }
+            ModManifestSummary? hostMods = null, LobbyMode? mode = null)
+        {
+            Id = id; Name = name; HostName = hostName; PlayerCount = playerCount; Capacity = capacity; Phase = phase; HostMods = hostMods;
+            Mode = mode ?? LobbyMode.CoopHost;
+        }
+        /// <summary>Game mode, so players see Coop or Factions before joining.</summary>
+        public LobbyMode Mode { get; }
         /// <summary>Host's mod checksum, mod count and game version, so joiners see a mismatch before joining.</summary>
         public ModManifestSummary? HostMods { get; }
         public Guid Id { get; }
@@ -120,10 +130,19 @@ namespace Multiplayer.Foundation.Protocol
         { var writer = new PayloadWriter(); writer.WriteGuid(sessionId); writer.WriteUInt16(heartbeatSeconds); return writer.ToArray(); }
         public static byte[] Error(byte code, string reason)
         { var writer = new PayloadWriter(); writer.WriteByte(code); writer.WriteString(reason); return writer.ToArray(); }
-        public static byte[] Create(string name, byte capacity)
-        { var writer = new PayloadWriter(); writer.WriteString(name, 160); writer.WriteByte(capacity); return writer.ToArray(); }
-        public static (string Name, byte Capacity) ReadCreate(byte[] bytes)
-        { var reader = new PayloadReader(bytes); string name = reader.ReadString(160); byte capacity = reader.ReadByte(); reader.EnsureComplete(); return (name, capacity); }
+        /// <param name="mode">Chosen once here and never changed (ADR 0031); default Coop with host decisions.</param>
+        public static byte[] Create(string name, byte capacity, LobbyMode? mode = null)
+        {
+            var writer = new PayloadWriter(); writer.WriteString(name, 160); writer.WriteByte(capacity);
+            (mode ?? LobbyMode.CoopHost).Write(writer);
+            return writer.ToArray();
+        }
+        public static (string Name, byte Capacity, LobbyMode Mode) ReadCreate(byte[] bytes)
+        {
+            var reader = new PayloadReader(bytes); string name = reader.ReadString(160); byte capacity = reader.ReadByte();
+            LobbyMode mode = LobbyMode.Read(reader); reader.EnsureComplete();
+            return (name, capacity, mode);
+        }
         public static byte[] State(LobbyView state)
         {
             var writer = new PayloadWriter();
@@ -138,6 +157,7 @@ namespace Multiplayer.Foundation.Protocol
                 player.Key.Write(writer); SiteTile.WriteOptional(writer, player.Flag); writer.WriteByte((byte)player.ModStatus);
                 writer.WriteByte((byte)player.WorldStatus);
             }
+            state.Mode.Write(writer);
             return writer.ToArray();
         }
         public static LobbyView ReadState(byte[] bytes)
@@ -159,7 +179,8 @@ namespace Multiplayer.Foundation.Protocol
                 if (!Enum.IsDefined(typeof(WorldStatus), worldStatus)) throw new ProtocolException("Invalid world status.");
                 players.Add(new PlayerView(playerId, playerName, ready, key, flag, modStatus, worldStatus));
             }
-            reader.EnsureComplete(); return new LobbyView(id, name, host, revision, capacity, players, phase, site);
+            LobbyMode mode = LobbyMode.Read(reader);
+            reader.EnsureComplete(); return new LobbyView(id, name, host, revision, capacity, players, phase, site, mode);
         }
         public static byte[] List(IReadOnlyList<LobbySummary> lobbies)
         {
@@ -169,7 +190,7 @@ namespace Multiplayer.Foundation.Protocol
             {
                 writer.WriteGuid(lobby.Id); writer.WriteString(lobby.Name, 160); writer.WriteString(lobby.HostName, 160);
                 writer.WriteByte(lobby.PlayerCount); writer.WriteByte(lobby.Capacity); writer.WriteByte((byte)lobby.Phase);
-                writer.WriteBool(lobby.HostMods != null); lobby.HostMods?.Write(writer);
+                writer.WriteBool(lobby.HostMods != null); lobby.HostMods?.Write(writer); lobby.Mode.Write(writer);
             }
             return writer.ToArray();
         }
@@ -183,7 +204,8 @@ namespace Multiplayer.Foundation.Protocol
                 Guid id = reader.ReadGuid(); string name = reader.ReadString(160), host = reader.ReadString(160);
                 byte players = reader.ReadByte(), capacity = reader.ReadByte(); SetupPhase phase = SetupPayloads.ReadPhase(reader);
                 ModManifestSummary? mods = reader.ReadBool() ? ModManifestSummary.Read(reader) : null;
-                lobbies.Add(new LobbySummary(id, name, host, players, capacity, phase, mods));
+                LobbyMode mode = LobbyMode.Read(reader);
+                lobbies.Add(new LobbySummary(id, name, host, players, capacity, phase, mods, mode));
             }
             reader.EnsureComplete(); return lobbies;
         }

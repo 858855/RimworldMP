@@ -1,5 +1,11 @@
 # Sitzungsübergabe
 
+- **Spielmodus (`feat/game-mode`, ADR 0031, MODE-001):**
+  - Der Benutzer will zwei Modi: Coop (Host-Entscheid oder Demokratie) und Fraktionen. Gewählt wird einmalig beim Erstellen, danach nicht änderbar.
+  - Koordinator-Seite fertig: `LobbyMode` in `CreateLobby`, Lobbyzustand und -liste; Fraktionsstart abgelehnt bis `FACTION-001`.
+  - **Für die Spielseite:** Auswahl im Lobby-Fenster (`LobbyPayloads.Create(name, capacity, mode)` bzw. `ListenHost.StartAsync(..., mode:)`), Anzeige des Modus in der Lobbyliste, Modus in `MultiplayerSession` speichern und beim Laden übernehmen.
+  - Neue Aufgaben: `VOTE-001`, `FACTION-001`, `FACTION-002`. Offene Benutzerfragen stehen im ADR.
+
 - **Lockstep-Koordinator (`feat/lockstep-session`, ADR 0030):**
   - Branch von `feat/mod-check-setup-ui` @ `08e7f9b`. Aufteilung laut Benutzer am 2026-10-16: Koordinator-Seite hier, Spielseite beim zweiten Beitragenden.
   - Neues Projekt `Multiplayer.Foundation.Session` (`LockstepSession`), dazu `LockstepClient` im Network-Projekt sowie `LockstepHost` und `OrderedOutbox` im Server. Codes 64–70.

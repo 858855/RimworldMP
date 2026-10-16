@@ -240,7 +240,7 @@ public sealed class FoundationServer : IAsyncDisposable
                 break;
             case MessageType.CreateLobby:
                 var create = LobbyPayloads.ReadCreate(message.Payload);
-                await PublishAsync(lobbies.Create(peer.Id, create.Name, create.Capacity), null, token, message.RequestId).ConfigureAwait(false);
+                await PublishAsync(lobbies.Create(peer.Id, create.Name, create.Capacity, create.Mode), null, token, message.RequestId).ConfigureAwait(false);
                 break;
             case MessageType.JoinLobby:
                 await PublishAsync(lobbies.Join(peer.Id, LobbyPayloads.ReadGuid(message.Payload)), MessageType.PlayerJoined, token, message.RequestId).ConfigureAwait(false);

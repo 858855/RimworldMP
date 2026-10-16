@@ -414,6 +414,28 @@ await using (var lockHost = await ListenHost.StartAsync("127.0.0.1", 0, "Host", 
 }
 Console.WriteLine("PASS: lockstep over the network: pause orders act at once, slow guest sets the pace, same commands at the same ticks, desync stops both");
 
+// ADR 0031 over the network: the host picks Factions once; a Steam guest sees it in the list before joining.
+await using (var factionHost = await ListenHost.StartAsync("127.0.0.1", 0, "Host", "Faction Room", 4, PlayerKey.Steam(76561198000000090UL),
+    mode: LobbyMode.Factions(FactionRelation.Hostile)))
+{
+    LobbyView factionRoom = LobbyPayloads.ReadState((await ReceiveAsync(factionHost.Client, MessageType.LobbyStateUpdate)).Payload);
+    Assert(factionRoom.Mode == LobbyMode.Factions(FactionRelation.Hostile), "host's lobby carries the chosen mode");
+    using var modeLink = new SteamLikeLink();
+    PlayerKey modeGuestKey = PlayerKey.Steam(76561198000000091UL);
+    Assert(factionHost.AttachConnection(NetworkConnection.FromDuplexStream(modeLink.A), modeGuestKey), "mode guest attached");
+    using LobbyClient modeGuest = await LobbyClient.ConnectOverStreamAsync(modeLink.B, "Guest", TimeSpan.FromSeconds(4), CancellationToken.None, modeGuestKey);
+    await modeGuest.SendAsync(MessageType.LobbyListRequest, 700, Array.Empty<byte>());
+    var modeList = LobbyPayloads.ReadList((await ReceiveAsync(modeGuest, MessageType.LobbyListResponse)).Payload);
+    Assert(modeList.Single().Mode == LobbyMode.Factions(FactionRelation.Hostile), "guest sees Factions/Hostile before joining");
+    LobbyView modeJoined = await StateAsync(modeGuest, MessageType.JoinLobby, 701, LobbyPayloads.GuidValue(factionRoom.Id));
+    Assert(modeJoined.Mode == factionRoom.Mode, "joined state keeps the mode");
+    await StateAsync(factionHost.Client, MessageType.PlayerReadyChanged, 702, LobbyPayloads.Bool(true));
+    await StateAsync(modeGuest, MessageType.PlayerReadyChanged, 703, LobbyPayloads.Bool(true));
+    Assert(await ErrorCodeAsync(factionHost.Client, MessageType.SetupAdvance, 704, SetupPayloads.Advance(SetupPhase.Scenario)) == 6,
+        "Factions setup refused until it exists");
+}
+Console.WriteLine("PASS: game mode over the network: chosen once by the host, visible before joining, Factions start refused for now");
+
 // SETUP-001: the host's page mirror reaches guests only while setup runs, and only from the host.
 await using (var mirrorHost = await ListenHost.StartAsync("127.0.0.1", 0, "Host", "Mirror Room", 4, PlayerKey.Steam(76561198000000070UL)))
 {

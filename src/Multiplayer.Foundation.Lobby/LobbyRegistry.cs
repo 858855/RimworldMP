@@ -54,7 +54,7 @@ namespace Multiplayer.Foundation.Lobby
             lock (gate)
                 return rooms.Values.OrderBy(r => r.Name, StringComparer.Ordinal).ThenBy(r => r.Id)
                     .Select(r => new LobbySummary(r.Id, r.Name, members[r.Host].Name, (byte)r.Members.Count, r.Capacity, r.Phase,
-                        members[r.Host].Mods)).ToArray();
+                        members[r.Host].Mods, r.Mode)).ToArray();
         }
 
         /// <summary>MOD-001: stores a member's mod summary; returns the lobby change when the member is in a lobby.</summary>
@@ -100,7 +100,8 @@ namespace Multiplayer.Foundation.Lobby
             }
         }
 
-        public LobbyChange Create(Guid actor, string name, byte capacity)
+        /// <param name="mode">Fixed for the lobby's lifetime; there is no way to change it later (ADR 0031).</param>
+        public LobbyChange Create(Guid actor, string name, byte capacity, LobbyMode? mode = null)
         {
             ValidateName(name);
             lock (gate)
@@ -108,7 +109,7 @@ namespace Multiplayer.Foundation.Lobby
                 Member member = GetMember(actor); RequireFree(member);
                 if (capacity < 2 || capacity > maximumCapacity) throw new LobbyRuleException(6, "Invalid lobby capacity.");
                 if (rooms.Count >= 128) throw new LobbyRuleException(7, "Lobby limit reached.");
-                var room = new Room(Guid.NewGuid(), name, actor, capacity); room.Members.Add(actor);
+                var room = new Room(Guid.NewGuid(), name, actor, capacity, mode ?? LobbyMode.CoopHost); room.Members.Add(actor);
                 rooms.Add(room.Id, room); member.Room = room.Id;
                 return Change(room, actor);
             }
@@ -186,6 +187,9 @@ namespace Multiplayer.Foundation.Lobby
                 switch (room.Phase)
                 {
                     case SetupPhase.Lobby:
+                        // ADR 0031: Coop is built first; the Factions setup does not exist yet (FACTION-001).
+                        if (room.Mode.Mode == GameMode.Factions)
+                            throw new LobbyRuleException(6, "The Factions mode is not available yet.");
                         if (room.Members.Count < minimumStartPlayers) throw new LobbyRuleException(6, "At least 2 players are needed.");
                         // MOD-001: start again checks that every member's mods match the host's.
                         if (room.Members.Any(id => StatusOf(room, members[id]) is ModStatus.Checking or ModStatus.Mismatch))
@@ -440,7 +444,7 @@ namespace Multiplayer.Foundation.Lobby
             var players = room.Members.Select(id => new PlayerView(id, members[id].Name, members[id].Ready, members[id].Key,
                 members[id].Flag, StatusOf(room, members[id]), WorldStatusOf(room, members[id]))).ToArray();
             return new LobbyChange(new LobbyView(room.Id, room.Name, room.Host, room.Revision, room.Capacity, players,
-                room.Phase, room.Site), room.Members.ToArray(), actor);
+                room.Phase, room.Site, room.Mode), room.Members.ToArray(), actor);
         }
         private sealed class Member
         {
@@ -458,7 +462,8 @@ namespace Multiplayer.Foundation.Lobby
         }
         private sealed class Room
         {
-            public Room(Guid id, string name, Guid host, byte capacity) { Id = id; Name = name; Host = host; Capacity = capacity; }
+            public Room(Guid id, string name, Guid host, byte capacity, LobbyMode mode) { Id = id; Name = name; Host = host; Capacity = capacity; Mode = mode; }
+            public LobbyMode Mode { get; }
             public Guid Id { get; }
             public string Name { get; }
             public Guid Host { get; set; }

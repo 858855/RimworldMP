@@ -32,7 +32,7 @@ namespace Multiplayer.Foundation.Hosting
             server.AttachConnection(connection, verifiedKey);
 
         public static async Task<ListenHost> StartAsync(string bindAddress, int port, string playerName,
-            string lobbyName, byte capacity, PlayerKey? playerKey = null, bool allowSoloStart = false)
+            string lobbyName, byte capacity, PlayerKey? playerKey = null, bool allowSoloStart = false, LobbyMode? mode = null)
         {
             if (string.IsNullOrWhiteSpace(playerName) || playerName.Length > 40 || playerName.Any(char.IsControl))
                 throw new ArgumentException("Player name must have 1-40 characters.", nameof(playerName));
@@ -50,7 +50,7 @@ namespace Multiplayer.Foundation.Hosting
                 client = await LobbyClient.ConnectAsync(server.LoopbackAddress.ToString(), server.BoundPort, playerName,
                     TimeSpan.FromSeconds(5), CancellationToken.None, playerKey).ConfigureAwait(false);
                 await client.SendAsync(MessageType.CreateLobby, 2,
-                    LobbyPayloads.Create(lobbyName, capacity)).ConfigureAwait(false);
+                    LobbyPayloads.Create(lobbyName, capacity, mode)).ConfigureAwait(false);
                 return new ListenHost(server, client, bindAddress) { AllowSoloStart = allowSoloStart };
             }
             catch
