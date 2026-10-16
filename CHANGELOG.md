@@ -8,6 +8,13 @@
 - Forbid/Unforbid verwendet nun denselben Befehlsweg mit Karten- und Thing-ID. Der Codec und die lokale 1.6-API wurden geprüft; die tatsächliche Erfassung im laufenden Spiel bleibt offen.
 - Ein einfacher Goto-Auftrag wird mit Zielzelle, JobTag und Queue-Flag geordnet übertragen. Noch nicht kodierte Spieleraufträge werden in der gemeinsamen Sitzung abgewiesen, damit sie nicht nur lokal wirken. Bewegung und Pfadsuche sind im Spiel weiterhin ungeprüft.
 
+### Spielmodus und IP-Identität im Spiel (Arbeitsbranch `codex/mode-ui`, MODE-001)
+
+- Der Host kann beim Erstellen den Spielmodus wählen; Lobbyliste und Lobby zeigen ihn an. Der Modus wird im gemeinsamen Spielstand gespeichert.
+- IP-Hosts können ein Lobby-Passwort vergeben. IP-Spieler weisen ihre lokal gespeicherte Kennung mit einem Schlüssel nach; der Host merkt sich die Zuordnung.
+- Der Lobby-Browser hat für Modus, Passwort und längere Spielerlisten einen scrollbaren Bereich.
+- Der Fraktionsstart bleibt gesperrt. Mod-Build und spielunabhängige Netzwerkprüfungen gelangen; Bedienung und Save/Load im laufenden Spiel sind offen.
+
 ### Zeitgrenze beim Laden (Arbeitsbranch `claude/snapshot-timeout`)
 
 - Lädt ein beitretender oder zu reparierender Spieler den Spielstand des Hosts nicht binnen drei Minuten, wartet die Partie nicht mehr auf ihn. Er wird aus Spiel und Lobby genommen und kann sofort neu beitreten; die anderen spielen weiter.

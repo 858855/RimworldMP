@@ -1,5 +1,11 @@
 # RimWorld-Client 0.1
 
+## Spielmodus und IP-Identität (X5, Arbeitsbranch `codex/mode-ui`)
+
+Vor dem Hosten oder Erstellen einer Lobby kann der Host zwischen Koop mit Hostentscheid, Koop mit Demokratie sowie drei Fraktionsbeziehungen wählen. Der gewählte Modus erscheint in Lobbyliste und Lobbyfenster und wird im `MultiplayerSession`-Spielstand hinterlegt. Der Fraktionsmodus ist in der Liste sichtbar; sein Spielstart bleibt serverseitig gesperrt. Ältere Spielstände ohne Modusfeld gelten als Koop mit Hostentscheid. Eine abweichende Modusangabe zwischen Spielstand und Lobby hält den Tick-Treiber an.
+
+Bei IP-Verbindungen verwendet die Mod nun eine dauerhaft gespeicherte lokale Kennung mit RSA-Nachweis. Ein direkter IP-Host verlangt diesen Nachweis und speichert die Bindung zwischen Kennung und öffentlichem Schlüssel in den Mod-Einstellungen. IP-Lobbys können ein optionales Passwort verlangen; ein gesperrter Eintrag zeigt dies an und verlangt das Passwort beim Beitritt. Private Schlüssel bleiben lokal. Der IP-Verkehr ist weiterhin nicht verschlüsselt. Die Steam-Kennung wird nur über den Steam-Pfad verwendet. Mod-Build und spielunabhängige Protokoll-/Hosttests bestanden; Bedienung und Save/Load im laufenden RimWorld sind offen. Details: [ADR 0044](decisions/0044-mode-and-ip-identity-ui.md).
+
 ## Tick-Treiber X2 (`codex/tick-driver`, noch nicht gemergt)
 
 Nach der Landung beginnt die Sitzung bei Tick 0 (Differenz zum geladenen `TicksGame`). Die Zeit startet pausiert. Ein Spieler kann Fortsetzen/Pause anfordern; nur der Host kann die Geschwindigkeit ändern. Der Server ordnet diese Anfragen ein und gibt einen Tick-Horizont vor. Das Spieloverlay zeigt „Pausiert“, „Läuft“ oder „Warte auf …“. Bei fehlender Freigabe, Protokollfehler oder noch nicht ausführbaren Spielbefehlen bleibt die Simulation stehen. Ein vorläufiger Kernhash meldet alle 60 Ticks Karten- und Kolonistenpositionen; vollständige Zustandsprüfung und Rand-Neusaat folgen in X3. Mod-Build und spielunabhängige Koordinatortests bestanden, ein Spieltest mit zwei RimWorld-Clients ist offen. Siehe [ADR 0040](decisions/0040-rimworld-tick-driver.md) und [Prüfung](verification/2026-10-16-codex-tick-driver.md).

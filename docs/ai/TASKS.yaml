@@ -1417,16 +1417,18 @@ tasks:
   - 'Ungültige Kombinationen werden abgelehnt'
   - 'Start im Fraktionsmodus wird abgelehnt, solange FACTION-001 nicht fertig ist'
   - 'Beim Laden kommt der Modus aus dem Spielstand'
-  implementation: in_progress
-  verification: tests_passed
-  integration: merged
-  branch: feat/game-mode
-  base_branch: feat/lockstep-session
-  base_commit: 52a6de1
+  implementation: implemented
+  verification: build_passed
+  integration: ready_for_human_review
+  branch: codex/mode-ui
+  base_branch: main
+  base_commit: b4255c6
   evidence:
   - docs/verification/2026-10-16-game-mode.md
   - docs/decisions/0031-game-modes.md
-  blocker: 'Koordinator-Seite fertig und getestet. Fehlt Spielseite: Auswahl im Lobby-Fenster, Anzeige in der Liste, Modus im Spielstand und beim Laden.'
+  - docs/verification/2026-10-16-codex-mode-ui.md
+  - docs/decisions/0044-mode-and-ip-identity-ui.md
+  blocker: 'Spielseite gebaut; RimWorld-UI und Save/Load im laufenden Spiel auf Wunsch des Benutzers noch nicht geprüft. SEC-001-Spielseite im selben Branch, ohne Änderung am Claude-Aufgabeneintrag.'
   plan_ref: docs/decisions/0031-game-modes.md
 - id: SAVE-003
   title: 'Spielseite für koordiniertes Speichern'
