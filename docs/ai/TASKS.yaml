@@ -1581,7 +1581,7 @@ tasks:
   - 'Fraktionsstart bleibt gesperrt, bis Spielseite und Tests fertig sind'
   implementation: in_progress
   verification: tests_passed
-  integration: not_submitted
+  integration: merged
   branch: claude/faction-storyteller
   base_branch: main
   base_commit: d568766

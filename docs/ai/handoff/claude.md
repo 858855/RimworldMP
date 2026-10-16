@@ -13,7 +13,7 @@
 - **C4 erledigt (Protokoll und Server), Branch `claude/ip-password`, ADR 0035:** Lobby-Passwort; Schlüsselbindung per signiertem Hello (RSA-2048, Zeitstempel, Zufallswert) mit Bindung beim ersten Kontakt, Wiederholungsschutz und Pflicht-Modus; Steam ausgenommen. Keine neuen Codes.
 - **Alle Aufgaben C1–C4 der Claude-Bahn sind erledigt** und auf `main` (C4 seit `0af2bcc`). Codex' Spielseite ist seit `ff2f178` gemergt.
 - **C5, Branch `claude/snapshot-timeout`, ADR 0036:** Wer einen Snapshot nicht binnen 180 s bestätigt, wird aus Sitzung und Lobby genommen; die anderen setzen fort. Für Codex: bei `ResyncGaveUp` mit eigener Session und `LeaveLobby` „Laden fehlgeschlagen – erneut beitreten“ anzeigen.
-- **C6, Branch `claude/faction-storyteller` von `main` @ `d568766`, ADR 0037, Aufgabe `FACTION-004`:** Fraktionsmodus, Koordinator-Seite der Benutzerentscheidung vom 2026-10-16. **Nicht gepusht, nicht gemergt.**
+- **C6, Branch `claude/faction-storyteller` von `main` @ `d568766`, ADR 0037, Aufgabe `FACTION-004`:** Fraktionsmodus, Koordinator-Seite der Benutzerentscheidung vom 2026-10-16. **Auf `main`.**
   - **Fraktionsplatz:** Beim Start der Einrichtung erhält jeder Spieler einen Platz (Host 0, dann Beitrittsreihenfolge). Der Platz hängt am `PlayerKey` und bleibt bis zum Ende der Partie.
   - **Phase `Storyteller`:**
     - Der Host sendet `FactionOptions`: gemeinsame `DifficultyDef` und wählbare `StorytellerDef`s.
@@ -25,7 +25,8 @@
   - **Codes vergeben (Benutzer, 2026-10-16):** neuer Claude-Bereich **96–111**, in `ASSIGNMENTS.md` eingetragen.
     - Belegt: 96 `FactionOptions`, 97 `StorytellerChoice`. Beide sind in `FoundationServer` verdrahtet und Ende zu Ende getestet (`Hosting.Tests`).
     - 98–111 sind frei, aber noch ungültige Frame-Typen.
-  - **Nachtrag-Commit** auf `2a2c818`: Codes, Server, strengerer Lobbyzustand, Tests, Vertrag. Weiterhin **nicht gepusht, nicht gemergt.**
+  - **Nachtrag-Commit** auf `2a2c818`: Codes, Server, strengerer Lobbyzustand, Tests, Vertrag.
+  - **Gemergt nach `main`** (Freigabe des Benutzers, 2026-10-16) per Fast-Forward; der Branch ist danach entfernt.
   - **Geänderte Schnittstellen für Codex** (alle in Claudes Projekten; Spielseite nicht angefasst):
 
     | Schnittstelle | Änderung | Was die Spielseite tun muss |
