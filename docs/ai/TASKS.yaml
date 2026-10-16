@@ -353,14 +353,15 @@ tasks:
   - Noch nicht ausgeführte Spieltests und WIP-Anteile sind dokumentiert
   implementation: implemented
   verification: build_passed
-  integration: not_submitted
+  integration: merged
   branch: codex/manual-test-candidate
   base_branch: codex/command-pipeline
   base_commit: f91655a
   evidence:
   - docs/verification/2026-10-16-manual-test-candidate.md
+  - docs/verification/2026-10-16-manual-test-candidate-merge.md
   - docs/reviews/2026-10-16-manual-test-candidate.md
-  blocker: 'Manuelle RimWorld- und Zwei-Rechner-Tests stehen aus; SYNC-002 ist WIP. Kein Push/Merge ohne dafür geltende Freigabe.'
+  blocker: 'Manuelle RimWorld- und Zwei-Rechner-Tests stehen aus; SYNC-002 ist trotz Integration als Vorschau weiterhin WIP.'
 - id: HOST-001
   title: Lobby ohne separaten Serverprozess aus der Mod hosten
   goal: Ein Spieler startet die autoritative Lobby direkt im RimWorld-Mod und ein Kollege verbindet sich per LAN-IP.
@@ -989,13 +990,14 @@ tasks:
   - 'Fehlende Referenzen werden überall deterministisch zum No-op'
   implementation: in_progress
   verification: build_passed
-  integration: not_submitted
-  branch: codex/command-pipeline
+  integration: merged
+  branch: codex/manual-test-candidate
   base_branch: main
   base_commit: b4255c6
   evidence:
   - docs/decisions/0043-command-pipeline-first-action.md
   - docs/verification/2026-10-16-command-pipeline-first-action.md
+  - docs/verification/2026-10-16-manual-test-candidate-merge.md
   blocker: 'Draft/Undraft, Forbid/Unforbid und einfaches Goto kodiert; übrige Referenztypen, Ordered Jobs, Designatoren und Zwei-Client-Spieltest fehlen. Pfadsuche bleibt deterministisch ungeprüft.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: SYNC-003
@@ -1445,8 +1447,8 @@ tasks:
   - 'Beim Laden kommt der Modus aus dem Spielstand'
   implementation: implemented
   verification: build_passed
-  integration: ready_for_human_review
-  branch: codex/mode-ui
+  integration: merged
+  branch: codex/manual-test-candidate
   base_branch: main
   base_commit: b4255c6
   evidence:
@@ -1454,6 +1456,7 @@ tasks:
   - docs/decisions/0031-game-modes.md
   - docs/verification/2026-10-16-codex-mode-ui.md
   - docs/decisions/0044-mode-and-ip-identity-ui.md
+  - docs/verification/2026-10-16-manual-test-candidate-merge.md
   blocker: 'Spielseite gebaut; RimWorld-UI und Save/Load im laufenden Spiel auf Wunsch des Benutzers noch nicht geprüft. SEC-001-Spielseite im selben Branch, ohne Änderung am Claude-Aufgabeneintrag.'
   plan_ref: docs/decisions/0031-game-modes.md
 - id: SAVE-003

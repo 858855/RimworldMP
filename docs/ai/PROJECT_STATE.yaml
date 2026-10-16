@@ -2,9 +2,8 @@ schema_version: 2
 project:
   name: RimWorld Multiplayer Foundation
   repository_path: /mnt/Arbeit/Git Projekte/RimworldMP
-  goal: 'Version 0.1: echte Client-Server-Verbindung, autoritative Lobbys und RimWorld-Client-Mod; kein
-    Gameplay-Sync.'
-product_version: 0.1.0-dev
+  goal: 'Multiplayer Foundation: echte Client-Server-Verbindung, autoritative Lobbys und RimWorld-Client-Mod. Gameplay-Synchronisierung ist in Entwicklung.'
+product_version: 0.2.0-preview
 target_rimworld_version:
   primary: 1.6.4871
   version_file: rev598
@@ -14,7 +13,7 @@ target_rimworld_version:
   runtime: Unity/Mono
   game_runtime_tested: true
   other_versions_verified: []
-current_phase: lockstep_game_side_merged_command_capture_next
+current_phase: manual_test_preview_merged_command_pipeline_in_progress
 git:
   branch: main
   base_branch: null
@@ -62,11 +61,11 @@ components:
   rimworld_adapter:
     implementation: implemented
     verification: build_passed
-    integration: ready_for_human_review
+    integration: merged
   mod_package:
     implementation: implemented
     verification: tests_passed
-    integration: ready_for_human_review
+    integration: merged
   main_menu_ui:
     implementation: implemented
     verification: runtime_verified
@@ -116,6 +115,7 @@ verified_capabilities:
 - 'Koordinator (Merge 2026-10-16): koordiniertes Speichern, Beitritt im laufenden Spiel, Desync-Reparatur und Coop-Demokratie-Abstimmung auf main; Simulationen zeigen gleiche Ausführungsfolge nach Beitritt, Reparatur und Abstimmung. Spielseite in Arbeit (Codex). Siehe docs/verification/2026-10-16-save-join.md, -resync.md, -votes.md.'
 - 'Merge 2026-10-16: Spielseite von Codex (Tick-Treiber, Speichern/Beitritt, Zustands-Hash mit Rand-Neusaat, Resync-Adapter) und IP-Sicherheit (SEC-001) auf main; kombinierter Stand: Mod-Build ohne Warnungen, alle acht Testprojekte grün. Spieltest weiterhin offen.'
 - 'Zeitgrenze für nie geladene Snapshots (ADR 0036) auf main: Säumige werden nach 180 s aus Sitzung und Lobby genommen, die anderen setzen fort; Regeln und Ende zu Ende getestet.'
+- 'X1/X4/X5-Vorschau auf main: statischer Tickpfad-Audit, erste synchronisierte Draft/Forbid/Goto-Befehle und Modus-/IP-Identitäts-UI; Mod-Build ohne Warnungen, acht .NET-Testprojekte und Validator bestanden. ZIP-SHA-256 und Grenzen: docs/verification/2026-10-16-manual-test-candidate-merge.md. Kein Spiel-Laufzeittest dieses Stands.'
 user_reported_capabilities:
 - 'Allein-Start (Debug-Option) mit den Einrichtungsseiten des Hosts laut Benutzer am 2026-10-15 im Spiel funktionsfähig („works“, Build b0f4df8); Spiegel beim Gast ungeprüft.'
 - 'Mod-Prüfung und Start-Knopf (Fassung feat/lobby-hardening) laut Benutzer am 2026-10-15 mit zwei Spielern funktionsfähig; die auf feat/setup-rules übertragene Fassung ist noch nicht mit zwei Spielern geprüft.'
@@ -125,8 +125,8 @@ user_reported_capabilities:
 - 'Branch fix/internet-connectivity: Dual-Stack-Bindung `::`, Client über IPv6/DNS mit Fallback und UPnP gegen Fake-Gateway getestet (sieben Testprojekte unter .NET 8); Mod-Build gegen Windows-1.6-Installation (rev590) ohne Warnungen; SSDP gegen echte FRITZ!Box nur lesend.'
 known_issues:
 - 'Tests von feat/mod-check-setup-ui liefen unter .NET 8 statt .NET 10 (lokaler Harness); Serverbuild und ProcessIntegration.Tests nicht ausgeführt.'
-- 'PlayerKey über TCP fälschbar (SEC-001); mit und ohne Steam ergibt zwei verschiedene Kennungen.'
-- 'Spieltests derzeit nicht möglich (Benutzer, 2026-10-15): alle Laufzeitprüfungen im Spiel bleiben offen.'
+- 'IP-Key-Proof und Pinning sind im Hosting-Test belegt, aber ihre Verwendung im laufenden RimWorld-Mod sowie Heimnetz-Verbindungen bleiben ungeprüft.'
+- 'X1/X4/X5-Vorschau ist noch nicht mit zwei laufenden RimWorld-Clients getestet; Fabio und Sven planen diesen Test.'
 - 'Wire-Version 3 (Chunk-Kanal) ist nicht mit Version 2 kombinierbar; Nachrichtencodes 20–23 beim Merge mit parallelen Branches abgleichen.'
 - 'RimWorld-UI durch Codex nicht verifiziert: -nographics verursacht Atlasfehler; grafischer Start
   kam auch im 180-s-Wiederholungsversuch nicht bis zu belegten Mod-Ladeeinträgen.'
@@ -136,6 +136,7 @@ known_issues:
 - Server und Client haben keine Authentifizierung/TLS; mit Standardbindung `::` und UPnP ist eine per IP gehostete Lobby öffentlich erreichbar.
 - 'NET-002: echte Internetverbindung, UPnP-Freigabe am echten Router und Mono-Laufzeit im Spiel nicht geprüft.'
 - 'Zusammengeführtes Verbindungsfenster (Steam, IP mit UPnP-Option, Erreichbarkeitsanzeige neben Chat) nur gebaut, nicht im Spiel geprüft.'
+- 'X4 ist trotz Merge nur eine Teilimplementierung: Ordered Jobs/Designatoren, weitere Referenztypen und der Gameplay-Gleichlauf mit zwei RimWorld-Clients sind ungeprüft; parallele Pfadsuche kann Desync verursachen.'
 blockers:
 - Vollständiger RimWorld-UI-Laufzeittest in dieser Umgebung offen.
 - 1.7-Unterstützung ungeklärt.
@@ -143,6 +144,7 @@ blockers:
 - Chat mit zwei RimWorld-Clients offen.
 active_tasks:
 - TEST-001
+- SYNC-002
 - STEAM-001
 - UI-002
 - CHAT-001
@@ -156,7 +158,7 @@ active_tasks:
 - SETUP-003
 - SETUP-004
 - SETUP-005
-next_action: 'Codex: X1 (Tickpfad-Threads) und X4 (SYNC-002, erster Spielbefehl) auf main bringen und zur Freigabe vorlegen; danach X5 (Lobby-Fenster: Modus, Passwort, Identität), SYNC-004, OWN-001. Claude: keine offene Aufgabe, neue Verteilung durch den Benutzer. Erster Zwei-Spieler-Test und DET-001, sobald möglich.'
+next_action: 'Fabio und Sven: identisches Vorschau-ZIP nach docs/verification/TEST_PROMPTS_FABIO_SVEN.md mit zwei RimWorld-Clients prüfen und ersten abweichenden Tick dokumentieren. Codex: X4/SYNC-002 auf neuem codex-Branch von aktuellem main vervollständigen; danach SYNC-004. DET-001 bleibt offen.'
 documentation_refs:
   tasks: docs/ai/TASKS.yaml
   handoff: docs/ai/SESSION_HANDOFF.md
@@ -210,4 +212,4 @@ documentation_refs:
   character_selection_verification: docs/verification/2026-10-15-character-selection.md
   game_start_decision: docs/decisions/0023-shared-game-start.md
   game_start_verification: docs/verification/2026-10-15-game-start.md
-last_updated: '2026-10-15'
+last_updated: '2026-10-16'
