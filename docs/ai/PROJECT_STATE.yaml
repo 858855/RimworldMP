@@ -19,7 +19,7 @@ git:
   base_branch: null
   base_commit: null
   current_commit_ref: HEAD
-  pushed: false
+  pushed: true
   merged: true
   dependent_branches:
   - feat/setup-rules
