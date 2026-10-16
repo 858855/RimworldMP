@@ -38,3 +38,10 @@
   - Werkzeug für die nächste Suche: die Rand-Spur im Selbsttest (`LockstepRandTrace`). Sie nennt die erste abweichende Zufallsziehung mit Aufrufstelle.
   - Verifikation: `docs/verification/2026-10-16-lockstep-core.md`; Zwei-Spieler-Prüfpunkte: `docs/reviews/2026-10-16-sync-lockstep.md`; Build zum Verteilen: `dist/RimWorldMultiplayerFoundation-sync-lockstep.zip` (nicht im Repo).
   - Offen: zwei echte Spieler, Rest-Abweichung, SYNC-002 (Spieleraktionen werden noch nicht geteilt).
+- **Geteilte Spieleraktionen (2026-10-17, SYNC-002, Teil SYNC-004, Branch `feat/sync-commands` im Worktree `E:/RimworldMP-sync`, auf `feat/sync-lockstep`):**
+  - Anlass: Im ersten Zwei-Spieler-Lauf mit Gleichlauf blieb jede Aktion lokal („wie Einzelspieler“). ADR 0025 vom Besitzer freigegeben.
+  - Geteilt über Lockstep-Befehle: Einziehen, Feuer frei, Rechtsklick-Befehle, Designatoren von RimWorld (Bauen mit Material, Drehung, Stil; Zonen und Bereiche mit Auswahl), Verbieten, Arbeitsprioritäten, Zeitplan, Forschung, Pflanze der Anbauzone. Nicht Geteiltes läuft lokal mit Hinweis.
+  - Die Spielerseite bekommt lokale IDs, damit die gemeinsamen ID-Zähler gleich bleiben. Die Prüfsumme umfasst jetzt auch Bezeichnungen, Zonen, Bereiche und Einstellungen.
+  - Selbsttest: alle Aktionen PASS; Determinismus mit Befehlsskript gleich. Verifikation: `docs/verification/2026-10-17-shared-actions.md`; Prüfpunkte: `docs/reviews/2026-10-17-sync-commands.md`; Build: `dist/RimWorldMultiplayerFoundation-sync-commands.zip` (nicht im Repo).
+  - Achtung beim Bauen: Ein Bedingungsausdruck mit LINQ-Lambda in `SyncWorkers.ReadJob` ließ den C#-Compiler (SDK 8) mit Stack Overflow abstürzen. Schleifen statt solcher Ausdrücke verwenden; nach einem Absturz `dotnet build-server shutdown`.
+  - Offen: zwei echte Spieler, weitere SYNC-004-Zeilen, Rechte (SYNC-005), DET-001-Rest.

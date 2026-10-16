@@ -1,0 +1,73 @@
+# ADR 0025 – Geteilte Spieleraktionen, erster Schnitt (SYNC-002 Befehls-Pipeline, Teil von SYNC-004)
+
+- **Status:** angenommen (Freigabe des Besitzers am 2026-10-17). Neuer Branch `feat/sync-commands` auf `feat/sync-lockstep` (lokal). Designnotiz nach `AGENTS.md` Regel 4, Aufgabenvertrag nach Regel 30. Baut auf ADR 0024 auf (Befehle mit Tick, Arten ab `16`). Umsetzung von Plan §7.2, §7.3 und der wichtigsten Zeilen aus §7.5 Stufe 1.
+- **Anlass:** Erster Zwei-Spieler-Lauf mit dem Gleichlauf (2026-10-16):
+  - Die Zeit lief bei beiden gleich; die Markierungen kamen beim selben Tick an.
+  - Jede Aktion blieb aber beim Spieler, der sie gab. Eine Bewegung des Gastes ergab die Abweichung bei Tick 420, das Einziehen beim Host eine weitere.
+  - Der Benutzer: „Es fühlt sich an wie Einzelspieler.“
+- **Ziel:** Was ein Spieler tut, passiert bei allen beim selben Tick:
+  - Figuren einziehen und entlassen, Feuer frei.
+  - Rechtsklick-Befehle: gehen, angreifen, tragen, ausrüsten, anziehen, essen, retten, Arbeit vorziehen.
+  - Bezeichnungen: abbauen, fällen, ernten, abreißen, abbrechen, verbieten und erlauben, jagen, zähmen, schlachten, ausziehen.
+  - Bauen: Blaupausen mit Material, Drehung und Stil.
+  - Zonen (Lager, Anbau, Angeln) mit Pflanzenwahl; erlaubte Bereiche, Heimbereich, Dachbereiche.
+  - Verbieten und Erlauben per Knopf, Arbeitsprioritäten, Zeitplan, Forschungsprojekt.
+- **Nicht-Ziele (folgen):** Rechnungen, Lagerfilter und -priorität, Richtlinien (Kleidung, Essen, Drogen, Lesen), Medizin, Betten und Gefangene, Handel, Karawanen, Dialoge mit gemeinsamer Pause, Fähigkeiten und Psycasts, Gebäude-Knöpfe (Türen, Schalter), Umbenennen, Installieren, Rechte (SYNC-005), Vorschau „ausstehend“, Mod-API.
+
+## Regeln
+
+- **Erfassen (Plan §7.2):** Ein Harmony-Prefix sitzt auf jedem Einstiegspunkt.
+  - **Als Spieleraktion gilt ein Aufruf nur,** wenn eine Lockstep-Sitzung läuft, kein Tick und kein LongEvent läuft und gerade kein Befehl ausgeführt wird.
+  - Dann werden Ziel und Argumente serialisiert und als `LockstepCommand` gesendet; das Original wird übersprungen. `AGENTS.md` Regel 12 verlangt, dass das beabsichtigt ist. Hier ist es das.
+  - Aufrufe aus der Simulation (in Ticks) und aus LongEvents (z. B. Kartenerzeugung) laufen unverändert.
+- **Einstiegspunkte** (per Metadaten gegen 1.6.4871 geprüft):
+  - `Pawn_DraftController.Drafted` und `FireAtWill` (Setter).
+  - `Pawn_JobTracker.TryTakeOrderedJob(Job, JobTag?, bool)`: alle Rechtsklick-Befehle.
+  - `Designator.DesignateSingleCell`/`DesignateMultiCell`/`DesignateThing` in jeder Unterklasse, die sie überschreibt (beim Start per Reflection gepatcht).
+  - `CompForbiddable.Forbidden` (Setter).
+  - `Pawn_WorkSettings.SetPriority`, `Pawn_TimetableTracker.SetAssignment`, `ResearchManager.SetCurrentProject`, `Zone_Growing.SetPlantDefToGrow`.
+- **Serializer** (`SyncWriter`/`SyncReader`, Worker je Typ, Plan §7.3):
+  - Werte: Zahlen, Wahrheitswerte, Text, `IntVec3`, `Rot4`. Zellen als `u16`-Paare; ein großer Zug wird auf mehrere Befehle verteilt (32-KiB-Grenze).
+  - `Def`: Typ und `defName`. `Map`: `uniqueID`. `Zone`/`Area`: ID.
+  - `Thing`/`Pawn`: `thingIDNumber` und Karte. Gesucht wird unter den gespawnten Dingen der Karte sowie in Inventar, Ausrüstung und Kleidung der Figuren.
+  - `LocalTargetInfo`: Ding, Zelle oder leer.
+  - `Job`: Def, Ziele A, B, C mit Warteschlangen, Anzahlen, dazu die Felder, die Spielerbefehle setzen: `playerForced`, `haulMode`, `locomotionUrgency`, `plantDefToSow`, `thingDefToCarry`, `workGiverDef`, `verbToUse` (Index in den Verben der Figur), `maxNumMeleeAttacks`, `maxNumStaticAttacks`, `expiryInterval`, `killIncappedTarget`, `ignoreForbidden`, `ignoreDesignations`, `canBashDoors`, `canBashFences`, `canUseRangedWeapon`, `takeExtraIngestibles`, `ingestTotalCount`, `overeat`, `restUntilHealed`, `endIfCantShootTargetFromCurPos`, `endIfCantShootInMelee`, `followRadius`, `draftedTend`.
+  - Hat ein Befehl ein Feld, das der Serializer nicht kennt (z. B. `bill`, `ability`, `lord`, `quest`), wird er nicht geteilt. Er läuft lokal wie bisher, mit dem Log-Hinweis „noch nicht geteilt“; die Prüfsumme meldet die Folge.
+  - **Designator:** Typ und Zustand.
+    - Ohne Zustand: parameterloser Konstruktor.
+    - `Designator_Build`: `entDef`, `stuffDef`, `placingRot`, `styleDef`.
+    - Zonen: die ausgewählte Zone (ID) oder „neue Zone“.
+    - Erlaubte Bereiche: der Bereich (ID).
+    - Designatoren ohne passenden Konstruktor (z. B. Installieren) bleiben vorerst lokal, mit Hinweis.
+- **Ausführung** bei allen, auch beim Absender, beim Tick des Befehls:
+  - Die Ziele werden aufgelöst. Fehlt eines (z. B. die Figur ist tot), ist der Befehl überall ein No-op mit Log (Plan §7.3).
+  - Die Karte des Befehls wird für die Ausführung zur aktuellen Karte (`Game.currentMapIndex`) und danach zurückgesetzt. Der Spieler sieht dabei keinen Wechsel.
+  - Zonen: Die Auswahl wird kurz auf die Zone des Befehls gesetzt und danach wiederhergestellt. Erlaubte Bereiche: `Designator_AreaAllowed.selectedArea` genauso.
+  - Das Original läuft mit Ausführungs-Kennzeichen; der Zufall gilt je Befehl wie in ADR 0024.
+- **Rückmeldung:** Ein Klick wirkt nach einem Netz-Umlauf, bei Pause sofort nach der Antwort des Servers. Eine Vorschau gibt es in diesem Schnitt nicht.
+- **Rechte:** noch keine; jeder darf jede Figur befehligen (SYNC-005 folgt).
+- **Protokoll:** keine neue Nachricht. Befehlsarten: `16` Einziehen, `17` Feuer frei, `18` Rechtsklick-Befehl, `19` Bezeichnung (Designator), `20` Verbieten, `21` Arbeitspriorität, `22` Zeitplan, `23` Forschung, `24` Pflanze der Anbauzone. Unbekannte Arten bleiben ein No-op.
+- **Anzeige:** Das Feld nennt, was geteilt wird und was noch nicht. Die abgeschnittenen Zeilen im Feld werden behoben.
+- **Persistenz:** keine neue.
+- **Tests:**
+  - **Protocol.Tests:** `SyncWriter`/`SyncReader` hin und zurück, Grenzen.
+  - **Selbsttest im Spiel**, jede Art über Treiber und Sequencer:
+    - Der Aufruf von außerhalb eines Ticks wird erfasst; lokal ändert sich noch nichts.
+    - Der Befehl läuft beim Tick, die Wirkung ist da (eingezogen, Job, Bezeichnung, Blaupause mit Material und Drehung, Zone mit den Zellen, Priorität, Zeitplan, Forschung).
+    - Der Schein-Gast bekommt denselben Befehl.
+  - **Determinismus mit Befehlen:** Die Läufe A und A2 spielen dasselbe Befehlsskript zu festen Ticks ab; alle Prüfsummen müssen gleich sein.
+  - **Zwei echte Spieler:** Prüfpunkte in der Review-Unterlage.
+- **Risiken:**
+  - Designatoren, die beim Ausführen weitere Oberflächen-Zustände lesen.
+  - Job-Felder, die ein Befehl setzt und der Serializer nicht kennt.
+  - Mods mit eigenen Designatoren.
+  - Lineare Suche nach Dingen je Befehl (nur bei Befehlen, nicht je Tick).
+  - Unterschiedliche Spiel-Builds (Lauf vom 2026-10-16: Host rev591, Gast rev600). Lockstep braucht denselben Spielcode.
+- **Rollback:** Commits zurücknehmen. Dann gilt der Stand von ADR 0024: Die Zeit läuft gemeinsam, Aktionen bleiben lokal.
+- **Nachtrag 2026-10-17 (Umsetzung):**
+  - **Bündeln:** Erfasste Aktionen gehen einmal je Frame hinaus. Aufeinanderfolgende Einträge einer Art bilden einen Befehl, z. B. 20 markierte Gegenstände verbieten. So bleibt die Grenze von 30 Befehlen je Sekunde unberührt.
+  - **Selbstprüfung der Rechtsklick-Befehle:** Der Job wird beim Erfassen einmal durch den Serializer geschickt und Feld für Feld mit dem Original verglichen; nur Felder, die das Job-System selbst setzt, sind ausgenommen. Weicht ein Feld ab (z. B. `bill`), bleibt der Befehl lokal mit Hinweis. Die Liste unbekannter Felder pflegt sich so selbst.
+  - **Lokale IDs:** Die Oberfläche baut den Job eines Rechtsklick-Menüs, bevor er erfasst wird. Damit die gemeinsamen ID-Zähler gleich bleiben, bekommen in einer Sitzung alle Objekte, die die Spielerseite anlegt, lokale IDs (Prefix auf `UniqueIDsManager.GetNextID`). Was die Simulation, LongEvents und laufende Befehle anlegen, bekommt wie bisher gemeinsame IDs; das Lesen eines Befehls zählt mit.
+  - **Prüfsumme:** Sie deckt jetzt auch Bezeichnungen, Zonen (mit Pflanze), Bereiche, eingezogen, Arbeitsprioritäten, Zeitplan und das Forschungsprojekt ab. Dinge ohne ID (Motes) zählen nicht mehr.
+  - **Anzeige:** Das Feld nennt, was geteilt wird und was noch nicht, zählt gesendete und ausgeführte Aktionen und nennt die zuletzt nur lokal gelaufene. Die abgeschnittenen Spielerzeilen sind behoben.
+  - **Nachweis:** `docs/verification/2026-10-17-shared-actions.md`.

@@ -960,11 +960,15 @@ tasks:
   acceptance:
   - 'Roundtrip für jeden Typ aus Plan §7.3'
   - 'Fehlende Referenzen werden überall deterministisch zum No-op'
-  implementation: planned
-  verification: not_tested
-  integration: not_submitted
-  branch: null
-  evidence: []
+  implementation: implemented
+  verification: tests_passed
+  integration: ready_for_human_review
+  branch: feat/sync-commands
+  evidence:
+  - docs/decisions/0025-shared-player-actions.md
+  - docs/verification/2026-10-17-shared-actions.md
+  - docs/reviews/2026-10-17-sync-commands.md
+  blocker: 'Befehls-Pipeline mit Serializer (Dinge, Figuren, Defs, Zonen, Bereiche, Verben, Jobs, Designatoren) und Erfassung an den Einstiegspunkten; fehlende Verweise sind überall ein No-op. Selbsttest im Spiel: jede Art erfasst, nicht lokal, dann bei allen ausgeführt; Determinismus mit Befehlsskript gleich. Offen: zwei echte Clients.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: SYNC-003
   title: 'Geschwindigkeit und Pause'
@@ -1001,11 +1005,14 @@ tasks:
   acceptance:
   - 'Jede Tier-1-Zeile hat einen Zwei-Client-Test mit gleichen Hashes danach'
   - '30-Minuten-Lauf mit wachsender Kolonie ohne Desync'
-  implementation: planned
-  verification: not_tested
+  implementation: in_progress
+  verification: tests_passed
   integration: not_submitted
-  branch: null
-  evidence: []
+  branch: feat/sync-commands
+  evidence:
+  - docs/decisions/0025-shared-player-actions.md
+  - docs/verification/2026-10-17-shared-actions.md
+  blocker: 'Teil aus ADR 0025 geteilt: Einziehen, Rechtsklick-Befehle, Bezeichnungen, Bauen, Zonen samt Pflanze, Bereiche, Verbieten, Arbeitsprioritäten, Zeitplan, Forschung. Offen: Rechnungen, Lager, Richtlinien, Betten, Medizin, Gefangene, Gebäude-Knöpfe, manuelle Prioritäten; Zwei-Client-Tests und 30-Minuten-Lauf.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: SYNC-005
   title: 'Rechteprüfung bei Befehlen'

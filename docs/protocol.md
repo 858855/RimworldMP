@@ -132,3 +132,21 @@ Nur in `Playing` (sonst Code 6). Jede Lobby in `Playing` hat einen Sequencer auf
 - **Regeln für die Geschwindigkeit:** Pausieren und Fortsetzen darf jeder; die Stufe wählt der Host (sonst Code 3). Ein Gast setzt eine Pause mit der letzten Stufe fort. Ein Wunsch ohne Änderung wird verworfen. Meldet ein Spieler die Gefahrenbremse, läuft der Takt mit Normal.
 - **Grenzen:** höchstens 30 Befehle je Sekunde und Spieler (Code 7), Befehl ≤ 32 KiB. Den Aussteller setzt der Server.
 - **Prüfsummen:** beim Start und nach jedem Tick mit `Tick % 60 == 0`. Der Server vergleicht, sobald alle gemeldet haben, mit dem Hash des Hosts. Der letzte gleiche Tick steht im Horizont; die erste Abweichung meldet er einmal mit `DesyncDetected`. Höchstens 64 offene Ticks.
+
+## Geteilte Spieleraktionen (SYNC-002, ADR 0025)
+
+Spieleraktionen sind `LockstepCommand`s der Arten ab `16`. Die Nutzlast beginnt mit der Anzahl der Einträge (`u16`); jeder Eintrag folgt dem Aufbau seiner Art (`SyncWriter`: Zahlen Big Endian, Text mit Länge, Zellen als Reihen von Läufen `z, x0, Länge` je `u16`). Spielverweise: Ding und Figur als `thingIDNumber` mit Karten-`uniqueID`, Def als `defName`, Zone und Bereich als ID mit Karte. Der Server liest diese Nutzlasten nicht.
+
+| Art | Aktion | Eintrag |
+|---|---|---|
+| 16 | Einziehen | Figur, `bool` |
+| 17 | Feuer frei | Figur, `bool` |
+| 18 | Rechtsklick-Befehl | Figur, Job (Def, Ziele A–C mit Warteschlangen, Anzahlen, die von Befehlen gesetzten Felder), Tag `u8` (`255` = keiner), anstellen `bool` |
+| 19 | Bezeichnung | Karte, Designator (Typname und Zustand: Bau mit Def, Material, Drehung, Stil; Zone mit ausgewählter Zone; Bereich mit ausgewähltem Bereich), Art `u8` (`1` Zelle, `2` Zellen, `3` Ding), Ziel |
+| 20 | Verbieten | Ding, `bool` |
+| 21 | Arbeitspriorität | Figur, `WorkTypeDef`, Priorität |
+| 22 | Zeitplan | Figur, Stunde, `TimeAssignmentDef` |
+| 23 | Forschung | starten `bool`, `ResearchProjectDef` |
+| 24 | Pflanze der Anbauzone | Zone, `ThingDef` |
+
+Ein Eintrag, dessen Verweise nicht mehr auflösbar sind, ist bei allen ein No-op. Unbekannte Arten bleiben ein No-op.

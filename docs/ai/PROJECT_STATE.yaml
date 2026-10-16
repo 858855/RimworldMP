@@ -14,15 +14,16 @@ target_rimworld_version:
   runtime: Unity/Mono
   game_runtime_tested: true
   other_versions_verified: []
-current_phase: lockstep_core_review_pending
+current_phase: shared_actions_review_pending
 git:
-  branch: feat/sync-lockstep
-  base_branch: feat/mod-check-setup-ui
-  base_commit: 5c3f2b7
+  branch: feat/sync-commands
+  base_branch: feat/sync-lockstep
+  base_commit: 2a52807
   current_commit_ref: HEAD
   pushed: false
   merged: false
   dependent_branches:
+  - feat/sync-lockstep
   - feat/mod-check-setup-ui
   - feat/setup-rules
   - feat/player-key
@@ -89,6 +90,7 @@ components:
     verification: build_passed
     integration: merged
 verified_capabilities:
+- 'SYNC-002 Selbsttest im Spiel: Einziehen, Rechtsklick-Befehl, Abbauen, Bauen (Material, Drehung), Lager samt Erweiterung, Anbauzone mit Pflanze, Verbieten, Priorität, Zeitplan, Forschung über die Befehls-Pipeline erfasst und bei allen ausgeführt; Determinismus mit Befehlsskript gleich. Zwei echte Clients offen.'
 - 'SYNC-001 Selbsttest im Spiel: Tick-Treiber gegen Sequencer im selben Prozess (nie über den Horizont, der langsamste bremst, Pause/Geschwindigkeit beim richtigen Tick); derselbe Spielstand fünfmal geladen, 6 000 Ticks gleich nach drei Determinismus-Gegenmaßnahmen (ADR 0024 Nachtrag). Zwei echte Clients offen.'
 - 'SETUP-002 Selbsttest im Spiel: Welt ohne Karte erzeugt, gespeichert und im Hauptmenü wie ein Gast geladen, Fingerabdruck gleich (5/30/50 % Abdeckung; 50 % = 1,9 MB gzip, Laden 1,75 s).'
 - 'Archiv: 49 Einträge gegen eingebettetes Manifest geprüft.'
@@ -160,7 +162,9 @@ active_tasks:
 - SETUP-005
 - SYNC-001
 - DET-001
-next_action: 'Zwei-Spieler-Lauf mit dem Gleichlauf (Prüfpunkte 1–9 in docs/reviews/2026-10-16-sync-lockstep.md); danach DET-001 (Rest-Abweichung über 60 000 Ticks, zwei Instanzen) und SYNC-002 (Befehls-Pipeline).'
+- SYNC-002
+- SYNC-004
+next_action: 'Zwei-Spieler-Lauf mit geteilten Aktionen (Prüfpunkte 1–11 in docs/reviews/2026-10-17-sync-commands.md, gleicher RimWorld-Build bei beiden); danach weitere SYNC-004-Zeilen (Rechnungen, Lager, Richtlinien) und DET-001-Rest.'
 documentation_refs:
   tasks: docs/ai/TASKS.yaml
   handoff: docs/ai/SESSION_HANDOFF.md
@@ -217,4 +221,7 @@ documentation_refs:
   lockstep_core_decision: docs/decisions/0024-lockstep-core.md
   lockstep_core_verification: docs/verification/2026-10-16-lockstep-core.md
   lockstep_core_review: docs/reviews/2026-10-16-sync-lockstep.md
-last_updated: '2026-10-16'
+  shared_actions_decision: docs/decisions/0025-shared-player-actions.md
+  shared_actions_verification: docs/verification/2026-10-17-shared-actions.md
+  shared_actions_review: docs/reviews/2026-10-17-sync-commands.md
+last_updated: '2026-10-17'

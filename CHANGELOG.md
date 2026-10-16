@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Geteilte Spieleraktionen (Arbeitsbranch `feat/sync-commands`, Basis `feat/sync-lockstep`)
+
+- Was ein Spieler tut, passiert jetzt bei allen beim selben Tick:
+  - Einziehen und Feuer frei.
+  - Rechtsklick-Befehle (gehen, angreifen, tragen, ausrüsten …).
+  - Abbauen, Fällen, Ernten, Abreißen, Abbrechen, Verbieten, Jagen, Zähmen.
+  - Bauen mit Material und Drehung.
+  - Lager-, Anbau- und Angelzonen samt Pflanzenwahl; erlaubte Bereiche, Heim- und Dachbereiche.
+  - Arbeitsprioritäten, Zeitplan, Forschungsprojekt.
+- Noch nicht geteilt werden Rechnungen, Lager-Filter, Richtlinien, Medizin, Handel und Gebäude-Knöpfe. Solche Aktionen gelten nur beim Spieler, der sie gibt; das Feld oben rechts nennt die zuletzt nur lokale Aktion.
+- Das Feld zeigt, was geteilt wird, und zählt gesendete und ausgeführte Aktionen. Die abgeschnittenen Zeilen sind behoben.
+
 ### Gleichlauf, erster Schnitt (Arbeitsbranch `feat/sync-lockstep`, Basis `feat/mod-check-setup-ui`)
 
 - Nach der Landung läuft die Zeit jetzt bei allen Spielern im Gleichschritt. Das gemeinsame Spiel startet pausiert; Leertaste oder ▶ lässt die Zeit für alle laufen.
