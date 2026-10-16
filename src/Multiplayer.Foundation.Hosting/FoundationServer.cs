@@ -291,6 +291,14 @@ public sealed class FoundationServer : IAsyncDisposable
                         catch (ObjectDisposedException) { }
                 await PublishAsync(rosterChange, null, token, message.RequestId).ConfigureAwait(false);
                 break;
+            case MessageType.PawnPortrait:
+                PawnPortrait.Read(message.Payload); // validates before relaying
+                foreach (Guid viewer in lobbies.PawnPortraitRecipients(peer.Id))
+                    if (peers.TryGetValue(viewer, out Peer? portraitTarget))
+                        try { await portraitTarget.Connection.SendAsync(new WireMessage(MessageType.PawnPortrait, 0, message.Payload), token).ConfigureAwait(false); }
+                        catch (IOException) { portraitTarget.Connection.Dispose(); }
+                        catch (ObjectDisposedException) { }
+                break;
             case MessageType.PawnRequest:
                 PawnRequest pawnRequest = PawnRequest.Read(message.Payload);
                 var (pawnHost, requester) = lobbies.PawnRequestRoute(peer.Id);

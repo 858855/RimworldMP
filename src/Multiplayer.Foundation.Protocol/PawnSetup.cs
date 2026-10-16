@@ -54,11 +54,12 @@ namespace Multiplayer.Foundation.Protocol
 
         public PawnCard(int pawnId, bool selected, PlayerKey? owner, string name, string shortName, string summary,
             string childhood, string adulthood, IReadOnlyList<string> traits, IReadOnlyList<(string Skill, byte Level, byte Passion)> skills,
-            IReadOnlyList<string> incapable, IReadOnlyList<string> health)
+            IReadOnlyList<string> incapable, IReadOnlyList<string> health, PawnCardDetails? details = null)
         {
             PawnId = pawnId; Selected = selected; Owner = owner; Name = name ?? ""; ShortName = shortName ?? ""; Summary = summary ?? "";
             Childhood = childhood ?? ""; Adulthood = adulthood ?? "";
             Traits = Limit(traits); Skills = Limit(skills); Incapable = Limit(incapable); Health = Limit(health);
+            Details = details;
         }
         public int PawnId { get; }
         /// <summary>In the starting group (true) or left behind (false).</summary>
@@ -75,12 +76,21 @@ namespace Multiplayer.Foundation.Protocol
         public IReadOnlyList<(string Skill, byte Level, byte Passion)> Skills { get; }
         public IReadOnlyList<string> Incapable { get; }
         public IReadOnlyList<string> Health { get; }
+        /// <summary>What the vanilla character page shows beyond the summary (names, ages, relations, …); null if not sent.</summary>
+        public PawnCardDetails? Details { get; }
 
-        private static IReadOnlyList<T> Limit<T>(IReadOnlyList<T>? items)
+        internal static IReadOnlyList<T> Limit<T>(IReadOnlyList<T>? items)
         {
             if (items == null) return Array.Empty<T>();
             if (items.Count > MaximumEntries) throw new ProtocolException("Too many pawn card entries.");
             return items;
+        }
+
+        internal static byte ReadCount(PayloadReader reader)
+        {
+            byte count = reader.ReadByte();
+            if (count > MaximumEntries) throw new ProtocolException("Too many pawn card entries.");
+            return count;
         }
 
         internal void Write(PayloadWriter writer)
@@ -92,6 +102,7 @@ namespace Multiplayer.Foundation.Protocol
             writer.WriteByte((byte)Skills.Count);
             foreach (var (skill, level, passion) in Skills) { writer.WriteString(skill, 64); writer.WriteByte(level); writer.WriteByte(passion); }
             WriteList(writer, Incapable); WriteList(writer, Health);
+            writer.WriteBool(Details != null); Details?.Write(writer);
         }
         internal static PawnCard Read(PayloadReader reader)
         {
@@ -105,7 +116,8 @@ namespace Multiplayer.Foundation.Protocol
             var skills = new List<(string, byte, byte)>(skillCount);
             for (int i = 0; i < skillCount; i++) skills.Add((reader.ReadString(64), reader.ReadByte(), reader.ReadByte()));
             var incapable = ReadList(reader); var health = ReadList(reader);
-            return new PawnCard(id, selected, owner, name, shortName, summary, childhood, adulthood, traits, skills, incapable, health);
+            PawnCardDetails? details = reader.ReadBool() ? PawnCardDetails.Read(reader) : null;
+            return new PawnCard(id, selected, owner, name, shortName, summary, childhood, adulthood, traits, skills, incapable, health, details);
         }
         private static void WriteList(PayloadWriter writer, IReadOnlyList<string> items)
         { writer.WriteByte((byte)items.Count); foreach (string item in items) writer.WriteString(item, 128); }
@@ -116,6 +128,100 @@ namespace Multiplayer.Foundation.Protocol
             var items = new List<string>(count);
             for (int i = 0; i < count; i++) items.Add(reader.ReadString(128));
             return items;
+        }
+    }
+
+    /// <summary>
+    /// The rest of a vanilla character card for the guests' page (SETUP-004): name parts, gender and ages, xenotype,
+    /// favourite colour, health by body part, relations with both opinions, starting possessions. Display only.
+    /// </summary>
+    public sealed class PawnCardDetails
+    {
+        public PawnCardDetails(string first, string nick, string last, byte gender, ushort ageBiological, ushort ageChronological,
+            string xenotype, string xenotypeIcon, uint favoriteColor, IReadOnlyList<(string Part, string Label)> health,
+            IReadOnlyList<(string Relation, string Name, short Opinion, short TheirOpinion)> relations,
+            IReadOnlyList<(string Label, int Count)> possessions)
+        {
+            First = first ?? ""; Nick = nick ?? ""; Last = last ?? ""; Gender = gender;
+            AgeBiological = ageBiological; AgeChronological = ageChronological;
+            Xenotype = xenotype ?? ""; XenotypeIcon = xenotypeIcon ?? ""; FavoriteColor = favoriteColor;
+            Health = PawnCard.Limit(health); Relations = PawnCard.Limit(relations); Possessions = PawnCard.Limit(possessions);
+        }
+        public string First { get; }
+        public string Nick { get; }
+        public string Last { get; }
+        /// <summary>RimWorld's Gender: 0 none, 1 male, 2 female.</summary>
+        public byte Gender { get; }
+        public ushort AgeBiological { get; }
+        public ushort AgeChronological { get; }
+        public string Xenotype { get; }
+        /// <summary>"x:" + XenotypeDef or "c:" + XenotypeIconDef name, so the guest draws the same icon; empty if none.</summary>
+        public string XenotypeIcon { get; }
+        /// <summary>RGBA, 0 = none.</summary>
+        public uint FavoriteColor { get; }
+        public IReadOnlyList<(string Part, string Label)> Health { get; }
+        /// <summary>Opinion: this pawn of the other; TheirOpinion: the other of this pawn.</summary>
+        public IReadOnlyList<(string Relation, string Name, short Opinion, short TheirOpinion)> Relations { get; }
+        public IReadOnlyList<(string Label, int Count)> Possessions { get; }
+
+        internal void Write(PayloadWriter writer)
+        {
+            writer.WriteString(First, 64); writer.WriteString(Nick, 64); writer.WriteString(Last, 64);
+            writer.WriteByte(Gender); writer.WriteUInt16(AgeBiological); writer.WriteUInt16(AgeChronological);
+            writer.WriteString(Xenotype, 64); writer.WriteString(XenotypeIcon, 96); writer.WriteUInt32(FavoriteColor);
+            writer.WriteByte((byte)Health.Count);
+            foreach (var (part, label) in Health) { writer.WriteString(part, 64); writer.WriteString(label, 128); }
+            writer.WriteByte((byte)Relations.Count);
+            foreach (var (relation, name, opinion, theirs) in Relations)
+            { writer.WriteString(relation, 64); writer.WriteString(name, 96); writer.WriteUInt16((ushort)opinion); writer.WriteUInt16((ushort)theirs); }
+            writer.WriteByte((byte)Possessions.Count);
+            foreach (var (label, count) in Possessions) { writer.WriteString(label, 96); writer.WriteUInt32((uint)count); }
+        }
+
+        internal static PawnCardDetails Read(PayloadReader reader)
+        {
+            string first = reader.ReadString(64), nick = reader.ReadString(64), last = reader.ReadString(64);
+            byte gender = reader.ReadByte(); ushort bio = reader.ReadUInt16(), chrono = reader.ReadUInt16();
+            string xenotype = reader.ReadString(64), icon = reader.ReadString(96); uint color = reader.ReadUInt32();
+            var health = new List<(string, string)>();
+            for (int i = PawnCard.ReadCount(reader); i > 0; i--) health.Add((reader.ReadString(64), reader.ReadString(128)));
+            var relations = new List<(string, string, short, short)>();
+            for (int i = PawnCard.ReadCount(reader); i > 0; i--)
+                relations.Add((reader.ReadString(64), reader.ReadString(96), (short)reader.ReadUInt16(), (short)reader.ReadUInt16()));
+            var possessions = new List<(string, int)>();
+            for (int i = PawnCard.ReadCount(reader); i > 0; i--) possessions.Add((reader.ReadString(96), (int)reader.ReadUInt32()));
+            return new PawnCardDetails(first, nick, last, gender, bio, chrono, xenotype, icon, color, health, relations, possessions);
+        }
+    }
+
+    /// <summary>
+    /// A starting pawn's portrait as the host's game draws it (PNG), so guests see the pawn as on the vanilla page.
+    /// Sent once per pawn and again when its look changes; only the host, only in <c>Characters</c> (SETUP-004).
+    /// </summary>
+    public sealed class PawnPortrait
+    {
+        public const int MaximumImageBytes = 48 * 1024;
+
+        public PawnPortrait(int pawnId, byte[] png)
+        {
+            if (png == null || png.Length == 0 || png.Length > MaximumImageBytes) throw new ProtocolException("Invalid pawn portrait.");
+            PawnId = pawnId; Png = png;
+        }
+        public int PawnId { get; }
+        public byte[] Png { get; }
+
+        public byte[] ToPayload()
+        {
+            var writer = new PayloadWriter();
+            writer.WriteUInt32((uint)PawnId); writer.WriteBytes(Png, MaximumImageBytes);
+            return writer.ToArray();
+        }
+        public static PawnPortrait Read(byte[] bytes)
+        {
+            var reader = new PayloadReader(bytes);
+            int id = (int)reader.ReadUInt32(); byte[] png = reader.ReadBytes(MaximumImageBytes);
+            reader.EnsureComplete();
+            return new PawnPortrait(id, png);
         }
     }
 

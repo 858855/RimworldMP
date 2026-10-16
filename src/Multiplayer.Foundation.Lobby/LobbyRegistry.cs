@@ -337,6 +337,17 @@ namespace Multiplayer.Foundation.Lobby
             }
         }
 
+        /// <summary>SETUP-004: a pawn portrait from the host goes to every other member during character selection.</summary>
+        public IReadOnlyList<Guid> PawnPortraitRecipients(Guid actor)
+        {
+            lock (gate)
+            {
+                Room room = GetHostedRoom(actor);
+                if (room.Phase != SetupPhase.Characters) throw new LobbyRuleException(6, "Pawns are chosen during character selection.");
+                return room.Members.Where(id => id != actor).ToArray();
+            }
+        }
+
         /// <summary>SETUP-001: the host's page mirror goes to every other member while setup runs.</summary>
         public IReadOnlyList<Guid> SetupSettingsRecipients(Guid actor)
         {

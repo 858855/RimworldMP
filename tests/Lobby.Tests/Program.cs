@@ -228,7 +228,10 @@ byte[] pWorld = Enumerable.Repeat((byte)4, 32).ToArray();
 pawns.SetHostWorld(pHost, pWorld); pawns.ReportWorld(pGuest, pWorld);
 pawns.AdvanceSetup(pHost, SetupPhase.SiteSelection); pawns.DecideSite(pHost, new SiteTile(9, 0));
 Expect(6, () => pawns.SetRoster(pHost, RosterFor(pHostKey)));                         // not yet in character selection
+Expect(6, () => pawns.PawnPortraitRecipients(pHost));
 pawns.AdvanceSetup(pHost, SetupPhase.Characters);
+Expect(3, () => pawns.PawnPortraitRecipients(pGuest));                                // only the host sends portraits
+Assert(pawns.PawnPortraitRecipients(pHost).Single() == pGuest, "portraits go to the guest");
 Expect(3, () => pawns.SetRoster(pGuest, RosterFor(pGuestKey)));                       // only the host publishes pawns
 Expect(6, () => pawns.PawnRequestRoute(pHost));                                       // host changes pawns locally
 Assert(pawns.PawnRequestRoute(pGuest) == (pHost, pGuestKey), "guest requests go to the host with the guest's key");

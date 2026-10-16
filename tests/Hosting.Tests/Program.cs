@@ -448,6 +448,12 @@ await using (var pawnHost = await ListenHost.StartAsync("127.0.0.1", 0, "Host", 
     await StateAsync(ph, MessageType.PawnRoster, ++q, RosterFor(pawnHostKey, pawnGuestKey).ToPayload());
     PawnRoster guestSees = PawnRoster.Read((await ReceiveAsync(pawnGuest, MessageType.PawnRoster)).Payload);
     Assert(guestSees.Cards.Count == 2 && guestSees.OwnsSelectedPawn(pawnGuestKey), "guest sees the roster with its pawn");
+    byte[] png = { 137, 80, 78, 71, 1, 2, 3 };
+    await ph.SendAsync(MessageType.PawnPortrait, ++q, new PawnPortrait(101, png).ToPayload());
+    PawnPortrait seen = PawnPortrait.Read((await ReceiveAsync(pawnGuest, MessageType.PawnPortrait)).Payload);
+    Assert(seen.PawnId == 101 && seen.Png.SequenceEqual(png), "guest gets the host's pawn portrait");
+    Assert(await ErrorCodeAsync(pawnGuest, MessageType.PawnPortrait, ++q, new PawnPortrait(101, png).ToPayload()) == 3,
+        "only the host sends portraits");
     LobbyView done = await StateAsync(pawnGuest, MessageType.PlayerReadyChanged, ++q, LobbyPayloads.Bool(true));
     Assert(done.Players.Single(p => p.Key == pawnGuestKey).Ready, "guest done with its own pawn");
     Assert(await ErrorCodeAsync(ph, MessageType.PawnRequest, ++q, forged.ToPayload()) == 6, "host does not send requests");

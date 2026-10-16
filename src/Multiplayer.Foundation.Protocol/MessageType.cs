@@ -42,6 +42,8 @@ namespace Multiplayer.Foundation.Protocol
         PawnRequest = 34,
         // SETUP-005
         GameReady = 35,
-        GameLoaded = 36
+        GameLoaded = 36,
+        // SETUP-004, guest character page
+        PawnPortrait = 37
     }
 }

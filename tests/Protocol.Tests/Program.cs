@@ -278,6 +278,20 @@ await Run("pawn roster and requests", () =>
     Equal(PawnRequestKind.Rename, request.Kind); Equal("Steini", request.Text); Equal(owner, request.Requester!.Value);
     Throws<ProtocolException>(() => PawnRequest.Read(new byte[] { 9, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0 }));
     Throws<ProtocolException>(() => new PawnRoster(Enumerable.Range(0, 25).Select(i => card).ToArray()));
+    // The vanilla-like guest page: details travel with the card, portraits as their own message.
+    var details = new PawnCardDetails("Malvina", "Nails", "Kim", 2, 55, 79, "Sanguophage", "x:Sanguophage", 0x80FF80FFu,
+        new[] { ("Rechter Arm", "Kratznarbe (juckt)") }, new[] { ("Liebhaber", "Darrien 'Mal' Maliphalo", (short)35, (short)-15) },
+        new[] { ("Hämogenpack", 12) });
+    PawnCard withDetails = PawnRoster.Read(new PawnRoster(new[] { new PawnCard(9, true, owner, "Malvina 'Nails' Kim", "Nails", "", "", "",
+        Array.Empty<string>(), Array.Empty<(string, byte, byte)>(), Array.Empty<string>(), Array.Empty<string>(), details) }).ToPayload()).Cards[0];
+    PawnCardDetails d = withDetails.Details!;
+    Equal("Kim", d.Last); Equal((ushort)79, d.AgeChronological); Equal("x:Sanguophage", d.XenotypeIcon); Equal(0x80FF80FFu, d.FavoriteColor);
+    Equal("Kratznarbe (juckt)", d.Health[0].Label); Equal((short)-15, d.Relations[0].TheirOpinion); Equal(12, d.Possessions[0].Count);
+    Equal(null, back.Cards[1].Details);
+    var portrait = PawnPortrait.Read(new PawnPortrait(9, new byte[] { 137, 80, 78, 71 }).ToPayload());
+    Equal(9, portrait.PawnId); Equal(4, portrait.Png.Length);
+    Throws<ProtocolException>(() => new PawnPortrait(9, new byte[PawnPortrait.MaximumImageBytes + 1]));
+    Throws<ProtocolException>(() => new PawnPortrait(9, Array.Empty<byte>()));
     return Task.CompletedTask;
 });
 Console.WriteLine($"PASS: {passed} protocol test groups");
