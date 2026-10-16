@@ -1,5 +1,7 @@
 # Übergabe Codex (Spielseite)
 
+- **X4 / 2026-10-16:** `codex/command-pipeline` von `codex/resync-game` @ `0bde512`. Erster Game-Befehl Draft/Undraft mit Karten-/Pawn-ID, Codec und Harmony-GUI-Capture gebaut; echter Zwei-Client-Lauf offen. Nächster Schritt: weitere stabile Referenztypen und Ordered Jobs/Designatoren nach Plan §7.3, dann Spieltest. ADR 0043, `docs/verification/2026-10-16-command-pipeline-first-action.md`. Kein Push dieses Branches ohne Freigabe; kein Merge.
+- **X1:** `codex/ver-tickpath` @ `2a10962` von `main` @ `8f7c32f`, statischer 1.6-Thread-Audit in `docs/verification/2026-10-16-tick-thread-audit.md`; Branch lokal, nicht gemergt.
 - **Bahn:** siehe `docs/ai/ASSIGNMENTS.md`. Branch-Präfix `codex/`, ADR 0040–0049, Nachrichtencodes 80–95. Arbeitsverzeichnis `/mnt/Arbeit/Git Projekte/RimworldMP`.
 - **Nächste Aufgaben:** X1 `VER-001` (Thread-Liste des 1.6-Tickpfads), danach X4 `SYNC-002` (Befehlserfassung). Siehe `ASSIGNMENTS.md`.
 - **Koordinator:** Claude C1–C3 sind seit `8f7c32f` auf `main`. `claude/save-join`, `claude/resync` und `claude/vote` sind gelöscht; für Snapshot-Ladefehler bleibt eine zeitliche Abbruchregel zu prüfen.

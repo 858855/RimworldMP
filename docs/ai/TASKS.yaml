@@ -960,11 +960,16 @@ tasks:
   acceptance:
   - 'Roundtrip für jeden Typ aus Plan §7.3'
   - 'Fehlende Referenzen werden überall deterministisch zum No-op'
-  implementation: planned
-  verification: not_tested
+  implementation: in_progress
+  verification: build_passed
   integration: not_submitted
-  branch: null
-  evidence: []
+  branch: codex/command-pipeline
+  base_branch: codex/resync-game
+  base_commit: 0bde512
+  evidence:
+  - docs/decisions/0043-command-pipeline-first-action.md
+  - docs/verification/2026-10-16-command-pipeline-first-action.md
+  blocker: 'Nur Draft/Undraft kodiert; übrige Referenztypen, Ordered Jobs, Designatoren und Zwei-Client-Spieltest fehlen.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: SYNC-003
   title: 'Geschwindigkeit und Pause'

@@ -151,7 +151,7 @@ namespace Multiplayer.Foundation.RimWorld
             if (session?.Active != true || session.SessionId != lobby.Id.ToString("N")) return false;
             JoinSnapshot? join = pendingJoinSnapshot;
             tickDriver = new SessionTickDriver(lobby.Id, client!.SessionId,
-                manager.TicksGame - (join?.Boundary ?? 0), SaveAtBoundary, join);
+                manager.TicksGame - (join?.Boundary ?? 0), SaveAtBoundary, ExecuteGameCommand, join);
             pendingJoinSnapshot = null;
             joinSnapshotReady = false;
             try
@@ -196,6 +196,20 @@ namespace Multiplayer.Foundation.RimWorld
             catch (Exception error) { throw new InvalidOperationException("Speichern an der Tickgrenze fehlgeschlagen.", error); }
             status = "Gemeinsamer Spielstand wird gespeichert …";
         }
+
+        internal bool CaptureDraft(Pawn pawn, bool drafted)
+        {
+            if (!SharedGame || lobby?.Phase != SetupPhase.Playing || GameCommandCodec.Executing ||
+                Event.current == null) return true;
+            if (tickDriver == null || tickDriver.Faulted || pawn.Map == null)
+            { status = "Draft-Befehl konnte nicht gesendet werden."; return false; }
+            byte[] data = GameCommandCodec.Draft(pawn.Map.uniqueID, pawn.thingIDNumber, drafted);
+            if (!SendBackground(LockstepClient.CommandMessage(data)))
+                status = "Draft-Befehl konnte nicht gesendet werden.";
+            return false;
+        }
+
+        private static void ExecuteGameCommand(ScheduledCommand command) => GameCommandCodec.Execute(command);
 
         private void PollScheduledSave()
         {

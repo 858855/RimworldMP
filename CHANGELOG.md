@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Erster Spielbefehl (Arbeitsbranch `codex/command-pipeline`, X4)
+
+- Draft/Undraft aus dem Spiel-UI wird als geplanter Befehl mit Karten- und Pawn-ID gesendet und an der gemeinsamen Tickgrenze ausgeführt. Fehlt die Figur beim Ausführen, wird der Befehl protokolliert und ausgelassen. Codec-Roundtrip und Mod-Build bestanden; das Verhalten in zwei laufenden RimWorld-Clients ist noch nicht geprüft. Weitere Spielaktionen bleiben offen.
+
 ### Zeitgrenze beim Laden (Arbeitsbranch `claude/snapshot-timeout`)
 
 - Lädt ein beitretender oder zu reparierender Spieler den Spielstand des Hosts nicht binnen drei Minuten, wartet die Partie nicht mehr auf ihn. Er wird aus Spiel und Lobby genommen und kann sofort neu beitreten; die anderen spielen weiter.
