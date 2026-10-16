@@ -361,6 +361,36 @@ await Run("lockstep payloads (SYNC-001)", () =>
     Throws<ProtocolException>(() => DesyncDetected.Read(new byte[] { 0, 0, 0, 120, 0 }));
     return Task.CompletedTask;
 });
+await Run("command payload codec (SYNC-002)", () =>
+{
+    var writer = new SyncWriter();
+    writer.WriteInt(-5); writer.WriteInt(int.MaxValue); writer.WriteFloat(-0.25f); writer.WriteFloat(float.NaN); writer.WriteBool(true);
+    writer.WriteByte(7); writer.WriteUShort(65000); writer.WriteString("Wall"); writer.WriteString("");
+    var rect = Enumerable.Range(10, 100).SelectMany(x => Enumerable.Range(20, 100).Select(z => (x, z))).ToList();
+    writer.WriteCells(rect);
+    var scattered = new[] { (5, 5), (7, 5), (6, 5), (5, 5), (300, 2), (0, 65535) };
+    writer.WriteCells(scattered);
+    writer.WriteCells(Array.Empty<(int, int)>());
+    byte[] payload = writer.ToArray();
+    var reader = new SyncReader(payload);
+    Equal(-5, reader.ReadInt()); Equal(int.MaxValue, reader.ReadInt()); Equal(-0.25f, reader.ReadFloat()); Equal(true, float.IsNaN(reader.ReadFloat()));
+    Equal(true, reader.ReadBool()); Equal((byte)7, reader.ReadByte()); Equal((ushort)65000, reader.ReadUShort());
+    Equal("Wall", reader.ReadString()); Equal("", reader.ReadString());
+    var rectBack = reader.ReadCells();
+    Equal(10000, rectBack.Count); Equal(true, rectBack.ToHashSet().SetEquals(rect));
+    Equal(true, reader.ReadCells().ToHashSet().SetEquals(scattered.Distinct()));
+    Equal(0, reader.ReadCells().Count);
+    reader.EnsureComplete();
+    Equal(100, CellRuns.Encode(rect).Count); // a 100 x 100 drag: one run per row, 600 bytes instead of 40 000
+    Equal(3, CellRuns.Encode(scattered).Count);
+    Throws<ProtocolException>(() => new SyncWriter().WriteCells(new[] { (-1, 0) }));
+    Throws<ProtocolException>(() => new SyncWriter().WriteCells(new[] { (0, 70000) }));
+    Throws<ProtocolException>(() => new SyncWriter().WriteString(new string('x', 257)));
+    Throws<ProtocolException>(() => new SyncReader(new byte[] { 0, 0, 0, 1, 0, 1, 0, 2, 0, 0 }).ReadCells()); // run of length 0
+    Throws<ProtocolException>(() => new SyncReader(new byte[] { 0, 0, 0, 1, 0, 1 }).ReadCells()); // truncated
+    Throws<ProtocolException>(() => new SyncReader(new byte[] { 0, 0, 0, 1, 0, 1, 255, 255, 0, 2 }).ReadCells()); // past column 65535
+    return Task.CompletedTask;
+});
 Console.WriteLine($"PASS: {passed} protocol test groups");
 
 async Task Run(string name, Func<Task> body)
