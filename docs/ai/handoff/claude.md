@@ -6,7 +6,8 @@
   - Lockstep-Koordinator (ADR 0030): `LockstepSession`, `LockstepClient`, `LockstepHost`, `OrderedOutbox`; Codes 64–70.
   - Spielmodus (ADR 0031, Koordinator-Seite): `LobbyMode` in `CreateLobby`, Lobbyzustand und -liste; Fraktionsstart abgelehnt bis `FACTION-001`.
 - **C1 erledigt (Koordinator-Seite), Branch `claude/save-join`, ADR 0032:** Speichern als geplanter Befehl (`ScheduledKind.Save`), Autosave je 60 000 Ticks, Host-Speichern; Beitritt während `Playing` mit passenden Mods; Snapshot-Befehl, `JoinSnapshot` (71), Aufholen ohne Flusssteuerung, `PlayerSynced` (72). Simulation: Der Neue führt danach exakt dieselbe Folge aus.
-- **Nächste Aufgabe:** C2 `DESYNC-003` (Koordinator) auf `claude/resync`.
+- **C2 erledigt (Koordinator-Seite), Branch `claude/resync` auf `claude/save-join`, ADR 0033:** Desync führt zu Snapshot und Neuladen der Abweichenden; automatisches Fortsetzen, `DesyncResolved` (73); nach drei Fehlschlägen `ResyncGaveUp` (74); `SnapshotLoaded` (75) jetzt Pflicht für Beitritt **und** Resync.
+- **Nächste Aufgabe:** C3 `VOTE-001` (Koordinator) auf `claude/vote`.
 - **Wünsche an Codex:**
   - Tick-Treiber nach ADR 0030:
     - Tick c+1 nur, wenn `LockstepClient.MayRunTick(c)` wahr ist; vorher und in jedem Frame während der Pause `TakeCommandsAt(c)`.
@@ -23,4 +24,10 @@
     - Besitz und Rechte über den `PlayerKey` wiederherstellen (Reconnect).
     - Anzeige „holt auf“ nach `PlayerSynced` (72) beenden.
     - Option „pausieren beim Beitritt“ (Plan §7.8) in der UI.
+  - **Desync-Reparatur (ADR 0033)**, alles Spielseite:
+    - `DesyncDetected` ist **nicht mehr endgültig**.
+    - Kommt danach `JoinSnapshot` an dich, bist du betroffen: Stand und `LockstepClient` verwerfen, auf den Snapshot des Hosts warten (Chunk-Kanal), laden, `LockstepClient.ForJoin` und dann `LockstepClient.SnapshotLoadedMessage()` senden. Ohne diese Bestätigung bleibst du inaktiv.
+    - Der Speicherbefehl davor nennt dich in `LockstepPayloads.SaveTargets(data)`. Für dich ist das kein Speicherauftrag; für den Host heißt es: an diese Spieler senden.
+    - Beim Beitritt ebenfalls `SnapshotLoadedMessage()` nach dem Laden senden (neu gegenüber ADR 0032).
+    - Anzeigen: `DesyncResolved` (73) als „Desync behoben (Tick X)“, `ResyncGaveUp` (74) als Hinweis an den Host.
 

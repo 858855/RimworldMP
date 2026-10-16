@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Desync-Reparatur (Arbeitsbranch `claude/resync`, DESYNC-003)
+
+- Ein Desync beendet die Partie nicht mehr. Das abweichende Spiel lädt den Stand des Hosts neu, holt auf, und die Zeit läuft von selbst weiter; alle sehen „Desync behoben“. In einer Simulation mit echter Abweichung blieben danach alle Spiele identisch.
+- Weicht ein Spiel dreimal hintereinander ab, gibt der Koordinator auf und lässt die Zeit angehalten; der Host entscheidet.
+- Im Spiel noch nicht aktiv: Neuladen und Anzeigen gehören zur Spielseite.
+
 ### Speichern und Beitritt im laufenden Spiel (Arbeitsbranch `claude/save-join`, SAVE-001/JOIN-001)
 
 - Alle Spiele speichern an derselben Stelle: automatisch einmal pro Spieltag oder wenn der Host speichert.

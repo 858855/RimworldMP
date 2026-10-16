@@ -483,6 +483,7 @@ await using (var joinHost = await ListenHost.StartAsync("127.0.0.1", 0, "Host", 
     Assert(lateStart.Sequence == snapshotOrder.Sequence && lateStart.Boundary == snapshotOrder.Boundary && lateStart.Host == lateJoined.HostId,
         "joiner starts exactly at the snapshot point");
     var lateGame = LockstepClient.ForJoin(lateStart);
+    await jLate.SendAsync(MessageType.SnapshotLoaded, 0, Array.Empty<byte>());
     await jGuest.SendAsync(MessageType.Command, 0, LockstepPayloads.Command(new byte[] { 33 }));
     bool live = false; int lateTick = lateStart.Boundary; ScheduledCommand? seen = null;
     using (var wait = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
@@ -500,6 +501,68 @@ await using (var joinHost = await ListenHost.StartAsync("127.0.0.1", 0, "Host", 
     Assert(seen.Data[0] == 33 && seen.Sequence == lateStart.Sequence + 1, "joiner executes the next command at the same point as the others");
 }
 Console.WriteLine("PASS: join a running game over the network: other mods refused, snapshot ordered from the host, joiner continues at the next command and goes live");
+
+// DESYNC-003 (ADR 0033) end to end: the guest's state hash differs; the host's server orders a snapshot for it, the
+// guest reloads, confirms, goes live again and time resumes for both on its own.
+PlayerKey rHostKey = PlayerKey.Steam(76561198000000110UL), rGuestKey = PlayerKey.Steam(76561198000000111UL);
+await using (var repairHost = await ListenHost.StartAsync("127.0.0.1", 0, "Host", "Repair Room", 4, rHostKey))
+{
+    LobbyView repairRoom = LobbyPayloads.ReadState((await ReceiveAsync(repairHost.Client, MessageType.LobbyStateUpdate)).Payload);
+    using var repairLink = new SteamLikeLink();
+    Assert(repairHost.AttachConnection(NetworkConnection.FromDuplexStream(repairLink.A), rGuestKey), "repair guest attached");
+    using LobbyClient rGuest = await LobbyClient.ConnectOverStreamAsync(repairLink.B, "Guest", TimeSpan.FromSeconds(4), CancellationToken.None, rGuestKey);
+    await StateAsync(rGuest, MessageType.JoinLobby, 900, LobbyPayloads.GuidValue(repairRoom.Id));
+    await ReachPlayingAsync(repairHost.Client, rGuest, rHostKey, rGuestKey);
+
+    var rHost = new LockstepClient(); var rGame = new LockstepClient();
+    int hostTick = 0, guestTick = 0; JoinSnapshot? reloadAt = null; bool resolvedHost = false, resolvedGuest = false; ScheduledCommand? order = null;
+    async Task Drive(int ms, int ticks)
+    {
+        var until = System.Diagnostics.Stopwatch.StartNew();
+        while (until.ElapsedMilliseconds < ms)
+        {
+            while (repairHost.Client.TryDequeue(out WireMessage? m) && m != null)
+            {
+                if (m.Type == MessageType.DesyncResolved) resolvedHost = true;
+                else if (LockstepClient.Handles(m)) rHost.Receive(m);
+            }
+            while (reloadAt == null && rGuest.TryDequeue(out WireMessage? m) && m != null)
+            {
+                if (m.Type == MessageType.DesyncResolved) resolvedGuest = true;
+                else if (m.Type == MessageType.JoinSnapshot) reloadAt = LockstepPayloads.ReadJoin(m.Payload);
+                else if (LockstepClient.Handles(m)) rGame.Receive(m);
+            }
+            foreach (var c in rHost.TakeCommandsAt(hostTick)) if (c.Kind == ScheduledKind.Save) order = c;
+            for (int t = 0; t < ticks && rHost.MayRunTick(hostTick); t++) { hostTick++; foreach (var c in rHost.TakeCommandsAt(hostTick)) if (c.Kind == ScheduledKind.Save) order = c; }
+            if (reloadAt == null)
+            {
+                rGame.TakeCommandsAt(guestTick);
+                for (int t = 0; t < ticks && rGame.MayRunTick(guestTick); t++) { guestTick++; rGame.TakeCommandsAt(guestTick); }
+                if (rGame.ProgressMessage(guestTick, Environment.TickCount64) is WireMessage gp) await rGuest.SendAsync(gp.Type, 0, gp.Payload);
+            }
+            if (rHost.ProgressMessage(hostTick, Environment.TickCount64) is WireMessage hp) await repairHost.Client.SendAsync(hp.Type, 0, hp.Payload);
+            await Task.Delay(16);
+        }
+    }
+    await repairHost.Client.SendAsync(MessageType.SessionControl, 0, LockstepPayloads.Control(ScheduledKind.Pause, 0));
+    await Drive(1200, 10);
+    int hashTick = (Math.Min(hostTick, guestTick) / 60) * 60;
+    Assert(hashTick > 0, "a hash tick was reached before the repair");
+    await repairHost.Client.SendAsync(MessageType.StateHash, 0, LockstepPayloads.Hash(hashTick, 111));
+    await rGuest.SendAsync(MessageType.StateHash, 0, LockstepPayloads.Hash(hashTick, 222));
+    await Drive(600, 10);
+    Assert(reloadAt != null && order != null && LockstepPayloads.SaveTargets(order.Data).Single() == rGuest.SessionId && reloadAt.Sequence == order.Sequence,
+        "guest told to reload at the point where the host saved for it");
+    Assert(rHost.Paused, "time stopped for the repair");
+    // The guest "loads" the host's state (here: the host's tick) and confirms.
+    rGame = LockstepClient.ForJoin(reloadAt!); guestTick = reloadAt!.Boundary; reloadAt = null;
+    await rGuest.SendAsync(MessageType.SnapshotLoaded, 0, Array.Empty<byte>());
+    int pausedAt = hostTick;
+    await Drive(1500, 10);
+    Assert(resolvedHost && resolvedGuest, "both told the desync is resolved");
+    Assert(!rHost.Paused && !rGame.Paused && hostTick > pausedAt && guestTick > pausedAt, $"time resumed for both: host {hostTick}, guest {guestTick}, repaired at {pausedAt}");
+}
+Console.WriteLine("PASS: desync repair over the network: snapshot ordered for the differing guest, guest reloads and confirms, time resumes for both");
 
 // SETUP-001: the host's page mirror reaches guests only while setup runs, and only from the host.
 await using (var mirrorHost = await ListenHost.StartAsync("127.0.0.1", 0, "Host", "Mirror Room", 4, PlayerKey.Steam(76561198000000070UL)))

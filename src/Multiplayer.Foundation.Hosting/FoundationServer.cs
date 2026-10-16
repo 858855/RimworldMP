@@ -334,6 +334,10 @@ public sealed class FoundationServer : IAsyncDisposable
                 var stateHash = LockstepPayloads.ReadHash(message.Payload);
                 lockstep.Run(LobbyOf(peer), session => session.ReportHash(peer.Id, stateHash.Tick, stateHash.Hash));
                 break;
+            case MessageType.SnapshotLoaded:
+                RequireEmpty(message.Payload);
+                lockstep.Run(LobbyOf(peer), session => session.SnapshotLoaded(peer.Id, LockstepHost.NowMs));
+                break;
             case MessageType.SessionControl:
                 var control = LockstepPayloads.ReadControl(message.Payload);
                 lockstep.Run(LobbyOf(peer), session => session.Control(peer.Id, control.Kind, control.Value, LockstepHost.NowMs));

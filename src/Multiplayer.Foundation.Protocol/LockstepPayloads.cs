@@ -8,7 +8,7 @@ namespace Multiplayer.Foundation.Protocol
         Game = 0,
         Pause = 1,
         Speed = 2,
-        /// <summary>Save here (ADR 0032). Empty data: coordinated save. 16 bytes: snapshot for that joining session.</summary>
+        /// <summary>Save here (ADR 0032). Empty data: coordinated save. n × 16 bytes: snapshot for these sessions (join or resync, ADR 0033).</summary>
         Save = 3
     }
 
@@ -133,6 +133,15 @@ namespace Multiplayer.Foundation.Protocol
             if (speed < 1 || speed > MaximumSpeed) throw new ProtocolException("Invalid speed.");
             if (horizon < boundary) throw new ProtocolException("Horizon before the snapshot.");
             return new JoinSnapshot(boundary, sequence, host, horizon, speed, paused);
+        }
+
+        /// <summary>Session IDs listed in a Save command's data (ADR 0032/0033).</summary>
+        public static IReadOnlyList<Guid> SaveTargets(byte[] data)
+        {
+            if (data.Length % 16 != 0) throw new ProtocolException("Save data must list whole session IDs.");
+            var targets = new List<Guid>(data.Length / 16);
+            for (int i = 0; i < data.Length; i += 16) { byte[] id = new byte[16]; Buffer.BlockCopy(data, i, id, 0, 16); targets.Add(new Guid(id)); }
+            return targets;
         }
 
         public static byte[] Tick(int tick) { var writer = new PayloadWriter(); WriteTick(writer, tick); return writer.ToArray(); }

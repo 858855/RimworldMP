@@ -115,6 +115,10 @@ namespace Multiplayer.Foundation.Network
         public static WireMessage CommandMessage(byte[] data) =>
             new WireMessage(MessageType.Command, 0, LockstepPayloads.Command(data));
 
+        /// <summary>Send after loading a join or resync snapshot; the coordinator activates the game only after it (ADR 0033).</summary>
+        public static WireMessage SnapshotLoadedMessage() =>
+            new WireMessage(MessageType.SnapshotLoaded, 0, Array.Empty<byte>());
+
         public static WireMessage ControlMessage(ScheduledKind kind, byte value) =>
             new WireMessage(MessageType.SessionControl, 0, LockstepPayloads.Control(kind, value));
     }

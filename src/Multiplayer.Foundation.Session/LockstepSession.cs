@@ -23,6 +23,8 @@ namespace Multiplayer.Foundation.Session
         public double CommandBurst { get; set; } = 60;
         /// <summary>Coordinated save every this many ticks; 60000 = RimWorld.GenDate.TicksPerDay (checked by reflection).</summary>
         public int AutosaveIntervalTicks { get; set; } = 60000;
+        /// <summary>After this many resyncs of one game without a matching comparison in between, give up (ADR 0033).</summary>
+        public int MaximumResyncsInARow { get; set; } = 3;
     }
 
     /// <summary>
@@ -39,6 +41,8 @@ namespace Multiplayer.Foundation.Session
         private long clockBaseMs;
         private int lastComparedHashTick = -1;
         private int nextAutosave;
+        private bool pausedForResync;
+        private int resyncTick = -1;
 
         public LockstepSession(Guid host, IEnumerable<(Guid Session, PlayerKey Key)> members, long nowMs, LockstepOptions? options = null)
         {
@@ -96,20 +100,46 @@ namespace Multiplayer.Foundation.Session
             if (tick > Horizon) throw new LockstepRuleException(1, "Reported a tick beyond the horizon.");
             if (tick > who.Tick) who.Tick = tick;
             var outgoing = new List<(Guid, WireMessage)>();
-            // A joiner goes live once it has caught up with the slowest active game (ADR 0032).
-            if (!who.Active && who.Tick >= participants.Values.Where(p => p.Active).Min(p => p.Tick))
-            {
-                who.Active = true;
-                var synced = new WireMessage(MessageType.PlayerSynced, 0, LobbyPayloads.GuidValue(session));
-                outgoing.AddRange(participants.Keys.Select(to => (to, synced)));
-            }
+            outgoing.AddRange(TryActivate(who, nowMs));
             outgoing.AddRange(Advance(nowMs));
+            return outgoing;
+        }
+
+        /// <summary>A joining or resyncing game confirms it loaded the host's snapshot (ADR 0033).</summary>
+        public IReadOnlyList<(Guid To, WireMessage Message)> SnapshotLoaded(Guid session, long nowMs)
+        {
+            Participant who = Require(session);
+            if (who.Active) throw new LockstepRuleException(6, "No snapshot was expected.");
+            who.Loaded = true;
+            return TryActivate(who, nowMs);
+        }
+
+        // A joiner or resynced game goes live once it loaded the snapshot and caught up with the slowest active game.
+        private IReadOnlyList<(Guid To, WireMessage Message)> TryActivate(Participant who, long nowMs)
+        {
+            if (who.Active || !who.Loaded || who.Tick < participants.Values.Where(p => p.Active).Min(p => p.Tick))
+                return Array.Empty<(Guid, WireMessage)>();
+            who.Active = true;
+            var synced = new WireMessage(MessageType.PlayerSynced, 0, LobbyPayloads.GuidValue(who.Session));
+            var outgoing = new List<(Guid, WireMessage)>(participants.Keys.Select(to => (to, synced)));
+            if (pausedForResync && participants.Values.All(p => p.Active))
+            {
+                // Every repaired game is back: resume where the coordinator paused (plan §7.9 step 4).
+                pausedForResync = false;
+                outgoing.AddRange(Schedule(Guid.Empty, null, ScheduledKind.Pause, new byte[] { 0 }));
+                Apply(ScheduledKind.Pause, 0, nowMs);
+                var resolved = new WireMessage(MessageType.DesyncResolved, 0, LockstepPayloads.Tick(resyncTick));
+                outgoing.AddRange(participants.Keys.Select(to => (to, resolved)));
+                outgoing.AddRange(BroadcastHorizon());
+            }
             return outgoing;
         }
 
         public IReadOnlyList<(Guid To, WireMessage Message)> ReportHash(Guid session, int tick, ulong hash)
         {
-            Require(session);
+            Participant who = Require(session);
+            // Reports from a game's state before it reloaded belong to the diverged state (ADR 0033).
+            if (who.ResyncFrom != null && tick <= who.ResyncFrom.Value) return Array.Empty<(Guid, WireMessage)>();
             if (tick % options.HashInterval != 0) throw new LockstepRuleException(1, "Hashes are reported every " + options.HashInterval + " ticks.");
             if (tick > Horizon) throw new LockstepRuleException(1, "Reported a tick beyond the horizon.");
             if (tick <= lastComparedHashTick) return Array.Empty<(Guid, WireMessage)>();
@@ -155,7 +185,7 @@ namespace Multiplayer.Foundation.Session
             // Sent before the joiner is added, so it never receives its own snapshot command.
             var outgoing = new List<(Guid, WireMessage)>(Schedule(Guid.Empty, null, ScheduledKind.Save, session.ToByteArray()));
             var snapshot = new JoinSnapshot(Horizon, nextSequence - 1, Host, Horizon, Speed, Paused);
-            participants[session] = new Participant(session, key, options, nowMs) { Active = false, Tick = Horizon };
+            participants[session] = new Participant(session, key, options, nowMs) { Active = false, Loaded = false, Tick = Horizon };
             outgoing.Add((session, new WireMessage(MessageType.JoinSnapshot, 0, LockstepPayloads.Join(snapshot))));
             outgoing.Add(BroadcastHorizon().First(o => o.To == session));
             return outgoing;
@@ -198,6 +228,8 @@ namespace Multiplayer.Foundation.Session
                 ulong reference = reports[Host];
                 List<Guid> differing = reports.Where(r => participants.ContainsKey(r.Key) && r.Value != reference)
                     .Select(r => r.Key).OrderBy(p => p).ToList();
+                foreach (KeyValuePair<Guid, ulong> report in reports)
+                    if (report.Value == reference && participants.TryGetValue(report.Key, out Participant? matching)) matching.ResyncsInARow = 0;
                 if (differing.Count == 0) continue;
                 // Absolutely in sync means never run on silently: tell everyone and stop time at one shared point.
                 var alarm = new WireMessage(MessageType.DesyncDetected, 0, LockstepPayloads.Desync(tick, differing));
@@ -205,9 +237,45 @@ namespace Multiplayer.Foundation.Session
                 if (!Paused)
                 {
                     outgoing.AddRange(Schedule(Guid.Empty, null, ScheduledKind.Pause, new byte[] { 1 }));
-                    Paused = true; clockBaseTick = Horizon;
+                    Paused = true; clockBaseTick = Horizon; pausedForResync = true;
                     outgoing.AddRange(BroadcastHorizon());
                 }
+                outgoing.AddRange(Resync(tick, differing));
+            }
+            return outgoing;
+        }
+
+        // ADR 0033: the differing games reload the host's state from a snapshot taken right here.
+        private IReadOnlyList<(Guid To, WireMessage Message)> Resync(int tick, IReadOnlyList<Guid> differing)
+        {
+            var outgoing = new List<(Guid, WireMessage)>();
+            var targets = new List<Participant>();
+            var gaveUp = new List<Guid>();
+            foreach (Guid id in differing)
+            {
+                Participant p = participants[id];
+                if (!p.Active) continue;                                       // already reloading
+                if (p.ResyncsInARow >= options.MaximumResyncsInARow) { gaveUp.Add(id); continue; }
+                targets.Add(p);
+            }
+            if (gaveUp.Count > 0)
+            {
+                // Stays paused; the host decides, e.g. by removing the player.
+                pausedForResync = false;
+                var message = new WireMessage(MessageType.ResyncGaveUp, 0, LockstepPayloads.Desync(tick, gaveUp));
+                outgoing.AddRange(participants.Keys.Select(to => (to, message)));
+            }
+            if (targets.Count == 0) return outgoing;
+            resyncTick = tick;
+            byte[] ids = targets.SelectMany(p => p.Session.ToByteArray()).ToArray();
+            outgoing.AddRange(Schedule(Guid.Empty, null, ScheduledKind.Save, ids));
+            var snapshot = new JoinSnapshot(Horizon, nextSequence - 1, Host, Horizon, Speed, Paused);
+            foreach (Participant p in targets)
+            {
+                p.ResyncsInARow++;
+                p.Active = false; p.Loaded = false; p.Tick = Horizon; p.ResyncFrom = Horizon;
+                foreach (var reports in pendingHashes.Values) reports.Remove(p.Session);
+                outgoing.Add((p.Session, new WireMessage(MessageType.JoinSnapshot, 0, LockstepPayloads.Join(snapshot))));
             }
             return outgoing;
         }
@@ -235,6 +303,11 @@ namespace Multiplayer.Foundation.Session
             public PlayerKey Key { get; }
             public int Tick { get; set; }
             public bool Active { get; set; } = true;
+            /// <summary>False while a joining or resyncing game has not confirmed loading its snapshot.</summary>
+            public bool Loaded { get; set; } = true;
+            /// <summary>Hash reports at or before this tick come from the state before a resync and are dropped.</summary>
+            public int? ResyncFrom { get; set; }
+            public int ResyncsInARow { get; set; }
             public TokenBucket Bucket { get; }
         }
 

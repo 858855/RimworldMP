@@ -1080,11 +1080,16 @@ tasks:
   - XFER-001
   acceptance:
   - 'Der betroffene Client wird ohne Neustart repariert; Hashes danach gleich'
-  implementation: planned
-  verification: not_tested
+  implementation: in_progress
+  verification: tests_passed
   integration: not_submitted
-  branch: null
-  evidence: []
+  branch: claude/resync
+  base_branch: claude/save-join
+  base_commit: 2e6b77d
+  evidence:
+  - docs/verification/2026-10-16-resync.md
+  - docs/decisions/0033-desync-resync-coordinator.md
+  blocker: 'Koordinator-Seite fertig und getestet. Fehlt Spielseite (Codex): bei JoinSnapshot als Teilnehmer neu laden, SnapshotLoaded senden, Anzeigen.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: SAVE-001
   title: 'Koordiniertes Speichern'

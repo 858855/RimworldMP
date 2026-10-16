@@ -151,8 +151,10 @@ Assert(nextCommand.Any(o => o.To == late) && LockstepPayloads.ReadScheduled(next
     "joiner receives every command from the next sequence on");
 Expect<LockstepRuleException>(() => joining.AddJoiner(late, lateKey, 1000), 6);
 foreach (Guid p in new[] { host, guest, third }) joining.ReportTick(p, before, 1000);
-var synced = joining.ReportTick(late, before, 1100);
-Assert(synced.Count(o => o.Message.Type == MessageType.PlayerSynced) == 4 && joining.ActiveParticipants.Contains(late), "caught-up joiner goes live, everyone is told");
+Assert(joining.ReportTick(late, before, 1100).All(o => o.Message.Type != MessageType.PlayerSynced), "no activation before the snapshot is confirmed loaded");
+var synced = joining.SnapshotLoaded(late, 1100);
+Assert(synced.Count(o => o.Message.Type == MessageType.PlayerSynced) == 4 && joining.ActiveParticipants.Contains(late), "loaded and caught-up joiner goes live, everyone is told");
+Expect<LockstepRuleException>(() => joining.SnapshotLoaded(late, 1100), 6);
 var lateClient = LockstepClient.ForJoin(start);
 Assert(!lateClient.MayRunTick(start.Boundary) || lateClient.Horizon == start.Boundary, "joiner starts at the snapshot point");
 lateClient.Receive(nextCommand.First(o => o.To == late).Message);
@@ -211,6 +213,7 @@ static SimResult SimulateJoin(int seed)
                         MessageType.ClientTick => coordinator.ReportTick(id, LockstepPayloads.ReadTickPayload(m.Payload), now),
                         MessageType.StateHash => coordinator.ReportHash(id, LockstepPayloads.ReadHash(m.Payload).Tick, LockstepPayloads.ReadHash(m.Payload).Hash),
                         MessageType.SessionControl => coordinator.Control(id, LockstepPayloads.ReadControl(m.Payload).Kind, LockstepPayloads.ReadControl(m.Payload).Value, now),
+                        MessageType.SnapshotLoaded => coordinator.SnapshotLoaded(id, now),
                         _ => throw new Exception("unexpected")
                     }, now);
                 }
@@ -236,6 +239,7 @@ static SimResult SimulateJoin(int seed)
                     logs[id] = new List<(int, ulong)>(snapshot.Value.Log);
                     hashed[id] = snapshot.Value.Tick;   // the snapshot is mid-tick: never report the hash of that tick
                     loaded = true;
+                    up[id].Send(LockstepClient.SnapshotLoadedMessage(), now + random.Next(5, 80));
                 }
             }
             LockstepClient game = games[id];
@@ -277,6 +281,160 @@ static SimResult SimulateJoin(int seed)
     }
     if (!coordinator.ActiveParticipants.Contains(joiner)) throw new Exception("FAIL: joiner never went live");
     return new SimResult(logs, completed, new Dictionary<Guid, int>(), desyncs, 0);
+}
+
+// --- DESYNC-003 (ADR 0033) ---
+var repair = new LockstepSession(host, members, 0);
+repair.Control(host, ScheduledKind.Pause, 0, 0); repair.Advance(2000);
+repair.ReportHash(host, 60, 1); repair.ReportHash(third, 60, 1);
+var detected = repair.ReportHash(guest, 60, 2);
+var resyncSave = detected.Where(o => o.Message.Type == MessageType.ScheduledCommand).Select(o => LockstepPayloads.ReadScheduled(o.Message.Payload))
+    .First(c => c.Kind == ScheduledKind.Save);
+Assert(LockstepPayloads.SaveTargets(resyncSave.Data).Single() == guest && resyncSave.IssuerSession == Guid.Empty, "host saves a snapshot for the differing game");
+JoinSnapshot reload = LockstepPayloads.ReadJoin(detected.Single(o => o.To == guest && o.Message.Type == MessageType.JoinSnapshot).Message.Payload);
+Assert(reload.Sequence == resyncSave.Sequence && reload.Paused && repair.Paused && !repair.ActiveParticipants.Contains(guest),
+    "differing game told to reload at the snapshot point; time stopped; it does not count meanwhile");
+Assert(detected.All(o => o.To == guest || o.Message.Type != MessageType.JoinSnapshot), "only the differing game reloads");
+Assert(repair.ReportHash(guest, 60, 2).Count == 0, "late report from the old state is dropped");
+repair.ReportTick(guest, repair.Horizon, 2100);
+Assert(!repair.ActiveParticipants.Contains(guest), "an in-flight report from the old state does not activate");
+var resumed = repair.SnapshotLoaded(guest, 2200);
+Assert(repair.ActiveParticipants.Contains(guest) && !repair.Paused &&
+    resumed.Any(o => o.Message.Type == MessageType.DesyncResolved && LockstepPayloads.ReadTickPayload(o.Message.Payload) == 60) &&
+    resumed.Any(o => o.Message.Type == MessageType.ScheduledCommand && LockstepPayloads.ReadScheduled(o.Message.Payload) is { Kind: ScheduledKind.Pause, IssuerSession: var by } && by == Guid.Empty),
+    "repaired: everyone told, time resumes at one shared point");
+
+var userPaused = new LockstepSession(host, members, 0);
+userPaused.Advance(2000);                                                              // paused from the start, by the players
+userPaused.ReportHash(host, 0, 1); userPaused.ReportHash(third, 0, 1); userPaused.ReportHash(guest, 0, 2);
+userPaused.SnapshotLoaded(guest, 100);
+Assert(userPaused.Paused, "a pause the players chose is not lifted by the repair");
+
+var stubborn = new LockstepSession(host, members, 0, new LockstepOptions { MinimumLeadTicks = 6000, MaximumLeadSeconds = 100 });
+stubborn.Control(host, ScheduledKind.Pause, 0, 0);
+int gaveUp = 0, reloads = 0;
+for (int round = 1; round <= 4; round++)
+{
+    stubborn.Advance(round * 2000);
+    int t = (stubborn.Horizon / 60) * 60;
+    stubborn.ReportHash(host, t, 1); stubborn.ReportHash(third, t, 1);
+    var result = stubborn.ReportHash(guest, t, 2);
+    reloads += result.Count(o => o.To == guest && o.Message.Type == MessageType.JoinSnapshot);
+    gaveUp += result.Count(o => o.Message.Type == MessageType.ResyncGaveUp);
+    if (!stubborn.ActiveParticipants.Contains(guest)) { stubborn.ReportTick(guest, stubborn.Horizon, round * 2000); stubborn.SnapshotLoaded(guest, round * 2000); }
+}
+Assert(reloads == 3 && gaveUp == 3 && stubborn.Paused, "after three repairs in a row the coordinator gives up and stays paused: " + reloads + "/" + gaveUp);
+Console.WriteLine("PASS: resync: snapshot for the differing game only, old reports dropped, activation after loading, shared resume, players' pause kept, give up after three");
+
+SimResult repaired = SimulateResync(seed: 21, corruptAgain: false);
+Assert(repaired.Desyncs == 3 && repaired.PausedAt.Count == 0, "one desync, detected by everyone, never given up");
+Assert(repaired.MaxSpread >= 600 && repaired.Completed.Values.Min() >= repaired.MaxSpread + 400, $"time resumed: repaired at tick {repaired.MaxSpread}, games ran on to " + string.Join(",", repaired.Completed.Values));
+AssertSameOrder(repaired);
+for (int seed = 22; seed <= 25; seed++) { var run = SimulateResync(seed, false); Assert(run.Desyncs == 3, "exactly one desync"); AssertSameOrder(run); }
+SimResult hopelessRepair = SimulateResync(seed: 21, corruptAgain: true);
+Assert(hopelessRepair.PausedAt.Count == 3, "a game that keeps diverging is given up and everyone is told");
+Console.WriteLine($"PASS: 5 simulated runs with a real state divergence at tick 600: detected, the game reloads the host's state, time resumes on its own and all games stay identical up to tick {repaired.Completed.Values.Min()}; a game that keeps diverging is given up");
+
+// Three games; game 3 really corrupts its state at tick 600 (and, with corruptAgain, after every reload too).
+// Result: Desyncs = DesyncDetected messages seen, PausedAt = games that saw ResyncGaveUp, MaxSpread = repair tick.
+static SimResult SimulateResync(int seed, bool corruptAgain)
+{
+    var random = new Random(seed);
+    Guid[] ids = { Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid() };
+    Guid victim = ids[2];
+    double[] ticksPerMs = { 1.0, 0.8, 0.6 };
+    var coordinator = new LockstepSession(ids[0], ids.Select((id, i) => (id, PlayerKey.Steam((ulong)(i + 1)))), 0);
+    var games = ids.ToDictionary(id => id, _ => new LockstepClient());
+    var down = ids.ToDictionary(id => id, _ => new Link());
+    var up = ids.ToDictionary(id => id, _ => new Link());
+    var completed = ids.ToDictionary(id => id, _ => 0);
+    var budget = ids.ToDictionary(id => id, _ => 0.0);
+    var hashed = ids.ToDictionary(id => id, _ => -1);
+    var state = ids.ToDictionary(id => id, _ => 14695981039346656037UL);
+    var logs = ids.ToDictionary(id => id, _ => new List<(int Boundary, ulong Sequence)>());
+    var gaveUpSeen = new Dictionary<Guid, int>();
+    int desyncs = 0, repairTick = -1, corruptions = 0;
+    JoinSnapshot? reloadAt = null;
+    (long At, int Tick, ulong State, List<(int, ulong)> Log)? snapshot = null;
+    void Out(IEnumerable<(Guid To, WireMessage Message)> messages, long now)
+    { foreach (var (to, message) in messages) down[to].Send(message, now + random.Next(5, 80)); }
+    Out(coordinator.Begin(), 0);
+    up[ids[1]].Send(LockstepClient.ControlMessage(ScheduledKind.Pause, 0), 20);
+    for (long now = 0; now < 20_000; now += 5)
+    {
+        foreach (Guid id in ids)
+            while (up[id].TryReceive(now, out WireMessage? m))
+            {
+                try
+                {
+                    Out(m!.Type switch
+                    {
+                        MessageType.Command => coordinator.Submit(id, m.Payload, now),
+                        MessageType.ClientTick => coordinator.ReportTick(id, LockstepPayloads.ReadTickPayload(m.Payload), now),
+                        MessageType.StateHash => coordinator.ReportHash(id, LockstepPayloads.ReadHash(m.Payload).Tick, LockstepPayloads.ReadHash(m.Payload).Hash),
+                        MessageType.SnapshotLoaded => coordinator.SnapshotLoaded(id, now),
+                        MessageType.SessionControl => coordinator.Control(id, LockstepPayloads.ReadControl(m.Payload).Kind, LockstepPayloads.ReadControl(m.Payload).Value, now),
+                        _ => throw new Exception("unexpected " + m.Type)
+                    }, now);
+                }
+                catch (LockstepRuleException error) when (error.Code is 7) { }
+            }
+        if (now % 50 == 0) Out(coordinator.Advance(now), now);
+        foreach (Guid id in ids)
+        {
+            if (id == victim && reloadAt != null)
+            {
+                if (snapshot == null || snapshot.Value.At > now) continue;            // waiting for the host's state
+                games[id] = LockstepClient.ForJoin(reloadAt);
+                completed[id] = snapshot.Value.Tick; state[id] = snapshot.Value.State;
+                logs[id] = new List<(int, ulong)>(snapshot.Value.Log); hashed[id] = snapshot.Value.Tick;
+                reloadAt = null; snapshot = null;
+                up[id].Send(LockstepClient.SnapshotLoadedMessage(), now + random.Next(5, 80));
+            }
+            LockstepClient game = games[id];
+            while (down[id].TryReceive(now, out WireMessage? m))
+            {
+                if (m!.Type == MessageType.PlayerSynced) continue;
+                if (m.Type == MessageType.DesyncResolved) { repairTick = LockstepPayloads.ReadTickPayload(m.Payload); continue; }
+                if (m.Type == MessageType.ResyncGaveUp) { gaveUpSeen[id] = completed[id]; continue; }
+                if (m.Type == MessageType.JoinSnapshot) { reloadAt = LockstepPayloads.ReadJoin(m.Payload); break; }   // stop: reload first
+                game.Receive(m);
+                if (m.Type == MessageType.DesyncDetected) desyncs++;
+            }
+            if (id == victim && reloadAt != null) continue;
+            void Execute()
+            {
+                foreach (ScheduledCommand command in game.TakeCommandsAt(completed[id]))
+                {
+                    if (command.Kind == ScheduledKind.Save)
+                    {
+                        if (id == ids[0] && command.Data.Length > 0 && LockstepPayloads.SaveTargets(command.Data).Contains(victim))
+                            snapshot = (now + 300, completed[id], state[id], new List<(int, ulong)>(logs[id]));
+                        continue;
+                    }
+                    logs[id].Add((command.Boundary, command.Sequence));
+                    state[id] = (state[id] ^ command.Sequence ^ command.Data[0]) * 1099511628211UL;
+                }
+            }
+            void Hash()
+            {
+                int t = completed[id];
+                if (t % 60 != 0 || t <= hashed[id]) return;
+                hashed[id] = t;
+                // The victim's real state diverges once at tick 600, or after every reload with corruptAgain.
+                if (id == victim && t >= 600 && (corruptions == 0 || corruptAgain)) { state[id] ^= 0xDEADBEEF; corruptions++; }
+                up[id].Send(LockstepClient.HashMessage(t, state[id] ^ (ulong)t), now + random.Next(5, 80));
+            }
+            Hash(); Execute();
+            budget[id] = Math.Min(budget[id] + ticksPerMs[Array.IndexOf(ids, id)] * 5, 2000);
+            while (budget[id] >= 1 && game.MayRunTick(completed[id])) { completed[id]++; budget[id]--; Hash(); Execute(); }
+            if (!game.MayRunTick(completed[id])) budget[id] = Math.Min(budget[id], 1);
+            if (game.ProgressMessage(completed[id], now) is WireMessage progress) up[id].Send(progress, now + random.Next(5, 80));
+            if (random.Next(100) < 3) up[id].Send(LockstepClient.CommandMessage(new[] { (byte)random.Next(256) }), now + random.Next(5, 80));
+        }
+    }
+    if (!corruptAgain && repairTick < 600) throw new Exception("FAIL: no DesyncResolved seen");
+    return new SimResult(logs, completed, gaveUpSeen, desyncs, repairTick);
 }
 
 static void AssertSameOrder(SimResult run)
@@ -331,6 +489,7 @@ static SimResult Simulate(int seed, int corruptAt)
             LockstepClient game = games[id];
             while (down[id].TryReceive(now, out WireMessage? m))
             {
+                if (!LockstepClient.Handles(m!)) continue;     // this simulation never reloads (see SimulateResync)
                 game.Receive(m!);
                 if (m!.Type == MessageType.DesyncDetected) desyncs++;
             }

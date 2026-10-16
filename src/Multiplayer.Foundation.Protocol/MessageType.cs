@@ -53,6 +53,10 @@ namespace Multiplayer.Foundation.Protocol
         SessionControl = 70,
         // Claude lane (codes 71-79): SAVE-001 / JOIN-001 (ADR 0032)
         JoinSnapshot = 71,
-        PlayerSynced = 72
+        PlayerSynced = 72,
+        // DESYNC-003 (ADR 0033)
+        DesyncResolved = 73,
+        ResyncGaveUp = 74,
+        SnapshotLoaded = 75
     }
 }
