@@ -29,6 +29,83 @@ namespace Multiplayer.Foundation.RimWorld
         private static GuestPageTestWindow? guestPageWindow;
         private static bool guestPageOk, guestShotTaken;
         private static string guestPageInfo = "";
+        // SETUP-004: vanilla's xenotype editor on a game without starting pawns (stage 5), and errors logged meanwhile.
+        private static Dialog_CreateXenotype? editorProbe;
+        private static bool editorCallback;
+        private static System.Collections.Generic.HashSet<string> xenotypeFilesBefore = new System.Collections.Generic.HashSet<string>();
+        private static int loggedErrors;
+        private const int ProbeSlot = 2;
+        private const string ProbeXenotype = "MP Selbsttest";
+
+        private static void CountErrors(string message, string stack, UnityEngine.LogType type)
+        {
+            if (type == UnityEngine.LogType.Error || type == UnityEngine.LogType.Exception) loggedErrors++;
+        }
+
+        private static void OpenEditorProbe()
+        {
+            loggedErrors = 0;
+            UnityEngine.Application.logMessageReceived += CountErrors;
+            if (!ModsConfig.BiotechActive) return;
+            try
+            {
+                xenotypeFilesBefore = new System.Collections.Generic.HashSet<string>(GenFilePaths.AllCustomXenotypeFiles.Select(f => f.FullName));
+                editorCallback = false;
+                editorProbe = new Dialog_CreateXenotype(ProbeSlot, () => editorCallback = true);
+                Find.WindowStack.Add(editorProbe);
+            }
+            catch (Exception error) { Log.Error("Multiplayer Foundation world self-test: xenotype editor FAIL opening " + error); }
+        }
+
+        // Fills in a name and one gene, accepts like the button does, and checks the result reached this game's request for
+        // the slot (where the guest page picks it up). Files the editor saved for the test are removed again.
+        private static void FinishEditorProbe()
+        {
+            if (!ModsConfig.BiotechActive) { Log.Message("Multiplayer Foundation world self-test: xenotype editor skipped (no Biotech)"); return; }
+            string result;
+            try
+            {
+                int pawnsBefore = Find.GameInitData.startingAndOptionalPawns.Count;
+                GeneDef gene = DefDatabase<GeneDef>.GetNamedSilentFail("Hemogenic") ?? DefDatabase<GeneDef>.AllDefs.First();
+                AccessTools.Field(typeof(GeneCreationDialogBase), "xenotypeName").SetValue(editorProbe, ProbeXenotype);
+                var genes = (System.Collections.Generic.List<GeneDef>)AccessTools.Field(typeof(Dialog_CreateXenotype), "selectedGenes").GetValue(editorProbe);
+                genes.Clear(); genes.Add(gene);
+                AccessTools.Method(typeof(Dialog_CreateXenotype), "AcceptInner").Invoke(editorProbe, null);
+                CustomXenotype? made = StartingPawnUtility.GetGenerationRequest(ProbeSlot).ForcedCustomXenotype;
+                var choice = made == null ? null : Protocol.PawnXenotypeChoice.Parse(GuestCharacterPage.Choice(made).ToText());
+                bool ok = editorCallback && made != null && made.name == ProbeXenotype && choice != null && choice.Genes.Contains(gene.defName);
+                result = (ok ? "PASS" : "FAIL") + " callback=" + editorCallback + " made=" + (made?.name ?? "-") + " genes=" + (choice?.Genes.Count ?? 0) +
+                    " pawnsBefore=" + pawnsBefore;
+            }
+            catch (Exception error) { result = "FAIL " + (error.InnerException ?? error).Message; }
+            finally
+            {
+                // Clean up: the slot's request, the window, and only files the editor wrote during this test.
+                try
+                {
+                    PawnGenerationRequest request = StartingPawnUtility.GetGenerationRequest(ProbeSlot);
+                    request.ForcedCustomXenotype = null;
+                    StartingPawnUtility.SetGenerationRequest(ProbeSlot, request);
+                }
+                catch (Exception) { }
+                if (editorProbe != null) Find.WindowStack.TryRemove(editorProbe, false);
+                editorProbe = null;
+                RemoveProbeFiles();
+            }
+            Log.Message("Multiplayer Foundation world self-test: xenotype editor " + result + " loggedErrors=" + loggedErrors);
+        }
+
+        // The editor saves the test xenotype a little after accepting (seen 2026-10-16), so this also runs later and at the end.
+        private static void RemoveProbeFiles()
+        {
+            try
+            {
+                foreach (System.IO.FileInfo file in GenFilePaths.AllCustomXenotypeFiles.ToList())
+                    if (!xenotypeFilesBefore.Contains(file.FullName) && file.Name.StartsWith(ProbeXenotype))
+                        file.Delete();
+            }
+            catch (Exception error) { Log.Warning("Multiplayer Foundation world self-test: could not remove the test xenotype: " + error.Message); }
+        }
 
         /// <summary>True while the self-test owns the flags on the site page.</summary>
         internal static bool ShowingSitePage => siteStage != 0;
@@ -84,6 +161,16 @@ namespace Multiplayer.Foundation.RimWorld
                 Log.Message("Multiplayer Foundation world self-test: site page " + (open && SiteFlags.FramesDrawn > 0 ? "PASS" : "FAIL") +
                     " open=" + open + " flagFrames=" + SiteFlags.FramesDrawn + " flags=" + SiteFlags.Shown.Count);
                 SiteFlags.Shown = Array.Empty<(string, PlanetTile, UnityEngine.Color)>();
+                // SETUP-004: vanilla's xenotype editor as a guest uses it, while this game has no starting pawns yet (like a
+                // guest's). Accepted a second later.
+                OpenEditorProbe();
+                siteStage = 5; siteOpenedAt = UnityEngine.Time.realtimeSinceStartup;
+                return;
+            }
+            if (siteStage == 5)
+            {
+                if (UnityEngine.Time.realtimeSinceStartup - siteOpenedAt < 1f) return;
+                FinishEditorProbe();
                 pawnsPassed = RunPawnTest();
                 // SETUP-004: the guest's character page with these pawns, as a guest receives them (opened before the site
                 // page closes, so a window stays open).
@@ -104,9 +191,11 @@ namespace Multiplayer.Foundation.RimWorld
                     Log.Message("Multiplayer Foundation world self-test: screenshot " + shot);
                 }
                 if (openFor < 3f) return;
-                bool shown = guestPageWindow != null && guestPageWindow.Frames > 0 && guestPageWindow.Errors == 0;
+                bool shown = guestPageWindow != null && guestPageWindow.Frames > 0 && guestPageWindow.Errors == 0 && loggedErrors == 0;
                 Log.Message("Multiplayer Foundation world self-test: guest page " + (guestPageOk && shown ? "PASS" : "FAIL") + " " + guestPageInfo +
-                    " frames=" + (guestPageWindow?.Frames ?? 0) + " errors=" + (guestPageWindow?.Errors ?? 0));
+                    " frames=" + (guestPageWindow?.Frames ?? 0) + " errors=" + (guestPageWindow?.Errors ?? 0) + " loggedErrors=" + loggedErrors);
+                UnityEngine.Application.logMessageReceived -= CountErrors;
+                RemoveProbeFiles();
                 // Like a guest after the site page: no setup page, only the multiplayer window. Does the world stay?
                 if (FoundationMod.Instance != null) Find.WindowStack.Add(new FoundationWindow(FoundationMod.Instance));
                 if (guestPageWindow != null) Find.WindowStack.TryRemove(guestPageWindow, false);
@@ -357,6 +446,7 @@ namespace Multiplayer.Foundation.RimWorld
                 catch (Exception error) { Log.Warning("Multiplayer Foundation game self-test: could not remove " + name + ": " + error.Message); }
             }
             if (startPage != null) Find.WindowStack.TryRemove(startPage, false);
+            RemoveProbeFiles();
             gameStage = 0; hostGame = null; guestFile = null; hostFile = null; startPage = null;
             if (!quitWhenIdle && Current.ProgramState == ProgramState.Playing) GenScene.GoToMainMenu();
         }
@@ -376,16 +466,18 @@ namespace Multiplayer.Foundation.RimWorld
                 Protocol.PawnRoster roster = Protocol.PawnRoster.Read(host.Build(init, keys).ToPayload());
                 var page = new GuestCharacterPage();
                 int images = 0, bytes = 0, largest = 0;
+                // Every view option of every pawn, as the host sends them.
                 foreach (Pawn pawn in init.startingAndOptionalPawns.Take(Protocol.PawnRoster.MaximumCards))
-                {
-                    byte[]? png = CharacterHost.RenderPortrait(pawn);
-                    if (png == null) continue;
-                    page.SetPortrait(Protocol.PawnPortrait.Read(new Protocol.PawnPortrait(pawn.thingIDNumber, png).ToPayload()));
-                    images++; bytes += png.Length; largest = Math.Max(largest, png.Length);
-                }
+                    for (byte variant = 0; variant < Protocol.PawnPortrait.Variants; variant++)
+                    {
+                        byte[]? png = CharacterHost.RenderPortrait(pawn, variant);
+                        if (png == null) continue;
+                        page.SetPortrait(Protocol.PawnPortrait.Read(new Protocol.PawnPortrait(pawn.thingIDNumber, png, variant).ToPayload()));
+                        images++; bytes += png.Length; largest = Math.Max(largest, png.Length);
+                    }
                 bool details = roster.Cards.All(c => c.Details != null && c.Details.AgeBiological > 0 && (c.Details.First.Length > 0 || c.Details.Nick.Length > 0));
                 Protocol.PawnCardDetails? sample = roster.Cards[0].Details;
-                guestPageOk = images == roster.Cards.Count && page.PortraitCount == images && details;
+                guestPageOk = images == roster.Cards.Count * Protocol.PawnPortrait.Variants && page.PortraitCount == images && details;
                 guestPageInfo = "cards=" + roster.Cards.Count + " portraits=" + images + " png=" + bytes / 1024 + "KiB max=" + largest + "B details=" + details +
                     " sample=\"" + sample?.First + " '" + sample?.Nick + "' " + sample?.Last + ", " + sample?.AgeBiological + "(" + sample?.AgeChronological + "), " +
                     sample?.Xenotype + " [" + sample?.XenotypeIcon + "], health " + sample?.Health.Count + ", relations " + sample?.Relations.Count +
@@ -450,6 +542,44 @@ namespace Multiplayer.Foundation.RimWorld
                         swapped.Cards.Any(c => c.PawnId == rerolled.PawnId && !c.Selected && c.Owner == null));
                 }
                 else results.Add("swap=skipped(no left-behind pawn)");
+                // The host page's functions for guests (2026-10-16): all three names, xenotype (standard and custom), development stage.
+                Pawn PawnOf(int id) => init.startingAndOptionalPawns.First(p => p.thingIDNumber == id);
+                int MyPawn() => host.Build(init, present).Cards.First(c => c.Owner == a && c.Selected).PawnId;
+                int mine = MyPawn();
+                Check("setName", host.Apply(Req(Multiplayer.Foundation.Protocol.PawnRequestKind.SetName, mine, 0,
+                    Multiplayer.Foundation.Protocol.PawnRequest.Names("Vorname", "Spitz", "Nachname")), init) == null &&
+                    PawnOf(mine).Name is NameTriple named && named.First == "Vorname" && named.Nick == "Spitz" && named.Last == "Nachname");
+                Check("setNameNeedsFirst", host.Apply(Req(Multiplayer.Foundation.Protocol.PawnRequestKind.SetName, mine, 0,
+                    Multiplayer.Foundation.Protocol.PawnRequest.Names("", "x", "y")), init) != null);
+                if (ModsConfig.BiotechActive)
+                {
+                    XenotypeDef other = DefDatabase<XenotypeDef>.AllDefs.First(x => x != XenotypeDefOf.Baseliner);
+                    Check("foreignXenotypeRefused", host.Apply(new Multiplayer.Foundation.Protocol.PawnRequest(Multiplayer.Foundation.Protocol.PawnRequestKind.SetXenotype,
+                        mine, 0, Multiplayer.Foundation.Protocol.PawnXenotypeChoice.Standard(other.defName).ToText(), b), init) != null);
+                    Check("setXenotype", host.Apply(Req(Multiplayer.Foundation.Protocol.PawnRequestKind.SetXenotype, mine, 0,
+                        Multiplayer.Foundation.Protocol.PawnXenotypeChoice.Standard(other.defName).ToText()), init) == null);
+                    int xenoPawn = MyPawn();
+                    Check("xenotypeApplied", xenoPawn != mine && PawnOf(xenoPawn).genes?.Xenotype == other);
+                    GeneDef gene = DefDatabase<GeneDef>.GetNamedSilentFail("Hemogenic") ?? DefDatabase<GeneDef>.AllDefs.First();
+                    Check("setCustomXenotype", host.Apply(Req(Multiplayer.Foundation.Protocol.PawnRequestKind.SetXenotype, xenoPawn, 0,
+                        Multiplayer.Foundation.Protocol.PawnXenotypeChoice.CustomXenotype("MP Testtyp", false, "", new[] { gene.defName }).ToText()), init) == null);
+                    int customPawn = MyPawn();
+                    Check("customApplied", PawnOf(customPawn).genes != null && PawnOf(customPawn).genes.XenotypeLabelCap.ToLower().Contains("mp testtyp") &&
+                        PawnOf(customPawn).genes.HasActiveGene(gene));
+                    Check("unknownGeneRefused", host.Apply(Req(Multiplayer.Foundation.Protocol.PawnRequestKind.SetXenotype, customPawn, 0,
+                        Multiplayer.Foundation.Protocol.PawnXenotypeChoice.CustomXenotype("X", false, "", new[] { "NoSuchGene" }).ToText()), init) != null);
+                    Check("setChild", host.Apply(Req(Multiplayer.Foundation.Protocol.PawnRequestKind.SetDevelopmentStage, customPawn,
+                        (int)DevelopmentalStage.Child), init) == null && PawnOf(MyPawn()).DevelopmentalStage == DevelopmentalStage.Child);
+                    Check("backToAdult", host.Apply(Req(Multiplayer.Foundation.Protocol.PawnRequestKind.SetDevelopmentStage, MyPawn(),
+                        (int)DevelopmentalStage.Adult), init) == null && PawnOf(MyPawn()).DevelopmentalStage == DevelopmentalStage.Adult &&
+                        host.Build(init, present).Cards.First(c => c.PawnId == MyPawn()).Details?.DevelopmentStage == (byte)DevelopmentalStage.Adult);
+                    host.Apply(Req(Multiplayer.Foundation.Protocol.PawnRequestKind.SetXenotype, MyPawn(), 0,
+                        Multiplayer.Foundation.Protocol.PawnXenotypeChoice.Standard(XenotypeDefOf.Baseliner.defName).ToText()), init);
+                }
+                else results.Add("xenotype=skipped(no Biotech)");
+                var tipCard = host.Build(init, present).Cards[0];
+                Check("tips", tipCard.Details != null && tipCard.Details.TraitTips.Count == tipCard.Traits.Count &&
+                    (tipCard.Childhood.Length == 0 || tipCard.Details.ChildhoodTip.Length > 0));
                 Check("leaveFrees", host.Build(init, new System.Collections.Generic.List<Multiplayer.Foundation.Protocol.PlayerKey> { b }).Cards.All(c => c.Owner != a));
                 Check("payload", Multiplayer.Foundation.Protocol.PawnRoster.Read(host.Build(init, present).ToPayload()).Cards.Count == init.startingAndOptionalPawns.Count);
                 bool pass = results.All(r => !r.EndsWith("FAIL"));

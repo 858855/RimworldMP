@@ -9,20 +9,26 @@ using Verse;
 namespace Multiplayer.Foundation.RimWorld
 {
     /// <summary>
-    /// SETUP-004, guest: the vanilla "Create characters" page rebuilt from the host's cards and portraits. The pawns live
-    /// only in the host's game (ADR 0022), so vanilla's own card cannot draw them here; layout, icons and words follow it
-    /// (vanilla translation keys where they exist). Ownership actions sit where vanilla has Randomize.
+    /// SETUP-004, guest: the vanilla "Create characters" page rebuilt from the host's cards and portraits, with the host
+    /// page's controls. The pawns live only in the host's game (ADR 0022), so every change (names, randomize, xenotype,
+    /// development stage, custom xenotypes from vanilla's editor) goes to the host as a request; the page shows what comes
+    /// back. Layout, icons and words follow vanilla (its translation keys where they exist).
     /// </summary>
     internal sealed class GuestCharacterPage
     {
         private const float TitleHeight = 45f, ButtonHeight = 38f, ListWidth = 140f, EntryHeight = 60f, TeamHeight = 110f, Gap = 10f;
+        private const string NameControl = "mpGuestName";
         private static readonly Color HeaderColor = new Color(0.9f, 0.85f, 0.35f), DimColor = new Color(0.65f, 0.65f, 0.65f),
             BoxColor = new Color(0.12f, 0.12f, 0.12f), GoodColor = new Color(0.3f, 0.85f, 0.3f), BadColor = new Color(0.9f, 0.3f, 0.3f);
-        private readonly Dictionary<int, Texture2D> portraits = new Dictionary<int, Texture2D>();
+        private readonly Dictionary<(int Pawn, byte Variant), Texture2D> portraits = new Dictionary<(int, byte), Texture2D>();
+        private Texture2D? barFill;
         private Vector2 listScroll;
-        private int? nickPawnId;
-        private string nickText = "";
-        private static Texture2D? barFill;
+        private bool showHeadgear, showApparel = true;
+        // The names being edited on the own pawn; sent when the boxes lose focus or on Enter, like vanilla keeps them.
+        private int? namesPawnId;
+        private string editFirst = "", editNick = "", editLast = "", sentFirst = "", sentNick = "", sentLast = "";
+        private bool wasEditing;
+        private float sentNamesAt = -100f;
 
         internal int PortraitCount => portraits.Count;
 
@@ -30,14 +36,23 @@ namespace Multiplayer.Foundation.RimWorld
         {
             var texture = new Texture2D(2, 2);
             if (!texture.LoadImage(portrait.Png)) { UnityEngine.Object.Destroy(texture); return; }
-            if (portraits.TryGetValue(portrait.PawnId, out Texture2D old)) UnityEngine.Object.Destroy(old);
-            portraits[portrait.PawnId] = texture;
+            var key = (portrait.PawnId, portrait.Variant);
+            if (portraits.TryGetValue(key, out Texture2D old)) UnityEngine.Object.Destroy(old);
+            portraits[key] = texture;
         }
 
         internal void Clear()
         {
             foreach (Texture2D texture in portraits.Values) UnityEngine.Object.Destroy(texture);
-            portraits.Clear(); nickPawnId = null; nickText = ""; listScroll = Vector2.zero;
+            portraits.Clear(); namesPawnId = null; editFirst = editNick = editLast = ""; listScroll = Vector2.zero;
+        }
+
+        // The portrait for the current view options; the default view until the others arrived.
+        private Texture2D? Portrait(int pawnId)
+        {
+            byte variant = (byte)((showHeadgear ? PawnPortrait.Headgear : 0) | (showApparel ? 0 : PawnPortrait.NoApparel));
+            return portraits.TryGetValue((pawnId, variant), out Texture2D wanted) ? wanted
+                : portraits.TryGetValue((pawnId, (byte)0), out Texture2D fallback) ? fallback : null;
         }
 
         /// <summary>Draws the page. <paramref name="chosenPawnId"/> is the pawn shown on the card.</summary>
@@ -48,32 +63,39 @@ namespace Multiplayer.Foundation.RimWorld
             int? shownId = chosenPawnId;
             if (shownId == null || roster.Cards.All(c => c.PawnId != shownId))
                 chosenPawnId = (myPawn ?? roster.Cards.FirstOrDefault())?.PawnId;
-            // Title, and on the right where vanilla has its view options: who is done.
+            // Title with who is done; vanilla's view options on the right.
             Text.Font = GameFont.Medium;
-            Widgets.Label(new Rect(inRect.x, inRect.y, inRect.width, TitleHeight), L("CreateCharacters", "Figuren erstellen"));
+            string title = L("CreateCharacters", "Figuren erstellen");
+            Widgets.Label(new Rect(inRect.x, inRect.y, inRect.width, TitleHeight), title);
+            float titleWidth = Text.CalcSize(title).x;
             Text.Font = GameFont.Small;
-            Text.Anchor = TextAnchor.UpperRight;
             GUI.color = DimColor;
-            Widgets.Label(new Rect(inRect.x, inRect.y + 8f, inRect.width, 24f), doneLine);
+            Widgets.Label(new Rect(inRect.x + titleWidth + 20f, inRect.y + 8f, inRect.width - titleWidth - 230f, 24f), doneLine);
             GUI.color = Color.white;
-            Text.Anchor = TextAnchor.UpperLeft;
+            Widgets.CheckboxLabeled(new Rect(inRect.xMax - 190f, inRect.y, 190f, 22f), L("ShowHeadgear", "Kopfbedeckung zeigen"), ref showHeadgear);
+            Widgets.CheckboxLabeled(new Rect(inRect.xMax - 190f, inRect.y + 22f, 190f, 22f), L("ShowApparel", "Kleidung zeigen"), ref showApparel);
             float top = inRect.y + TitleHeight, bottom = inRect.yMax - ButtonHeight - Gap;
             chosenPawnId = DrawList(new Rect(inRect.x, top, ListWidth, bottom - top), roster, players, myKey, chosenPawnId);
             shownId = chosenPawnId;
             PawnCard? chosen = roster.Cards.FirstOrDefault(c => c.PawnId == shownId);
+            int slot = roster.Cards.ToList().FindIndex(c => c.PawnId == shownId);
             float mainX = inRect.x + ListWidth + Gap, mainWidth = inRect.xMax - mainX;
             Rect card = new Rect(mainX, top, mainWidth, bottom - top - TeamHeight - Gap);
             Widgets.DrawMenuSection(card);
-            if (chosen != null) DrawCard(card.ContractedBy(17f), chosen, players, myKey, myPawn, request);
+            if (chosen != null) DrawCard(card.ContractedBy(17f), chosen, slot, players, myKey, myPawn, request);
             DrawTeamSkills(new Rect(mainX, card.yMax + Gap, mainWidth, TeamHeight), roster);
-            // Bottom row where vanilla has Back and Start.
+            // Bottom row where vanilla has Back, Xenotype editor and Start.
             float buttonY = inRect.yMax - ButtonHeight;
             if (Widgets.ButtonText(new Rect(inRect.x, buttonY, 150f, ButtonHeight), "Chat / Lobby")) openLobby();
+            bool mine = chosen != null && myKey != null && chosen.Owner == myKey;
+            if (mine && ModsConfig.BiotechActive &&
+                Widgets.ButtonText(new Rect(inRect.center.x - 100f, buttonY, 200f, ButtonHeight), L("XenotypeEditor", "Xenotyp-Editor")))
+                OpenXenotypeEditor(chosen!, slot, request);
             if (myPawn == null && !myDone)
             {
-                Text.Anchor = TextAnchor.MiddleCenter;
+                Text.Anchor = TextAnchor.MiddleRight;
                 GUI.color = DimColor;
-                Widgets.Label(new Rect(inRect.x + 160f, buttonY, inRect.width - 320f, ButtonHeight), "Erst eine Figur der Startgruppe übernehmen.");
+                Widgets.Label(new Rect(inRect.x + 160f, buttonY, inRect.width - 330f, ButtonHeight), "Erst eine Figur der Startgruppe übernehmen.");
                 GUI.color = Color.white;
                 Text.Anchor = TextAnchor.UpperLeft;
             }
@@ -97,7 +119,8 @@ namespace Multiplayer.Foundation.RimWorld
                 {
                     Rect entry = new Rect(selected ? 0f : 6f, y, view.width - (selected ? 0f : 6f), EntryHeight);
                     Widgets.DrawOptionBackground(entry, card.PawnId == chosenPawnId);
-                    if (portraits.TryGetValue(card.PawnId, out Texture2D portrait))
+                    Texture2D? portrait = Portrait(card.PawnId);
+                    if (portrait != null)
                     {
                         GUI.color = new Color(1f, 1f, 1f, 0.6f);
                         GUI.DrawTexture(new Rect(entry.xMax - 50f, entry.y, 50f, EntryHeight), portrait, ScaleMode.ScaleAndCrop);
@@ -121,30 +144,18 @@ namespace Multiplayer.Foundation.RimWorld
             return chosenPawnId;
         }
 
-        private void DrawCard(Rect rect, PawnCard card, IReadOnlyList<PlayerView> players, PlayerKey? myKey, PawnCard? myPawn, Action<PawnRequest> request)
+        private void DrawCard(Rect rect, PawnCard card, int slot, IReadOnlyList<PlayerView> players, PlayerKey? myKey, PawnCard? myPawn,
+            Action<PawnRequest> request)
         {
             PawnCardDetails? d = card.Details;
             bool mine = myKey != null && card.Owner == myKey;
-            // Names in three boxes; the nickname is editable on the player's own pawn (vanilla edits all three).
-            if (nickPawnId != card.PawnId) { nickPawnId = card.PawnId; nickText = d?.Nick ?? card.ShortName; }
             float x = rect.x, y = rect.y;
-            NameBox(new Rect(x, y, 140f, 30f), d?.First ?? "");
-            Rect nickRect = new Rect(x + 146f, y, 140f, 30f);
-            if (mine) nickText = Widgets.TextField(nickRect, nickText);
-            else NameBox(nickRect, d?.Nick ?? card.ShortName);
-            NameBox(new Rect(x + 292f, y, 140f, 30f), d?.Last ?? "");
-            string nick = nickText.Trim();
-            if (mine && nick.Length > 0 && nick != (d?.Nick ?? card.ShortName))
-            {
-                Rect apply = new Rect(x + 438f, y, 30f, 30f);
-                TooltipHandler.TipRegion(apply, L("Rename", "Umbenennen"));
-                if (Widgets.ButtonText(apply, "✓")) request(new PawnRequest(PawnRequestKind.Rename, card.PawnId, 0, nick));
-            }
+            DrawNames(new Rect(x, y, 432f, 30f), card, d, mine, request);
             // The portrait right of the names, as vanilla shows it (kept clear of the action box on the right).
             Vector2 size = Page_ConfigureStartingPawns.PawnPortraitSize * 0.8f;
-            if (portraits.TryGetValue(card.PawnId, out Texture2D portrait))
-                GUI.DrawTexture(new Rect(rect.x + 476f, rect.y - 8f, size.x, size.y), portrait, ScaleMode.ScaleToFit);
-            DrawActions(new Rect(rect.xMax - 200f, rect.y, 200f, 100f), card, players, mine, myPawn, request);
+            Texture2D? portrait = Portrait(card.PawnId);
+            if (portrait != null) GUI.DrawTexture(new Rect(rect.x + 476f, rect.y - 8f, size.x, size.y), portrait, ScaleMode.ScaleToFit);
+            DrawActions(new Rect(rect.xMax - 200f, rect.y, 200f, 130f), card, slot, players, mine, myPawn, request);
             // Gender, age and xenotype; then faction and favourite colour.
             y += 38f;
             if (d != null)
@@ -161,6 +172,8 @@ namespace Multiplayer.Foundation.RimWorld
                     Texture2D? icon = XenotypeIcon(d.XenotypeIcon);
                     if (icon != null) GUI.DrawTexture(new Rect(xeno.x + 4f, xeno.y + 3f, 22f, 22f), icon);
                     Widgets.Label(new Rect(xeno.x + 30f, xeno.y + 2f, xeno.width - 30f, 26f), d.Xenotype);
+                    XenotypeDef? xenotypeDef = d.XenotypeIcon.StartsWith("x:") ? DefDatabase<XenotypeDef>.GetNamedSilentFail(d.XenotypeIcon.Substring(2)) : null;
+                    if (xenotypeDef != null) TooltipHandler.TipRegion(xeno, xenotypeDef.LabelCap + "\n\n" + xenotypeDef.description);
                 }
             }
             else Widgets.Label(new Rect(x, y + 2f, 400f, 26f), card.Summary);
@@ -178,14 +191,60 @@ namespace Multiplayer.Foundation.RimWorld
                     Widgets.DrawBoxSolid(new Rect(faction.xMax + 6f, y + 2f, 24f, 24f), FromRgba(d.FavoriteColor));
             }
             y += 42f;
-            float columnsTop = y;
+            float columnsTop = Math.Max(y, rect.y + 136f);
             DrawBackgroundColumn(new Rect(rect.x, columnsTop, 240f, rect.yMax - columnsTop), card);
             DrawSkills(new Rect(rect.x + 255f, columnsTop, 230f, rect.yMax - columnsTop), card);
             DrawRightColumn(new Rect(rect.x + 500f, columnsTop, rect.width - 500f, rect.yMax - columnsTop), card);
         }
 
-        // Where vanilla has Randomize: who owns the pawn and what this player may do with it.
-        private static void DrawActions(Rect rect, PawnCard card, IReadOnlyList<PlayerView> players, bool mine, PawnCard? myPawn, Action<PawnRequest> request)
+        // First, nick and last name. On the player's own pawn they are text boxes like vanilla's; a change goes to the host
+        // when the boxes lose focus or on Enter, and the boxes show what the host has as soon as it arrives.
+        private void DrawNames(Rect rect, PawnCard card, PawnCardDetails? d, bool mine, Action<PawnRequest> request)
+        {
+            string first = d?.First ?? "", nick = d?.Nick ?? card.ShortName, last = d?.Last ?? "";
+            Rect[] boxes = { new Rect(rect.x, rect.y, 140f, 30f), new Rect(rect.x + 146f, rect.y, 140f, 30f), new Rect(rect.x + 292f, rect.y, 140f, 30f) };
+            bool editing = GUI.GetNameOfFocusedControl().StartsWith(NameControl);
+            // Another pawn shown now: what was typed for the one before still counts, as on the vanilla page.
+            if (namesPawnId != null && namesPawnId != card.PawnId) { CommitNames(namesPawnId.Value, request); namesPawnId = null; }
+            if (!mine || d == null)
+            {
+                NameBox(boxes[0], first); NameBox(boxes[1], nick); NameBox(boxes[2], last);
+                wasEditing = false;
+                return;
+            }
+            // Until the host's answer shows the sent names (or 3 s passed), keep what was typed instead of the older card.
+            bool waiting = Time.realtimeSinceStartup - sentNamesAt < 3f && (editFirst.Trim() != first || editNick.Trim() != nick || editLast.Trim() != last);
+            if (namesPawnId == null || (!editing && !waiting))
+            {
+                namesPawnId = card.PawnId;
+                editFirst = sentFirst = first; editNick = sentNick = nick; editLast = sentLast = last;
+            }
+            bool enter = editing && Event.current.type == EventType.KeyDown &&
+                (Event.current.keyCode == KeyCode.Return || Event.current.keyCode == KeyCode.KeypadEnter);
+            GUI.SetNextControlName(NameControl + "First"); editFirst = Clip(Widgets.TextField(boxes[0], editFirst));
+            GUI.SetNextControlName(NameControl + "Nick"); editNick = Clip(Widgets.TextField(boxes[1], editNick));
+            GUI.SetNextControlName(NameControl + "Last"); editLast = Clip(Widgets.TextField(boxes[2], editLast));
+            if (enter || (wasEditing && !editing))
+            {
+                CommitNames(card.PawnId, request);
+                if (enter) { GUI.FocusControl(null); Event.current.Use(); }
+            }
+            wasEditing = editing;
+        }
+
+        // Sends the typed names if they differ from what was last sent; first and last name must not be empty (vanilla).
+        private void CommitNames(int pawnId, Action<PawnRequest> request)
+        {
+            string first = editFirst.Trim(), nick = editNick.Trim(), last = editLast.Trim();
+            if ((first == sentFirst && nick == sentNick && last == sentLast) || first.Length == 0 || last.Length == 0) return;
+            request(new PawnRequest(PawnRequestKind.SetName, pawnId, 0, PawnRequest.Names(first, nick, last)));
+            sentFirst = first; sentNick = nick; sentLast = last;
+            sentNamesAt = Time.realtimeSinceStartup;
+        }
+
+        // Where vanilla has Randomize and the two generation buttons under it: who owns the pawn and what this player may do.
+        private void DrawActions(Rect rect, PawnCard card, int slot, IReadOnlyList<PlayerView> players, bool mine, PawnCard? myPawn,
+            Action<PawnRequest> request)
         {
             Widgets.DrawBoxSolid(rect, new Color(0.16f, 0.16f, 0.16f));
             Rect inner = rect.ContractedBy(6f);
@@ -203,6 +262,18 @@ namespace Multiplayer.Foundation.RimWorld
             if (mine)
             {
                 if (Button(L("Randomize", "Neu würfeln"))) request(new PawnRequest(PawnRequestKind.Reroll, card.PawnId));
+                if (ModsConfig.BiotechActive)
+                {
+                    float half = (inner.width - 4f) / 2f;
+                    var stage = (DevelopmentalStage)(card.Details?.DevelopmentStage ?? 0);
+                    if (Widgets.ButtonText(new Rect(inner.x, y, half, 28f), StageLabel(stage)))
+                        Find.WindowStack.Add(new FloatMenu(new[] { DevelopmentalStage.Adult, DevelopmentalStage.Child, DevelopmentalStage.Baby }
+                            .Select(s => new FloatMenuOption(StageLabel(s), () =>
+                                request(new PawnRequest(PawnRequestKind.SetDevelopmentStage, card.PawnId, (int)s)))).ToList()));
+                    if (Widgets.ButtonText(new Rect(inner.x + half + 4f, y, half, 28f), (card.Details?.Xenotype ?? "").Truncate(half - 8f)))
+                        Find.WindowStack.Add(new FloatMenu(XenotypeOptions(card, slot, request)));
+                    y += 32f;
+                }
                 if (Button("Freigeben")) request(new PawnRequest(PawnRequestKind.Release, card.PawnId));
             }
             else if (card.Selected && card.Owner == null && myPawn == null)
@@ -215,35 +286,75 @@ namespace Multiplayer.Foundation.RimWorld
             }
         }
 
-        // Childhood, adulthood, traits and what the pawn cannot do.
+        // Vanilla's xenotype menu: every xenotype, this player's custom ones, and the editor.
+        private List<FloatMenuOption> XenotypeOptions(PawnCard card, int slot, Action<PawnRequest> request)
+        {
+            var options = new List<FloatMenuOption>();
+            foreach (XenotypeDef def in DefDatabase<XenotypeDef>.AllDefs.OrderByDescending(x => x.displayPriority).ThenBy(x => x.label))
+                options.Add(new FloatMenuOption(def.LabelCap, () =>
+                    request(new PawnRequest(PawnRequestKind.SetXenotype, card.PawnId, 0, PawnXenotypeChoice.Standard(def.defName).ToText()))));
+            foreach (CustomXenotype custom in CharacterCardUtility.CustomXenotypesForReading)
+            {
+                CustomXenotype chosen = custom;
+                options.Add(new FloatMenuOption(chosen.name.CapitalizeFirst(), () => request(new PawnRequest(PawnRequestKind.SetXenotype, card.PawnId, 0,
+                    Choice(chosen).ToText()))));
+            }
+            options.Add(new FloatMenuOption(L("XenotypeEditor", "Xenotyp-Editor") + "...", () => OpenXenotypeEditor(card, slot, request)));
+            return options;
+        }
+
+        // Vanilla's editor, on this player's side. It leaves the result in this game's (empty) generation request for the
+        // slot; the callback sends it to the host, which generates the pawn with it.
+        private static void OpenXenotypeEditor(PawnCard card, int slot, Action<PawnRequest> request)
+        {
+            int index = Math.Max(0, slot);
+            Find.WindowStack.Add(new Dialog_CreateXenotype(index, () =>
+            {
+                CustomXenotype? made = StartingPawnUtility.GetGenerationRequest(index).ForcedCustomXenotype;
+                if (made != null) request(new PawnRequest(PawnRequestKind.SetXenotype, card.PawnId, 0, Choice(made).ToText()));
+            }));
+        }
+
+        internal static PawnXenotypeChoice Choice(CustomXenotype custom) =>
+            PawnXenotypeChoice.CustomXenotype(custom.name ?? "", custom.inheritable, custom.iconDef?.defName ?? "",
+                (custom.genes ?? new List<GeneDef>()).Select(g => g.defName).ToList());
+
+        // Childhood, adulthood, traits, what the pawn cannot do, and its abilities.
         private static void DrawBackgroundColumn(Rect rect, PawnCard card)
         {
+            PawnCardDetails? d = card.Details;
             float y = rect.y;
-            foreach (var (label, value) in new[] { (L("Childhood", "Kindheit"), card.Childhood), (L("Adulthood", "Erwachsen"), card.Adulthood) })
+            foreach (var (label, value, tip) in new[] { (L("Childhood", "Kindheit"), card.Childhood, d?.ChildhoodTip ?? ""),
+                (L("Adulthood", "Erwachsen"), card.Adulthood, d?.AdulthoodTip ?? "") })
             {
                 if (value.Length == 0) continue;
                 Widgets.Label(new Rect(rect.x, y + 2f, 90f, 26f), label);
                 Rect box = new Rect(rect.x + 95f, y, Math.Min(rect.width - 95f, Text.CalcSize(value).x + 16f), 28f);
                 Widgets.DrawBoxSolid(box, BoxColor);
+                Widgets.DrawHighlightIfMouseover(box);
                 Widgets.Label(new Rect(box.x + 8f, box.y + 2f, box.width - 8f, 26f), value);
+                if (tip.Length > 0) TooltipHandler.TipRegion(box, tip);
                 y += 34f;
             }
             y += 14f;
             y = Header(rect, y, L("Traits", "Merkmale"));
             float x = rect.x;
-            foreach (string trait in card.Traits)
+            for (int i = 0; i < card.Traits.Count; i++)
             {
+                string trait = card.Traits[i];
                 float width = Math.Min(rect.width, Text.CalcSize(trait).x + 16f);
                 if (x + width > rect.xMax) { x = rect.x; y += 32f; }
                 Rect box = new Rect(x, y, width, 28f);
                 Widgets.DrawBoxSolid(box, BoxColor);
+                Widgets.DrawHighlightIfMouseover(box);
                 Widgets.Label(new Rect(box.x + 8f, box.y + 2f, box.width - 8f, 26f), trait);
+                if (d != null && i < d.TraitTips.Count && d.TraitTips[i].Length > 0) TooltipHandler.TipRegion(box, d.TraitTips[i]);
                 x += width + 6f;
             }
             y += 46f;
             y = Header(rect, y, L("IncapableOf", "Unfähig zu"));
             GUI.color = DimColor;
-            if (card.Incapable.Count == 0) Widgets.Label(new Rect(rect.x, y, rect.width, 24f), L("None", "Nichts"));
+            if (card.Incapable.Count == 0) { Widgets.Label(new Rect(rect.x, y, rect.width, 24f), L("None", "Nichts")); y += 22f; }
             foreach (string item in card.Incapable)
             {
                 if (y > rect.yMax - 24f) break;
@@ -251,30 +362,52 @@ namespace Multiplayer.Foundation.RimWorld
                 y += 22f;
             }
             GUI.color = Color.white;
+            List<AbilityDef> abilities = (d?.Abilities ?? Array.Empty<string>()).Select(name => DefDatabase<AbilityDef>.GetNamedSilentFail(name))
+                .Where(def => def != null).Select(def => def!).ToList();
+            if (abilities.Count == 0 || y > rect.yMax - 60f) return;
+            y = Header(rect, y + 12f, L("Abilities", "Fähigkeiten"));
+            x = rect.x;
+            foreach (AbilityDef ability in abilities)
+            {
+                if (x + 30f > rect.xMax) { x = rect.x; y += 32f; }
+                Rect icon = new Rect(x, y, 28f, 28f);
+                if (ability.uiIcon != null) GUI.DrawTexture(icon, ability.uiIcon);
+                Widgets.DrawHighlightIfMouseover(icon);
+                TooltipHandler.TipRegion(icon, ability.LabelCap + "\n\n" + ability.description);
+                x += 32f;
+            }
         }
 
-        // Skills with passion flames and level bars.
-        private static void DrawSkills(Rect rect, PawnCard card)
+        // Skills with passion flames and level bars, named and explained in this player's language.
+        private void DrawSkills(Rect rect, PawnCard card)
         {
             barFill ??= SolidColorMaterials.NewSolidColorTexture(new Color(1f, 1f, 1f, 0.12f));
+            List<SkillDef> order = DefDatabase<SkillDef>.AllDefsListForReading;
             float y = rect.y;
-            foreach (var (skill, level, passion) in card.Skills)
+            for (int i = 0; i < card.Skills.Count; i++)
             {
                 if (y > rect.yMax - 26f) break;
+                var (hostLabel, level, passion) = card.Skills[i];
+                SkillDef? def = i < order.Count ? order[i] : null;
                 bool disabled = level == 255;
+                Rect row = new Rect(rect.x, y, rect.width, 27f);
                 GUI.color = disabled ? DimColor : Color.white;
-                Widgets.Label(new Rect(rect.x, y + 2f, 120f, 24f), skill);
+                Widgets.Label(new Rect(rect.x, y + 2f, 120f, 24f), def?.skillLabel.CapitalizeFirst() ?? hostLabel);
                 Texture2D? flame = passion == 2 ? SkillUI.PassionMajorIcon : passion == 1 ? SkillUI.PassionMinorIcon : null;
                 if (flame != null && !disabled) GUI.DrawTexture(new Rect(rect.x + 122f, y + 2f, 22f, 22f), flame);
                 Rect bar = new Rect(rect.x + 148f, y + 1f, rect.width - 148f, 24f);
                 if (!disabled) Widgets.FillableBar(bar, Mathf.Clamp01(level / 20f), barFill, BaseContent.ClearTex, false);
                 Widgets.Label(new Rect(bar.x + 6f, y + 2f, 40f, 24f), disabled ? "–" : level.ToString());
                 GUI.color = Color.white;
+                Widgets.DrawHighlightIfMouseover(row);
+                if (def != null)
+                    TooltipHandler.TipRegion(row, def.LabelCap + "\n\n" + def.description + (disabled ? "" :
+                        passion == 2 ? "\n\n" + L("PassionMajor", "Begeistert") : passion == 1 ? "\n\n" + L("PassionMinor", "Interessiert") : ""));
                 y += 27f;
             }
         }
 
-        // Health by body part, relations with both opinions, starting possessions.
+        // Health by body part, relations with both opinions, starting possessions with vanilla's info button.
         private static void DrawRightColumn(Rect rect, PawnCard card)
         {
             PawnCardDetails? d = card.Details;
@@ -314,10 +447,13 @@ namespace Multiplayer.Foundation.RimWorld
             }
             if (d.Possessions.Count == 0) return;
             y = Header(rect, y + 16f, L("Possessions", "Besitz"));
-            foreach (var (label, count) in d.Possessions)
+            for (int i = 0; i < d.Possessions.Count; i++)
             {
                 if (y > rect.yMax - 24f) return;
-                Widgets.Label(new Rect(rect.x, y, rect.width, 24f), label + " x" + count);
+                var (label, count) = d.Possessions[i];
+                Widgets.Label(new Rect(rect.x, y, rect.width - 30f, 24f), label + " x" + count);
+                ThingDef? thing = i < d.PossessionDefs.Count ? DefDatabase<ThingDef>.GetNamedSilentFail(d.PossessionDefs[i]) : null;
+                if (thing != null) Widgets.InfoCardButton(rect.xMax - 24f, y, thing);
                 y += 24f;
             }
         }
@@ -339,10 +475,9 @@ namespace Multiplayer.Foundation.RimWorld
             {
                 int index = order.IndexOf(shown[i]);
                 var levels = group.Where(c => index >= 0 && index < c.Skills.Count && c.Skills[index].Level != 255).Select(c => c.Skills[index]).ToList();
-                string label = levels.Count > 0 ? levels[0].Skill : shown[i].skillLabel.CapitalizeFirst();
                 var best = levels.OrderByDescending(s => s.Level).FirstOrDefault();
                 float x = inner.x + (i / 2) * columnWidth, y = inner.y + 38f + (i % 2) * 28f;
-                Widgets.Label(new Rect(x, y + 2f, columnWidth - 70f, 24f), label);
+                Widgets.Label(new Rect(x, y + 2f, columnWidth - 70f, 24f), shown[i].skillLabel.CapitalizeFirst());
                 Texture2D? flame = best.Passion == 2 ? SkillUI.PassionMajorIcon : best.Passion == 1 ? SkillUI.PassionMinorIcon : null;
                 if (flame != null && levels.Count > 0) GUI.DrawTexture(new Rect(x + columnWidth - 70f, y + 2f, 22f, 22f), flame);
                 Rect box = new Rect(x + columnWidth - 44f, y, 32f, 26f);
@@ -368,12 +503,18 @@ namespace Multiplayer.Foundation.RimWorld
             return y + 28f;
         }
 
+        private static string StageLabel(DevelopmentalStage stage) =>
+            (stage == DevelopmentalStage.Child ? L("Child", "Kind") : stage == DevelopmentalStage.Baby ? L("Baby", "Baby") : L("Adult", "Erwachsen"))
+            .CapitalizeFirst();
+
         private static Texture2D? XenotypeIcon(string key)
         {
             if (key.StartsWith("x:")) return DefDatabase<XenotypeDef>.GetNamedSilentFail(key.Substring(2))?.Icon;
             if (key.StartsWith("c:")) return DefDatabase<XenotypeIconDef>.GetNamedSilentFail(key.Substring(2))?.Icon;
             return null;
         }
+
+        private static string Clip(string text) => text.Length > 24 ? text.Substring(0, 24) : text;
 
         private static Color FromRgba(uint rgba) =>
             new Color32((byte)(rgba >> 24), (byte)(rgba >> 16), (byte)(rgba >> 8), (byte)rgba);

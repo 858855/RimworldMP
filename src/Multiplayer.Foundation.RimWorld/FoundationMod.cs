@@ -81,8 +81,8 @@ namespace Multiplayer.Foundation.RimWorld
         private PawnRoster? pawnRoster;
         private int? chosenPawnId;
         private readonly GuestCharacterPage guestPage = new GuestCharacterPage();
-        // Host: the look each portrait was last sent with, by pawn (CharacterHost.PortraitKey).
-        private readonly Dictionary<int, string> sentPortraits = new Dictionary<int, string>();
+        // Host: the look each portrait was last sent with, by pawn and view option (CharacterHost.PortraitKey).
+        private readonly Dictionary<long, string> sentPortraits = new Dictionary<long, string>();
         private static readonly AccessTools.FieldRef<Page_ConfigureStartingPawns, int> CurPawnIndex =
             AccessTools.FieldRefAccess<Page_ConfigureStartingPawns, int>("curPawnIndex");
         // SETUP-005: the host starts the vanilla game once the server is in Generating, saves it and sends the save;
@@ -1185,27 +1185,33 @@ namespace Multiplayer.Foundation.RimWorld
         {
             if (lobby == null) return;
             characterHost.EnsurePawnCount(init, lobby.Players.Count);
-            byte[] payload = characterHost.Build(init, lobby.Players.Select(p => p.Key).ToList()).ToPayload();
+            var present = lobby.Players.Select(p => p.Key).ToList();
+            byte[] payload;
+            try { payload = characterHost.Build(init, present).ToPayload(); }
+            catch (ProtocolException) { payload = characterHost.Build(init, present, false).ToPayload(); } // too big for one frame: without tooltips
             if (!payload.SequenceEqual(lastRosterPayload) && SendBackground(new WireMessage(MessageType.PawnRoster, requestId++, payload)))
                 lastRosterPayload = payload;
             PublishPortraits(init);
         }
 
-        // SETUP-004, host: each pawn's portrait for the guests' page, again when its look changed. Two per call keep frames smooth.
+        // SETUP-004, host: each pawn's portrait for the guests' page in every view option, again when its look changed. The
+        // default view of every pawn goes first; two pictures per call keep frames smooth.
         private void PublishPortraits(GameInitData init)
         {
             if (lobby == null || lobby.Players.Count < 2) return;
             int drawn = 0;
-            foreach (Pawn pawn in init.startingAndOptionalPawns.Take(PawnRoster.MaximumCards))
-            {
-                string key = CharacterHost.PortraitKey(pawn);
-                if (sentPortraits.TryGetValue(pawn.thingIDNumber, out string sent) && sent == key) continue;
-                if (drawn++ >= 2) { nextMirrorAt = 0f; return; } // the rest next frame
-                byte[]? png = CharacterHost.RenderPortrait(pawn);
-                if (png == null) { sentPortraits[pawn.thingIDNumber] = key; continue; } // cannot be drawn: the page shows the card without it
-                if (SendBackground(new WireMessage(MessageType.PawnPortrait, requestId++, new PawnPortrait(pawn.thingIDNumber, png).ToPayload())))
-                    sentPortraits[pawn.thingIDNumber] = key;
-            }
+            for (byte variant = 0; variant < PawnPortrait.Variants; variant++)
+                foreach (Pawn pawn in init.startingAndOptionalPawns.Take(PawnRoster.MaximumCards))
+                {
+                    long slot = (long)pawn.thingIDNumber * PawnPortrait.Variants + variant;
+                    string key = CharacterHost.PortraitKey(pawn);
+                    if (sentPortraits.TryGetValue(slot, out string sent) && sent == key) continue;
+                    if (drawn++ >= 2) { nextMirrorAt = 0f; return; } // the rest next frame
+                    byte[]? png = CharacterHost.RenderPortrait(pawn, variant);
+                    if (png == null) { sentPortraits[slot] = key; continue; } // cannot be drawn: the page shows the card without it
+                    if (SendBackground(new WireMessage(MessageType.PawnPortrait, requestId++, new PawnPortrait(pawn.thingIDNumber, png, variant).ToPayload())))
+                        sentPortraits[slot] = key;
+                }
         }
 
         // SETUP-002, host: prepares and sends the generated world; true once every guest loaded it with the same fingerprint.
