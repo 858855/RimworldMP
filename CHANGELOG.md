@@ -10,6 +10,7 @@
 - In der Startortwahl sehen alle die Weltkarte und können je ein Fähnchen als Vorschlag setzen; nur der Host wählt den Startort.
 - Gemeinsamer Spielstart: Der Host startet das Spiel, speichert es und sendet den Spielstand an alle; Host und Gäste laden ihn und prüfen per Fingerabdruck, dass Ort, Figuren und Besitzer gleich sind. Danach bleibt das Spiel für alle pausiert, bis der Gleichlauf kommt.
 - Behoben: Beim gemeinsamen Spielstart landeten statt der gewählten Figuren zufällige Figuren an einem zufälligen Ort. Während der Host auf den Server wartete, hatte das Hauptmenü die Einrichtung verworfen. Jetzt bleibt sie erhalten, und ohne Einrichtung startet kein Spiel.
+- Behoben: Beim Gast warf das Hauptmenü Fehler, sobald der Spielstand des Hosts zu laden begann; die Einrichtungswelt wird jetzt vollständig verworfen. Der Ideoligion-Fehler beim Laden der Einrichtungswelt erscheint nur noch als Hinweis. Nach dem Spielstart zeigt das Multiplayer-Fenster keine veraltete Einrichtungsseite und keinen veralteten Hinweis mehr.
 - In der Charakterwahl übernimmt jeder Spieler eine eigene Figur; er kann sie neu würfeln, mit einer zurückgelassenen tauschen und umbenennen und meldet sich fertig. Erst wenn alle fertig sind, geht es weiter. Die Startgruppe hat mindestens eine Figur je Spieler.
 - Der Host sendet die erzeugte Welt an alle Mitspieler; jeder lädt sie und bestätigt mit einem Fingerabdruck, dass er dieselbe Welt hat. Erst dann geht es zur Startortwahl. Ein Selbsttest (`-mpWorldSelfTest`) prüft Speichern und Laden ohne Mitspieler.
 

@@ -773,8 +773,9 @@ tasks:
   evidence:
   - docs/decisions/0020-world-transfer.md
   - docs/verification/2026-10-15-world-transfer.md
+  - docs/verification/2026-10-16-guest-world-discard.md
   - docs/reviews/2026-10-15-mod-check-setup-ui.md
-  blocker: 'Automatisierte Tests bestanden; Speichern und Laden der Welt im Spiel per Selbsttest geprüft (5/30/50 %). Offen: Übertragung zwischen zwei echten Spielern; Abbruch mit Mod-Abweichung im Spiel.'
+  blocker: 'Automatisierte Tests bestanden; Speichern und Laden der Welt im Spiel per Selbsttest geprüft (5/30/50 %). Erster Zwei-Spieler-Lauf 2026-10-16: Übertragung und Landung gingen. Behoben: Fehler beim Verwerfen der Gastwelt; der Ideoligion-Fehler beim Laden wird gefiltert (ungeprüft). Offen: erneuter Gast-Lauf; Abbruch mit Mod-Abweichung im Spiel.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: SETUP-003
   title: 'Startort: Fähnchen aller Spieler, Wahl durch den Host'
