@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Gewählte Startfiguren und isolierter Fraktions-Testschnitt (`codex/faction-setup`)
+
+- In der Koop-Figurenwahl beansprucht ein Gast eine freie Startfigur nun direkt über den Zeilenklick. Vor dem Spielstart prüft der Host, ob jeder Spieler genau eine Figur der tatsächlichen Startgruppe besitzt. Nach der Landung bricht er die gemeinsame Übertragung ab, wenn eine ausgewählte Figur fehlt. Damit werden fehlende Besitzzuordnungen nicht mehr still als zufällige Startfiguren übernommen. Der Mod baut; der korrigierte Ablauf wurde auf Wunsch des Benutzers nicht erneut im Spiel getestet.
+- Ein ausschließlich per Kommandozeile aktivierbarer Selbsttest erzeugt in einer isolierten Spielinstanz zwei Spielerfraktionen mit eigenen Karten und unterschiedlichen Erzählern. Ein früherer Lauf mit Host-/Gast-Save/Load bestand; die nachgerüstete Prüfung unterschiedlicher Ideologien schlug fehl. Eine anschließende Korrektur wurde vor dem Benutzerstopp nicht zu Ende im Spiel geprüft. Der produktive Fraktionsstart bleibt gesperrt.
+
 ### Fraktions-Einrichtung im Spiel (Arbeitsbranch `codex/faction-setup`, FACTION-005)
 
 - Für einen späteren Fraktions-Spielstand werden getrennte Erzählerinstanzen mit eigenen Ereigniswarteschlangen gespeichert. Der Spieltick ruft sie in Platzreihenfolge auf; Ereignisziele werden auf die zugehörige Fraktion begrenzt. Ungeklärte weltweite Ziele werden unterdrückt, ein fremdes konkretes Ziel hält den Tick mit Fehler an. Globale Quest-Ereignisse sind in diesem Testschnitt ausgenommen; mit aktivem Anomaly-DLC stoppt der Fraktions-Tick. Der Mod baut, aber dieser Pfad konnte noch nicht im laufenden Spiel geprüft werden.

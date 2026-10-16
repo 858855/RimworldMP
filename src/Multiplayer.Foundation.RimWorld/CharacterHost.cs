@@ -24,6 +24,25 @@ namespace Multiplayer.Foundation.RimWorld
         /// <summary>SETUP-005: who owns which pawn at the moment the game starts.</summary>
         internal Dictionary<int, PlayerKey> SnapshotOwners() => new Dictionary<int, PlayerKey>(owners);
 
+        /// <summary>Every participant must own exactly one pawn in the group Vanilla will actually land.</summary>
+        internal string? StartProblem(GameInitData init, IReadOnlyCollection<PlayerKey> players)
+        {
+            Build(init, players.ToList()); // reconcile a last vanilla reroll before checking IDs
+            if (players.Count == 0 || init.startingPawnCount != players.Count ||
+                init.startingAndOptionalPawns.Count < init.startingPawnCount)
+                return "Die Startgruppe muss genau eine Figur je Spieler enthalten.";
+            int[] selected = init.startingAndOptionalPawns.Take(init.startingPawnCount)
+                .Select(pawn => pawn.thingIDNumber).ToArray();
+            if (selected.Distinct().Count() != selected.Length)
+                return "Eine Startfigur ist mehrfach vorhanden.";
+            foreach (PlayerKey player in players)
+                if (selected.Count(id => owners.TryGetValue(id, out PlayerKey owner) && owner == player) != 1)
+                    return "Jeder Spieler muss genau eine Figur der Startgruppe übernehmen.";
+            if (owners.Any(entry => !players.Contains(entry.Value) || !selected.Contains(entry.Key)))
+                return "Eine Figuren-Zuordnung liegt außerhalb der Startgruppe.";
+            return null;
+        }
+
         /// <summary>Raises the starting group to one pawn per player (plan §6.3).</summary>
         internal void EnsurePawnCount(GameInitData init, int players)
         {

@@ -1673,7 +1673,8 @@ tasks:
   - docs/verification/2026-10-16-faction-storyteller-ui.md
   - docs/verification/2026-10-16-faction-ui-merge-gate.md
   - docs/verification/2026-10-16-faction-storyteller-runtime.md
-  blocker: 'FACTION-001 erzeugt noch keine getrennten Spielerfraktionen. Neuer Mehrfach-Tick, Zieltrennung und Save/Load sind nur gebaut, nicht im Spiel geprüft. Quest-Incidents sind ausgenommen, Anomaly blockiert; UI- und Zwei-Client-Test fehlen. Fraktionsstart gesperrt.'
+  - docs/verification/2026-10-16-faction-runtime-and-pawns.md
+  blocker: 'Isolierter Test mit zwei Fraktionen, Karten und unterschiedlichen Erzählern samt Save/Load bei Tick 0 bestanden; keine Incident-Folgen oder zwei Clients geprüft. Quest-Incidents sind ausgenommen, Anomaly blockiert; Fraktionsstart gesperrt.'
   plan_ref: docs/decisions/0045-faction-storyteller-boundary.md
 - id: FACTION-005
   title: 'Fraktionsmodus: Spielseite für Standort, Ideologie und Fortsetzen'
@@ -1706,5 +1707,30 @@ tasks:
   - docs/verification/2026-10-16-faction-setup-audit.md
   - docs/verification/2026-10-16-faction-setup-game-side.md
   - docs/verification/2026-10-16-faction-storyteller-runtime.md
-  blocker: 'Vanilla PrepForMapGen bindet Pawns an eine globale Faction.OfPlayer. Zweite Karte/Pawn-Gruppe und getrennte Ideo-Instanzen sind nicht nachgewiesen; Laufzeittests im Spiel ohne Benutzerfreigabe nicht ausgeführt. Fraktionsstart im Koordinator und Spieladapter gesperrt.'
+  - docs/decisions/0047-faction-runtime-test-slice.md
+  - docs/verification/2026-10-16-faction-runtime-and-pawns.md
+  blocker: 'Isolierter Zwei-Fraktionen-Save/Load bei Tick 0 bestanden, aber explizite Prüfung unterschiedlicher Ideologien fehlgeschlagen; spätere Korrektur nach Benutzerstopp nicht fertig im Spiel geprüft. Zwei echte Clients und laufende Ticks offen. Produktiver Fraktionsstart gesperrt.'
   plan_ref: docs/decisions/0031-game-modes.md
+- id: PAWN-001
+  title: 'Gewählte Koop-Startfiguren zuverlässig übernehmen'
+  goal: 'Die von Host und Gast beanspruchten Figuren müssen im gemeinsamen Spielstand landen und ihnen zugeordnet sein.'
+  description: 'Zeilenklick des Gasts fordert die Übernahme an; Host prüft die Startgruppe vor Generierung und alle IDs nach Landung. Fehler brechen die gemeinsame Übertragung ab.'
+  priority: high
+  owner: codex
+  components:
+  - rimworld_adapter
+  depends_on:
+  - SETUP-004
+  - SETUP-005
+  acceptance:
+  - 'Die Vanilla-Startgruppe enthält genau eine Figur je Spieler, und jede ist genau einem Spieler zugeordnet'
+  - 'Fehlende ausgewählte Figuren nach Landung verhindern die gemeinsame Spielstandübertragung'
+  - 'Zwei echte Clients erhalten die gewählten statt zufälliger Startfiguren'
+  implementation: implemented
+  verification: build_passed
+  integration: not_submitted
+  branch: codex/faction-setup
+  evidence:
+  - docs/decisions/0048-selected-start-pawns.md
+  - docs/verification/2026-10-16-faction-runtime-and-pawns.md
+  blocker: 'Der Zwei-Client-Spieltest ist auf Benutzerwunsch ausgesetzt. Ursache der beobachteten Sitzung ist ohne Log nicht abschließend belegt.'

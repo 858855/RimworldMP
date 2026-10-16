@@ -1,0 +1,11 @@
+# ADR 0048 – Gewählte Startfiguren verbindlich übernehmen
+
+- **Status:** In Arbeit, Codex-Bahn; RimWorld 1.6.4871 rev600.
+- **Ziel:** Im Multiplayer müssen genau die vom Host und den Gästen übernommenen Startfiguren landen und denselben Spielern im Spielstand gehören. Eine bloß markierte Karte darf nicht als Übernahme erscheinen.
+- **Bestand:** Die Hostliste `GameInitData.startingAndOptionalPawns` enthält die Figuren; `CharacterHost` ordnet `thingIDNumber` einem `PlayerKey` zu. `StartSharedGame` kopiert diese Zuordnung bisher ungeprüft; `MultiplayerSession.Begin` verwirft still IDs, die nicht gelandet sind. Der Gastklick auf eine Figurenzeile markiert bisher nur die Detailkarte.
+- **API-Nachweis:** Der lokale 1.6-IL-Pfad `GameInitData.PrepForMapGen` entfernt Figuren ab `startingPawnCount`; die ersten Einträge der Liste bleiben erhalten. Die Startzuordnung muss deshalb vor `InitGameStart` gegen genau diese ersten Einträge geprüft werden. Quelle: lokale `Assembly-CSharp.dll`, `scripts/faction-setup-probe`.
+- **Zustand/Persistenz:** Die Vanilla-Startgruppe muss genau so viele Figuren wie Spieler enthalten. Vor dem Start werden die übernommenen `thingIDNumber` je Spieler eindeutig geprüft und als Erwartung zwischengespeichert. Nach Landung muss jede ID unter den menschlichen Kolonisten vorhanden sein; andernfalls wird der gemeinsame Start abgebrochen, statt einen zufälligen Ersatz zuzuordnen. Die bestätigten IDs werden wie bisher in `MultiplayerSession` gespeichert.
+- **UI/Netzwerk:** Klick auf eine freie Figur der Startgruppe fordert für einen Gast unmittelbar deren Übernahme an. Der Host sieht seine Übernahme auf der Vanilla-Seite. Die vorhandenen `PawnRequest`-/`PawnRoster`-Nachrichten bleiben gleich; der Server bleibt autoritativ für den Fertig-Status.
+- **Konflikt/Leistung:** Reroll und Tauschen ändern IDs; vor Start ist deshalb ein frischer Abgleich nötig. Prüfung über höchstens `PawnRoster.MaximumCards` Figuren, ohne zusätzlichen Tick-Aufwand. Keine Fremdprojekt-Datei der Claude-Bahn wird verändert.
+- **Prüfung:** Mod-Build und statische Prüfung der betroffenen Pfade. Auf ausdrücklichen Benutzerwunsch aktuell keine weiteren Spieltests; reale Zwei-Client-Prüfung bleibt offen.
+- **Rollback:** UI-Sofortübernahme und Guard entfernen; die vorhandene serverseitige Figurenverwaltung bleibt erhalten.

@@ -98,6 +98,7 @@ namespace Multiplayer.Foundation.RimWorld
         // SETUP-005: the host starts vanilla, saves and sends it; X2 hands time to the lockstep driver after Playing.
         private bool startRequested, allowGameStart, resendGame;
         private Dictionary<int, PlayerKey>? startOwners;
+        private bool startPawnTransferFailed;
         private List<(PlayerKey Key, string Name)>? startPlayers;
         private string? gameFileName;
         private DateTime saveStartedUtc;
@@ -1477,16 +1478,21 @@ namespace Multiplayer.Foundation.RimWorld
         {
             if (lobby == null) return "Keine Lobby.";
             if (startRequested || lobby.Phase != SetupPhase.Characters) return "Der gemeinsame Spielstart läuft schon.";
-            return lobby.Players.All(p => p.Ready) ? null : "Noch nicht alle fertig – " + DoneLine() + ".";
+            if (!lobby.Players.All(p => p.Ready)) return "Noch nicht alle fertig – " + DoneLine() + ".";
+            if (lobby.Mode.Mode != GameMode.Coop) return null;
+            GameInitData? init = Find.GameInitData;
+            if (init == null) return "Startfiguren des Hosts fehlen.";
+            return characterHost.StartProblem(init, lobby.Players.Select(p => p.Key).ToArray());
         }
 
         /// <summary>SETUP-005, host: vanilla wants to start the game. Ask the server first; start once it is in Generating.</summary>
         internal bool TryBeginSharedStart()
         {
             if (allowGameStart) { allowGameStart = false; return true; }
-            if (lobby == null || lobby.Phase != SetupPhase.Characters || !lobby.Players.All(p => p.Ready))
+            string? blocked = StartGuardText();
+            if (blocked != null)
             {
-                Messages.Message(StartGuardText() ?? "Der Spielstart ist gerade nicht möglich.", MessageTypeDefOf.RejectInput, false);
+                Messages.Message(blocked, MessageTypeDefOf.RejectInput, false);
                 return false;
             }
             if (!startRequested &&
@@ -1501,7 +1507,21 @@ namespace Multiplayer.Foundation.RimWorld
         // SETUP-005, host: the server is in Generating. Remember who owns which pawn, then let vanilla start the game.
         private void StartSharedGame()
         {
-            if (lobby == null) return;
+            if (lobby == null || !startRequested) return;
+            string? pawnProblem = null;
+            if (lobby.Mode.Mode == GameMode.Coop)
+            {
+                GameInitData? init = Find.GameInitData;
+                pawnProblem = init == null ? "Startfiguren des Hosts fehlen." :
+                    characterHost.StartProblem(init, lobby.Players.Select(p => p.Key).ToArray());
+            }
+            if (pawnProblem != null)
+            {
+                startRequested = false;
+                gameText = "Spielstart abgebrochen: " + pawnProblem;
+                SendBackground(new WireMessage(MessageType.SetupAbort, requestId++, Array.Empty<byte>()));
+                return;
+            }
             if (lobby.Mode.Mode == GameMode.Factions && !lobby.FactionsRestored)
             {
                 startRequested = false;
@@ -1555,14 +1575,21 @@ namespace Multiplayer.Foundation.RimWorld
             float y = list.y + 8f;
             foreach (bool selected in new[] { true, false })
             {
-                Widgets.Label(new Rect(list.x + 8f, y, list.width - 16f, 24f), selected ? "Startgruppe" : "Zurückgelassen");
+                Widgets.Label(new Rect(list.x + 8f, y, list.width - 16f, 24f),
+                    selected ? "Startgruppe (freie Figur anklicken)" : "Zurückgelassen");
                 y += 26f;
                 foreach (PawnCard card in pawnRoster.Cards.Where(c => c.Selected == selected))
                 {
                     string ownerName = card.Owner == null ? "frei" : lobby.Players.FirstOrDefault(p => p.Key == card.Owner)?.Name ?? "?";
                     if (card.PawnId == chosenPawnId) GUI.color = new Color(1f, 0.85f, 0.45f);
                     else if (card.Owner == myKey && myKey != null) GUI.color = new Color(0.55f, 0.9f, 0.55f);
-                    if (Widgets.ButtonText(new Rect(list.x + 8f, y, list.width - 16f, 28f), card.ShortName + " – " + ownerName)) chosenPawnId = card.PawnId;
+                    if (Widgets.ButtonText(new Rect(list.x + 8f, y, list.width - 16f, 28f), card.ShortName + " – " + ownerName))
+                    {
+                        chosenPawnId = card.PawnId;
+                        if (selected && card.Owner == null && myPawn == null && myKey != null)
+                            SendBackground(new WireMessage(MessageType.PawnRequest, requestId++,
+                                new PawnRequest(PawnRequestKind.Claim, card.PawnId).ToPayload()));
+                    }
                     GUI.color = Color.white;
                     y += 31f;
                 }
@@ -1866,12 +1893,26 @@ namespace Multiplayer.Foundation.RimWorld
         private void UpdateHostGame()
         {
             if (lobby == null || Current.ProgramState != ProgramState.Playing || LongEventHandler.AnyEventNowOrWaiting || Find.Maps.Count == 0) return;
+            if (startPawnTransferFailed) return;
             EnsureSessionOverlay();
             MultiplayerSession? session = MultiplayerSession.ForCurrentGame;
             if (session == null || lobby.Phase != SetupPhase.Generating) return;
             if (gameFileName == null)
             {
                 Find.TickManager.CurTimeSpeed = TimeSpeed.Paused;
+                if (lobby.Mode.Mode == GameMode.Coop && startOwners != null)
+                {
+                    var landedIds = new HashSet<int>(GameFingerprint.Colonists().Select(pawn => pawn.thingIDNumber));
+                    int[] missing = startOwners.Keys.Where(id => !landedIds.Contains(id)).OrderBy(id => id).ToArray();
+                    if (missing.Length > 0)
+                    {
+                        startPawnTransferFailed = true;
+                        gameText = "Spielstart abgebrochen: Gewählte Figuren sind nicht gelandet.";
+                        Log.Error("Multiplayer Foundation: chosen start pawn IDs did not land: " + string.Join(",", missing));
+                        SendBackground(new WireMessage(MessageType.SetupAbort, requestId++, Array.Empty<byte>()));
+                        return;
+                    }
+                }
                 if (lobby.Mode.Mode == GameMode.Factions && session.Active)
                 {
                     try { session.RebindLobby(lobby.Id); }
@@ -2017,6 +2058,7 @@ namespace Multiplayer.Foundation.RimWorld
             pendingJoinSnapshot = null; joinSnapshotLoading = false; joinSnapshotReady = false;
             scheduledSaveFile = null; snapshotRecipients.Clear(); snapshotQueue.Clear(); snapshotUpload = null; snapshotDownload = null;
             startRequested = false; allowGameStart = false; resendGame = false; startOwners = null; startPlayers = null;
+            startPawnTransferFailed = false;
             gameFileName = null; sentGame = null; gameFingerprint = null; hostSaveFile = null; reloadFrom = null; gameUpload = null; gameDownload = null;
             guestGameFile = null; guestGameLoading = false; gameText = "";
             factionRestoreSentTo = null;
