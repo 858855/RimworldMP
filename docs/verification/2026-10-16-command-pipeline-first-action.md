@@ -19,3 +19,9 @@
 - **Build:** `DOTNET_BIN=/home/fabiok/.local/share/dotnet-rimworldmp/dotnet bash scripts/build-mod.sh` nach der Erweiterung, Exit 0; 0 Warnungen, 0 Fehler.
 - **Codec-Prüfung:** Temporäres, nicht versioniertes Reflection-Programm `/tmp/rimworld-api-inspect/Inspect.csproj` mit `dotnet run --project /tmp/rimworld-api-inspect/Inspect.csproj --no-restore`, Exit 0. 11-Byte-Payload mit Karten-ID 17, Thing-ID 12345 und `true` roundtrip-geprüft; abgeschnittenes Paket und unbekannter Opcode abgewiesen.
 - **Grenze:** Kein RimWorld-Prozess gestartet. Kein tatsächlicher Forbid-Klick und keine Zwei-Client-Synchronisierung geprüft. SYNC-002 bleibt `in_progress`.
+
+## Gemeinsame Referenzkodierung
+
+- `GameReferenceCodec` kodiert für beide Befehle Karten- und Thing-ID und löst die Referenz erst bei Ausführung gegen die aktuell geladene Karte auf. Fehlende Ziele bleiben ein protokollierter No-op; Welt-Pawns und weitere Referenzarten sind noch nicht unterstützt.
+- Nach der Umstellung erneut `DOTNET_BIN=/home/fabiok/.local/share/dotnet-rimworldmp/dotnet bash scripts/build-mod.sh`: Exit 0, 0 Warnungen, 0 Fehler.
+- Temporäres Reflection-Programm erneut ausgeführt: Exit 0 für Draft- und Forbid-Roundtrip (je 11 Byte) sowie abgeschnittene/ungültige Forbid-Payloads. Dies prüft den Codec, nicht den Spielzustand.

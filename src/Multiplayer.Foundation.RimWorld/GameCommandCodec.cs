@@ -1,5 +1,4 @@
 using System;
-using System.Linq;
 using Multiplayer.Foundation.Protocol;
 using RimWorld;
 using Verse;
@@ -21,8 +20,7 @@ namespace Multiplayer.Foundation.RimWorld
             var writer = new PayloadWriter();
             writer.WriteByte(Version);
             writer.WriteByte(SetDraft);
-            writer.WriteUInt32(unchecked((uint)mapId));
-            writer.WriteUInt32(unchecked((uint)pawnId));
+            GameReferenceCodec.WriteThing(writer, mapId, pawnId);
             writer.WriteBool(drafted);
             return writer.ToArray();
         }
@@ -32,8 +30,7 @@ namespace Multiplayer.Foundation.RimWorld
             var reader = new PayloadReader(data);
             if (reader.ReadByte() != Version || reader.ReadByte() != SetDraft)
                 throw new ProtocolException("Unbekannter Spielbefehl oder Codec-Version.");
-            int mapId = unchecked((int)reader.ReadUInt32());
-            int pawnId = unchecked((int)reader.ReadUInt32());
+            var (mapId, pawnId) = GameReferenceCodec.ReadThing(reader);
             bool drafted = reader.ReadBool();
             reader.EnsureComplete();
             return (mapId, pawnId, drafted);
@@ -44,8 +41,7 @@ namespace Multiplayer.Foundation.RimWorld
             var writer = new PayloadWriter();
             writer.WriteByte(Version);
             writer.WriteByte(SetForbidden);
-            writer.WriteUInt32(unchecked((uint)mapId));
-            writer.WriteUInt32(unchecked((uint)thingId));
+            GameReferenceCodec.WriteThing(writer, mapId, thingId);
             writer.WriteBool(forbidden);
             return writer.ToArray();
         }
@@ -55,8 +51,7 @@ namespace Multiplayer.Foundation.RimWorld
             var reader = new PayloadReader(data);
             if (reader.ReadByte() != Version || reader.ReadByte() != SetForbidden)
                 throw new ProtocolException("Unbekannter Spielbefehl oder Codec-Version.");
-            int mapId = unchecked((int)reader.ReadUInt32());
-            int thingId = unchecked((int)reader.ReadUInt32());
+            var (mapId, thingId) = GameReferenceCodec.ReadThing(reader);
             bool forbidden = reader.ReadBool();
             reader.EnsureComplete();
             return (mapId, thingId, forbidden);
@@ -69,8 +64,7 @@ namespace Multiplayer.Foundation.RimWorld
             if (command.Data[1] == SetForbidden)
             {
                 var (forbidMapId, thingId, forbidden) = ReadForbid(command.Data);
-                Map? forbidMap = Find.Maps.FirstOrDefault(m => m.uniqueID == forbidMapId);
-                Thing? thing = forbidMap?.listerThings.AllThings.FirstOrDefault(t => t.thingIDNumber == thingId);
+                Thing? thing = GameReferenceCodec.ResolveThing(forbidMapId, thingId);
                 if (thing == null)
                 {
                     Log.Warning("Multiplayer Foundation: Forbid-Befehl ohne vorhandenes Thing/Map als No-op ausgeführt.");
@@ -82,8 +76,7 @@ namespace Multiplayer.Foundation.RimWorld
                 return;
             }
             var (mapId, pawnId, drafted) = ReadDraft(command.Data);
-            Map? map = Find.Maps.FirstOrDefault(m => m.uniqueID == mapId);
-            Pawn? pawn = map?.listerThings.AllThings.OfType<Pawn>().FirstOrDefault(p => p.thingIDNumber == pawnId);
+            Pawn? pawn = GameReferenceCodec.ResolveThing(mapId, pawnId) as Pawn;
             if (pawn?.drafter == null)
             {
                 Log.Warning("Multiplayer Foundation: Draft-Befehl ohne vorhandenen Pawn/Map als No-op ausgeführt.");

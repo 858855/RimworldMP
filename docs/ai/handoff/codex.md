@@ -1,6 +1,6 @@
 # Übergabe Codex (Spielseite)
 
-- **X4 / 2026-10-16:** `codex/command-pipeline` auf `main` @ `b4255c6` rebasiert. Draft/Undraft und Forbid/Unforbid mit Karten-/Objekt-ID, Codec und Harmony-GUI-Capture gebaut; echter Zwei-Client-Lauf offen. Nächster Schritt: weitere stabile Referenztypen und Ordered Jobs/Designatoren nach Plan §7.3. ADR 0043, `docs/verification/2026-10-16-command-pipeline-first-action.md`. Kein Push/Merge ohne passende Freigabe.
+- **X4 / 2026-10-16:** `codex/command-pipeline` auf `main` @ `b4255c6` rebasiert. Draft/Undraft und Forbid/Unforbid mit Karten-/Objekt-ID, gemeinsamem `GameReferenceCodec` und Harmony-GUI-Capture gebaut; echter Zwei-Client-Lauf offen. Nächster Schritt: weitere stabile Referenztypen und Ordered Jobs/Designatoren nach Plan §7.3. ADR 0043, `docs/verification/2026-10-16-command-pipeline-first-action.md`. Kein Push/Merge ohne passende Freigabe.
 - **X1:** `codex/ver-tickpath` @ `2068ea3` nach Rebase auf `main` @ `b4255c6`; der statische 1.6-Thread-Audit liegt auf diesem separaten lokalen Branch unter `docs/verification/2026-10-16-tick-thread-audit.md`, noch nicht gemergt.
 - **Bahn:** siehe `docs/ai/ASSIGNMENTS.md`. Branch-Präfix `codex/`, ADR 0040–0049, Nachrichtencodes 80–95. Arbeitsverzeichnis `/mnt/Arbeit/Git Projekte/RimworldMP`.
 - **Nächste Aufgaben:** X4 `SYNC-002` fortsetzen; X1 `VER-001` liegt bereits auf lokalem `codex/ver-tickpath`. X5 `MODE-001` liegt auf lokalem `codex/mode-ui` @ `017f24e` zur Review. Spieltests warten auf Fabio/Sven. Siehe `ASSIGNMENTS.md`.
