@@ -83,8 +83,7 @@ namespace Multiplayer.Foundation.RimWorld
         private string renameText = "";
         private static readonly AccessTools.FieldRef<Page_ConfigureStartingPawns, int> CurPawnIndex =
             AccessTools.FieldRefAccess<Page_ConfigureStartingPawns, int>("curPawnIndex");
-        // SETUP-005: the host starts the vanilla game once the server is in Generating, saves it and sends the save;
-        // guests load it. Time stays paused for everyone until lockstep (SYNC-001).
+        // SETUP-005: the host starts vanilla, saves and sends it; X2 hands time to the lockstep driver after Playing.
         private bool startRequested, allowGameStart, resendGame;
         private Dictionary<int, PlayerKey>? startOwners;
         private List<(PlayerKey Key, string Name)>? startPlayers;
@@ -99,15 +98,36 @@ namespace Multiplayer.Foundation.RimWorld
         private float guestLoadStartedAt;
         private string gameText = "";
         private float nextPauseNoteAt;
+        // X2: only the game thread touches the lockstep state. Network reader enqueues immutable wire messages.
+        private SessionTickDriver? tickDriver;
+        private readonly Queue<WireMessage> pendingTickMessages = new Queue<WireMessage>();
+        private JoinSnapshot? pendingJoinSnapshot;
+        private bool joinSnapshotLoading;
+        private bool joinSnapshotReady;
+        private string? scheduledSaveFile;
+        private DateTime scheduledSaveStartedUtc;
+        private readonly Queue<Guid> snapshotRecipients = new Queue<Guid>();
+        private readonly Queue<(Guid Recipient, byte[] Data)> snapshotQueue = new Queue<(Guid, byte[])>();
+        private TransferSender? snapshotUpload;
+        private TransferReceiver? snapshotDownload;
+        private bool applyingSessionSpeed;
+        private bool? requestedPause;
+        private byte? requestedSpeed;
+        private bool saveRequested;
         internal bool HostSetupActive => hostSetupActive;
         internal bool GuestSiteMapActive => guestSiteMapActive;
 
         /// <summary>
-        /// SETUP-005: the shared game is open and lockstep does not exist yet, so time must not run. While the lobby is
-        /// in Generating or Playing, the game in Play is the shared one: setup starts from the main menu only.
+        /// The shared game stays paused before Playing, until its driver is ready, and on coordinator pause/failure.
         /// </summary>
         internal bool SessionPaused => WorldSelfTest.HoldsPause ||
-            (client != null && lobby != null && lobby.Phase >= SetupPhase.Generating && Current.ProgramState == ProgramState.Playing);
+            (SharedGame && (lobby!.Phase != SetupPhase.Playing || tickDriver == null || tickDriver.Paused ||
+                tickDriver.CompletedTick(Find.TickManager) >= tickDriver.Horizon));
+
+        private bool SharedGame => client != null && lobby != null && lobby.Phase >= SetupPhase.Generating &&
+            Current.ProgramState == ProgramState.Playing;
+
+        internal bool SuppressLocalAutosave => SharedGame && lobby?.Phase == SetupPhase.Playing;
 
         /// <summary>A guest's received world lives only while a window is open in the main menu (see FoundationWindow).</summary>
         internal bool KeepWindowOpen => lobby != null && client != null && lobby.HostId != client.SessionId && guestWorldLoaded &&
@@ -117,8 +137,242 @@ namespace Multiplayer.Foundation.RimWorld
         {
             if (Time.realtimeSinceStartup < nextPauseNoteAt) return;
             nextPauseNoteAt = Time.realtimeSinceStartup + 3f;
-            Messages.Message("Die Zeit läuft erst mit dem Gleichlauf (SYNC-001). Bis dahin bleibt das Spiel für alle pausiert.",
+            Messages.Message(tickDriver != null && tickDriver.Failure.Length > 0 ? tickDriver.Failure :
+                "Warte auf die gemeinsame Tick-Freigabe des Servers.",
                 MessageTypeDefOf.RejectInput, false);
+        }
+
+        private bool TryStartTickDriver(TickManager manager)
+        {
+            if (tickDriver != null) return true;
+            if (!SharedGame || lobby?.Phase != SetupPhase.Playing) return false;
+            if (pendingJoinSnapshot != null && !joinSnapshotReady) return false;
+            MultiplayerSession? session = MultiplayerSession.ForCurrentGame;
+            if (session?.Active != true || session.SessionId != lobby.Id.ToString("N")) return false;
+            JoinSnapshot? join = pendingJoinSnapshot;
+            tickDriver = new SessionTickDriver(lobby.Id, client!.SessionId,
+                manager.TicksGame - (join?.Boundary ?? 0), SaveAtBoundary, join);
+            pendingJoinSnapshot = null;
+            joinSnapshotReady = false;
+            try
+            {
+                while (pendingTickMessages.Count != 0) tickDriver.Receive(pendingTickMessages.Dequeue());
+            }
+            catch (Exception error) when (error is ProtocolException || error is InvalidOperationException)
+            { StopTickDriver("Ungültige Gleichlaufdaten: " + error.Message); }
+            return true;
+        }
+
+        private void StopTickDriver(string reason)
+        {
+            bool alreadyReported = tickDriver?.Faulted == true && status == reason;
+            tickDriver?.Stop(reason);
+            if (alreadyReported) return;
+            status = reason;
+            Log.Error("Multiplayer Foundation: " + reason);
+        }
+
+        private void SaveAtBoundary(ScheduledCommand command)
+        {
+            if (lobby == null || client == null || scheduledSaveFile != null)
+                throw new InvalidOperationException("Ein koordiniertes Speichern läuft bereits oder die Lobby fehlt.");
+            saveRequested = false;
+            snapshotRecipients.Clear();
+            if (command.Data.Length > 16 * 64)
+                throw new ProtocolException("Ungültige Empfängerliste für den Snapshot.");
+            foreach (Guid recipient in LockstepPayloads.SaveTargets(command.Data))
+            {
+                if (recipient == Guid.Empty) throw new ProtocolException("Leerer Snapshot-Empfänger.");
+                // C2: an affected player waits for the host's copy and must not save its diverged state.
+                if (recipient == client.SessionId && lobby.HostId != client.SessionId)
+                { tickDriver?.FinishSave(); return; }
+                if (lobby.HostId == client.SessionId && !snapshotRecipients.Contains(recipient)) snapshotRecipients.Enqueue(recipient);
+            }
+            if (snapshotQueue.Count + snapshotRecipients.Count > 64)
+                throw new ProtocolException("Zu viele wartende Snapshot-Empfänger.");
+            scheduledSaveFile = GameCodec.FileNameFor(lobby.Name) + " - tick " + command.Boundary + "-" + command.Sequence;
+            scheduledSaveStartedUtc = DateTime.UtcNow;
+            try { GameDataSaveLoader.SaveGame(scheduledSaveFile); }
+            catch (Exception error) { throw new InvalidOperationException("Speichern an der Tickgrenze fehlgeschlagen.", error); }
+            status = "Gemeinsamer Spielstand wird gespeichert …";
+        }
+
+        private void PollScheduledSave()
+        {
+            if (scheduledSaveFile == null) return;
+            if (DateTime.UtcNow - scheduledSaveStartedUtc > TimeSpan.FromMinutes(2))
+            { StopTickDriver("Gemeinsames Speichern hat die Zeitgrenze überschritten."); scheduledSaveFile = null; return; }
+            if (LongEventHandler.AnyEventNowOrWaiting) return;
+            byte[]? raw = GameCodec.ReadFinishedSave(scheduledSaveFile, scheduledSaveStartedUtc);
+            if (raw == null) return;
+            try
+            {
+                if (snapshotRecipients.Count != 0)
+                {
+                    byte[] packed = GameCodec.Gzip(raw);
+                    if ((ulong)packed.Length > TransferPayloads.MaximumLength(TransferKind.Snapshot))
+                        throw new ProtocolException("Der Snapshot überschreitet die Übertragungsgrenze.");
+                    foreach (Guid recipient in snapshotRecipients) snapshotQueue.Enqueue((recipient, packed));
+                    snapshotRecipients.Clear();
+                }
+                scheduledSaveFile = null;
+                tickDriver?.FinishSave();
+                status = "Gemeinsamer Spielstand gespeichert.";
+            }
+            catch (Exception error) { StopTickDriver("Gemeinsames Speichern fehlgeschlagen: " + error.Message); }
+        }
+
+        internal bool PrepareSessionFrame(TickManager manager)
+        {
+            if (!SharedGame && !WorldSelfTest.HoldsPause) return false;
+            TryStartTickDriver(manager);
+            if (tickDriver != null && !tickDriver.Faulted)
+            {
+                try { tickDriver.TakeAtCurrentBoundary(manager); ReconcileControls(); }
+                catch (Exception error) when (error is InvalidOperationException || error is ProtocolException)
+                { StopTickDriver("Tick-Grenze verletzt: " + error.Message); }
+                if (tickDriver.Faulted) StopTickDriver(tickDriver.Failure);
+            }
+            return SetSessionSpeed(manager);
+        }
+
+        internal void RestoreSessionSpeed(TickManager manager)
+        {
+            if (SharedGame || WorldSelfTest.HoldsPause) SetSessionSpeed(manager);
+        }
+
+        private bool SetSessionSpeed(TickManager manager)
+        {
+            TimeSpeed approved = SessionPaused ? TimeSpeed.Paused : tickDriver!.CatchingUp ? TimeSpeed.Ultrafast
+                : tickDriver.Speed == 1 ? TimeSpeed.Normal
+                : tickDriver.Speed == 2 ? TimeSpeed.Fast : TimeSpeed.Superfast;
+            if (manager.CurTimeSpeed == approved) return false;
+            applyingSessionSpeed = true;
+            try { manager.CurTimeSpeed = approved; }
+            finally { applyingSessionSpeed = false; }
+            return true;
+        }
+
+        internal bool MayRunSessionTick(TickManager manager)
+        {
+            if (!SharedGame && !WorldSelfTest.HoldsPause) return true;
+            if (WorldSelfTest.HoldsPause || !TryStartTickDriver(manager) || tickDriver == null) return false;
+            try
+            {
+                bool allowed = tickDriver.MayRunTick(manager);
+                ReconcileControls();
+                if (tickDriver.Faulted) StopTickDriver(tickDriver.Failure);
+                return allowed;
+            }
+            catch (Exception error) when (error is InvalidOperationException || error is ProtocolException)
+            { StopTickDriver("Tick-Grenze verletzt: " + error.Message); return false; }
+        }
+
+        internal void AfterSessionTick(TickManager manager)
+        {
+            if (tickDriver == null) return;
+            if (!SharedGame) { tickDriver.AbortTickRandom(); return; }
+            try
+            {
+                tickDriver.EndTick(manager);
+                if (tickDriver.Faulted) { StopTickDriver(tickDriver.Failure); return; }
+                WireMessage? hash = tickDriver.HashAfterTick(manager);
+                if (hash != null && !SendBackground(hash)) StopTickDriver("Zustands-Hash konnte nicht gesendet werden.");
+                ReportTickProgress(manager);
+            }
+            catch (Exception error)
+            { tickDriver.AbortTickRandom(); StopTickDriver("Tick-Bericht fehlgeschlagen: " + error.Message); }
+        }
+
+        internal void AbortSessionTick(Exception error)
+        {
+            try { tickDriver?.AbortTickRandom(); }
+            catch (Exception cleanup) { Log.Error("Multiplayer Rand cleanup failed: " + cleanup); }
+            StopTickDriver("RimWorld-Tick fehlgeschlagen: " + error.Message);
+        }
+
+        private void ReportTickProgress(TickManager manager)
+        {
+            if (tickDriver == null || tickDriver.Faulted) return;
+            WireMessage? progress = tickDriver.Progress(manager, NowMs());
+            if (progress != null && !SendBackground(progress)) StopTickDriver("Tick-Fortschritt konnte nicht gesendet werden.");
+        }
+
+        private void ReceiveTickMessage(WireMessage message)
+        {
+            if (tickDriver == null)
+            {
+                if (pendingTickMessages.Count >= 1024)
+                    throw new ProtocolException("Zu viele Gleichlauf-Nachrichten vor der Landung.");
+                pendingTickMessages.Enqueue(message);
+                if (Current.ProgramState == ProgramState.Playing) TryStartTickDriver(Find.TickManager);
+                return;
+            }
+            try
+            {
+                tickDriver.Receive(message);
+                if (tickDriver.Faulted) StopTickDriver(tickDriver.Failure);
+            }
+            catch (Exception error) when (error is ProtocolException || error is InvalidOperationException)
+            { StopTickDriver("Ungültige Gleichlaufdaten: " + error.Message); }
+        }
+
+        private void RequestControl(ScheduledKind kind, byte value)
+        {
+            if (tickDriver == null || tickDriver.Faulted) { NotifySessionPaused(); return; }
+            if (kind == ScheduledKind.Pause)
+            {
+                bool desired = value == 1;
+                if (tickDriver.Paused == desired || requestedPause == desired) return;
+                if (SendBackground(LockstepClient.ControlMessage(kind, value))) requestedPause = desired;
+            }
+            else if (kind == ScheduledKind.Save)
+            {
+                if (lobby?.HostId != client?.SessionId) { status = "Nur der Host darf gemeinsam speichern."; return; }
+                if (!tickDriver.SavePending && !saveRequested && SendBackground(LockstepClient.ControlMessage(kind, 0)))
+                    saveRequested = true;
+            }
+            else
+            {
+                if (lobby?.HostId != client?.SessionId) { status = "Nur der Host darf die Geschwindigkeit ändern."; return; }
+                if (tickDriver.Speed == value || requestedSpeed == value) return;
+                if (SendBackground(LockstepClient.ControlMessage(kind, value))) requestedSpeed = value;
+            }
+        }
+
+        private void ReconcileControls()
+        {
+            if (tickDriver == null) return;
+            if (requestedPause == tickDriver.Paused) requestedPause = null;
+            if (requestedSpeed == tickDriver.Speed) requestedSpeed = null;
+        }
+
+        internal void InterceptSessionSpeed(ref TimeSpeed value)
+        {
+            if (applyingSessionSpeed || !SharedGame) return;
+            if (tickDriver == null || lobby?.Phase != SetupPhase.Playing)
+            { if (value != TimeSpeed.Paused) { value = TimeSpeed.Paused; NotifySessionPaused(); } return; }
+            TimeSpeed approved = SessionPaused ? TimeSpeed.Paused : tickDriver.CatchingUp ? TimeSpeed.Ultrafast
+                : tickDriver.Speed == 1 ? TimeSpeed.Normal
+                : tickDriver.Speed == 2 ? TimeSpeed.Fast : TimeSpeed.Superfast;
+            if (value == approved) return;
+            if (value == TimeSpeed.Paused) RequestControl(ScheduledKind.Pause, 1);
+            else
+            {
+                byte requested = value == TimeSpeed.Normal ? (byte)1 : value == TimeSpeed.Fast ? (byte)2 : (byte)3;
+                RequestControl(ScheduledKind.Speed, requested);
+                if (tickDriver.Paused && (requested == tickDriver.Speed || lobby?.HostId == client?.SessionId))
+                    RequestControl(ScheduledKind.Pause, 0);
+            }
+            value = approved;
+        }
+
+        internal bool InterceptSessionToggle()
+        {
+            if (!SharedGame) return true;
+            if (tickDriver == null || lobby?.Phase != SetupPhase.Playing) { NotifySessionPaused(); return false; }
+            RequestControl(ScheduledKind.Pause, tickDriver.Paused ? (byte)0 : (byte)1);
+            return false;
         }
         internal static FoundationMod? Instance { get; private set; }
         private static bool menuPatched;
@@ -729,7 +983,7 @@ namespace Multiplayer.Foundation.RimWorld
             if (isHost && Widgets.ButtonText(new Rect(inRect.x + 150f, buttonY, 140f, 30f), "Abbrechen")) ConfirmAbort();
         }
 
-        // SETUP-005: panel in the shared game, for host and guests, until lockstep exists.
+        // Shared-game panel: tick progress, coordinator wait and player state.
         private void DrawGameOverlay(Rect inRect)
         {
             if (lobby == null || client == null) return;
@@ -741,7 +995,7 @@ namespace Multiplayer.Foundation.RimWorld
                 : "Spiel geladen: " + lobby.Players.Count(p => p.WorldStatus == WorldStatus.Match) + "/" + lobby.Players.Count;
             Widgets.Label(new Rect(inRect.x, inRect.y + 24f, inRect.width, 24f), second);
             GUI.color = new Color(1f, 0.85f, 0.45f);
-            Widgets.Label(new Rect(inRect.x, inRect.y + 46f, inRect.width, 24f), "Pausiert bis zum Gleichlauf (SYNC-001)");
+            Widgets.Label(new Rect(inRect.x, inRect.y + 46f, inRect.width, 24f), GameTickStatus());
             GUI.color = Color.white;
             float y = inRect.y + 72f;
             MultiplayerSession? session = MultiplayerSession.ForCurrentGame;
@@ -759,11 +1013,31 @@ namespace Multiplayer.Foundation.RimWorld
                 y += 24f;
             }
             if (Widgets.ButtonText(new Rect(inRect.x, inRect.yMax - 30f, 140f, 28f), "Chat / Lobby")) OpenWindow();
+            if (isHost && lobby.Phase == SetupPhase.Playing &&
+                Widgets.ButtonText(new Rect(inRect.x + 150f, inRect.yMax - 64f, 160f, 28f), "Gemeinsam speichern"))
+                RequestControl(ScheduledKind.Save, 0);
             if (Widgets.ButtonText(new Rect(inRect.x + 150f, inRect.yMax - 30f, 160f, 28f), isHost ? "Sitzung beenden" : "Sitzung verlassen"))
             {
                 if (isHost) ConfirmAbort();
                 else ConfirmLeave();
             }
+        }
+
+        private string GameTickStatus()
+        {
+            if (lobby?.Phase != SetupPhase.Playing || tickDriver == null)
+                return pendingJoinSnapshot != null ? "Warte auf Snapshot des Hosts" : "Warte auf gemeinsame Tick-Freigabe";
+            if (tickDriver.Faulted) return tickDriver.Failure;
+            int completed = tickDriver.CompletedTick(Find.TickManager);
+            if (tickDriver.AwaitingResync) return "Abweichung erkannt · warte auf Reparatur-Snapshot";
+            if (tickDriver.SavePending) return "Speichere gemeinsam · Sitzungstick " + completed;
+            if (tickDriver.CatchingUp) return "Hole auf · Sitzungstick " + completed + " / " + tickDriver.Horizon;
+            if (tickDriver.Paused) return "Pausiert · Sitzungstick " + completed;
+            if (completed < tickDriver.Horizon) return "Läuft · Sitzungstick " + completed + " / " + tickDriver.Horizon;
+            string? name = lobby.Players.FirstOrDefault(p => p.Id == tickDriver.SlowestSession)?.Name;
+            if (tickDriver.SlowestSession == client?.SessionId || name == null)
+                return "Warte auf Tick-Freigabe · Sitzungstick " + completed;
+            return "Warte auf " + name + " (Tick " + tickDriver.SlowestTick + ")";
         }
 
         // SETUP-004, host: claim the pawn shown on the vanilla page, mark yourself done, see who owns what.
@@ -1027,7 +1301,10 @@ namespace Multiplayer.Foundation.RimWorld
                 if (Current.ProgramState == ProgramState.Entry) OpenWindow();
             }
             if (now == SetupPhase.Playing && before != SetupPhase.Playing)
-                status = "Alle sind gelandet. Das Spiel bleibt pausiert, bis der Gleichlauf fertig ist (SYNC-001).";
+            {
+                status = "Alle sind gelandet. Warte auf die gemeinsame Tick-Freigabe.";
+                if (Current.ProgramState == ProgramState.Playing) TryStartTickDriver(Find.TickManager);
+            }
             if (guest && now == SetupPhase.Characters && before != SetupPhase.Characters)
             {
                 Find.WindowStack.TryRemove(typeof(FoundationWindow), false);
@@ -1202,6 +1479,20 @@ namespace Multiplayer.Foundation.RimWorld
             GameDataSaveLoader.LoadGame(gameFileName);
         }
 
+        private void LoadJoinSnapshot(byte[] gzipped)
+        {
+            if (pendingJoinSnapshot == null || lobby == null || client == null || lobby.HostId == client.SessionId)
+                throw new ProtocolException("Snapshot ohne ausstehenden Beitritt.");
+            joinSnapshotLoading = true;
+            joinSnapshotReady = false;
+            gameFileName = GameCodec.FileNameFor(lobby.Name) + " - join " + pendingJoinSnapshot.Boundary;
+            guestGameFile = null;
+            try { LoadGuestGame(gzipped); }
+            catch (Exception error)
+            { joinSnapshotLoading = false; status = "Snapshot konnte nicht geladen werden: " + error.Message; return; }
+            if (!guestGameLoading) { joinSnapshotLoading = false; status = "Snapshot konnte nicht geladen werden: " + gameText; }
+        }
+
         // SETUP-005, guest: once the received game is loaded, report its fingerprint; it then stays paused.
         private void UpdateGuestGame()
         {
@@ -1219,6 +1510,19 @@ namespace Multiplayer.Foundation.RimWorld
             MultiplayerSession? session = MultiplayerSession.ForCurrentGame;
             if (session == null || !session.Active || guestGameFile == null)
             { gameText = "Der geladene Spielstand enthält keine Multiplayer-Sitzung."; return; }
+            if (joinSnapshotLoading)
+            {
+                if (session.SessionId != lobby.Id.ToString("N"))
+                { StopTickDriver("Snapshot gehört zu einer anderen Lobby."); return; }
+                Find.TickManager.CurTimeSpeed = TimeSpeed.Paused;
+                joinSnapshotLoading = false;
+                joinSnapshotReady = true;
+                gameText = "Snapshot geladen; Gleichlauf wird aufgeholt …";
+                if (!TryStartTickDriver(Find.TickManager) || tickDriver?.Faulted == true ||
+                    !SendBackground(LockstepClient.SnapshotLoadedMessage()))
+                    StopTickDriver("Snapshot geladen, aber die Bestätigung an den Koordinator schlug fehl.");
+                return;
+            }
             Find.TickManager.CurTimeSpeed = TimeSpeed.Paused;
             var (fingerprint, lines) = GameFingerprint.Compute(guestGameFile, session);
             SendBackground(new WireMessage(MessageType.GameLoaded, requestId++, SetupPayloads.Fingerprint(fingerprint)));
@@ -1234,6 +1538,10 @@ namespace Multiplayer.Foundation.RimWorld
 
         private void ResetGame()
         {
+            tickDriver?.AbortTickRandom();
+            tickDriver = null; pendingTickMessages.Clear(); requestedPause = null; requestedSpeed = null; saveRequested = false;
+            pendingJoinSnapshot = null; joinSnapshotLoading = false; joinSnapshotReady = false;
+            scheduledSaveFile = null; snapshotRecipients.Clear(); snapshotQueue.Clear(); snapshotUpload = null; snapshotDownload = null;
             startRequested = false; allowGameStart = false; resendGame = false; startOwners = null; startPlayers = null;
             gameFileName = null; sentGame = null; gameFingerprint = null; hostSaveFile = null; reloadFrom = null; gameUpload = null; gameDownload = null;
             guestGameFile = null; guestGameLoading = false; gameText = "";
@@ -1333,7 +1641,7 @@ namespace Multiplayer.Foundation.RimWorld
                 case SetupPhase.Ideology: return "Ideoligion";
                 case SetupPhase.Characters: return "Figuren";
                 case SetupPhase.Generating: return "Spiel wird erzeugt";
-                case SetupPhase.Playing: return "Gelandet (pausiert)";
+                case SetupPhase.Playing: return "Gelandet";
                 default: return "Lobby";
             }
         }
@@ -1376,6 +1684,7 @@ namespace Multiplayer.Foundation.RimWorld
 
         private void UpdateManifestAndTransfers()
         {
+            PollScheduledSave();
             if (manifestTask != null && manifestTask.IsCompleted)
             {
                 try
@@ -1424,6 +1733,19 @@ namespace Multiplayer.Foundation.RimWorld
                 }
                 if (gameUpload.State != TransferState.Active) gameUpload = null;
             }
+            if (snapshotUpload != null)
+            {
+                SendAllBackground(snapshotUpload.Poll(NowMs()));
+                if (snapshotUpload.State == TransferState.Failed)
+                    status = "Snapshot-Übertragung fehlgeschlagen: " + snapshotUpload.Failure?.Reason;
+                if (snapshotUpload.State != TransferState.Active) snapshotUpload = null;
+            }
+            if (snapshotUpload == null && snapshotQueue.Count != 0)
+            {
+                var next = snapshotQueue.Dequeue();
+                snapshotUpload = new TransferSender(TransferKind.Snapshot, next.Recipient, next.Data);
+                SendAllBackground(snapshotUpload.Start(NowMs()));
+            }
             if (pendingWorldReport != null && client != null)
             {
                 byte[] report = pendingWorldReport;
@@ -1469,6 +1791,24 @@ namespace Multiplayer.Foundation.RimWorld
                 { gameText = "Spielstandübertragung abgebrochen: " + gameDownload.Failure?.Reason; gameDownload = null; }
                 return;
             }
+            if (snapshotUpload != null && snapshotUpload.Owns(message))
+            {
+                SendAllBackground(snapshotUpload.Handle(message, NowMs()));
+                return;
+            }
+            if (snapshotDownload != null && snapshotDownload.Owns(message))
+            {
+                SendAllBackground(snapshotDownload.Handle(message));
+                if (snapshotDownload.State == TransferState.Completed)
+                {
+                    byte[] data = snapshotDownload.Data!;
+                    snapshotDownload = null;
+                    LoadJoinSnapshot(data);
+                }
+                else if (snapshotDownload.State == TransferState.Failed)
+                { status = "Snapshot-Übertragung abgebrochen: " + snapshotDownload.Failure?.Reason; snapshotDownload = null; }
+                return;
+            }
             if (worldDownload != null && worldDownload.Owns(message))
             {
                 SendAllBackground(worldDownload.Handle(message));
@@ -1495,6 +1835,13 @@ namespace Multiplayer.Foundation.RimWorld
                 {
                     try { gameDownload = new TransferReceiver(begin); gameText = "Spielstand wird empfangen …"; }
                     catch (ProtocolException error) { gameText = "Spielstand unlesbar: " + error.Message; }
+                }
+                else if (begin.Kind == TransferKind.Snapshot && pendingJoinSnapshot != null &&
+                    lobby?.Phase == SetupPhase.Playing && begin.Peer == pendingJoinSnapshot.Host &&
+                    lobby.HostId != client?.SessionId)
+                {
+                    try { snapshotDownload = new TransferReceiver(begin); status = "Snapshot wird empfangen …"; }
+                    catch (ProtocolException error) { status = "Snapshot unlesbar: " + error.Message; }
                 }
                 else
                     SendBackground(new WireMessage(MessageType.TransferAbort, 0, TransferPayloads.Abort(
@@ -1597,9 +1944,10 @@ namespace Multiplayer.Foundation.RimWorld
             UpdateGuestGame();
             UpdateSiteFlags();
             if (client == null) return;
+            LobbyClient connectedClient = client;
             try
             {
-                while (client.TryDequeue(out WireMessage? message) && message != null)
+                while (connectedClient.TryDequeue(out WireMessage? message) && message != null)
                 {
                     switch (message.Type)
                     {
@@ -1616,7 +1964,11 @@ namespace Multiplayer.Foundation.RimWorld
                             LobbyView received = LobbyPayloads.ReadState(message.Payload);
                             if (lobby == null || lobby.Id != received.Id || received.Revision >= lobby.Revision)
                             {
-                                if (lobby == null || lobby.Id != received.Id) chatMessages.Clear();
+                                if (lobby == null || lobby.Id != received.Id)
+                                {
+                                    chatMessages.Clear(); tickDriver = null; pendingTickMessages.Clear();
+                                    requestedPause = null; requestedSpeed = null;
+                                }
                                 SetupPhase before = lobby?.Id == received.Id ? lobby.Phase : SetupPhase.Lobby;
                                 lobby = received;
                                 advancePending = false;
@@ -1655,6 +2007,33 @@ namespace Multiplayer.Foundation.RimWorld
                                 chatScroll.y = float.MaxValue;
                             }
                             break;
+                        case MessageType.ScheduledCommand:
+                        case MessageType.TickHorizon:
+                        case MessageType.DesyncDetected:
+                            ReceiveTickMessage(message); break;
+                        case MessageType.JoinSnapshot:
+                            pendingJoinSnapshot = LockstepPayloads.ReadJoin(message.Payload);
+                            if (lobby == null || pendingJoinSnapshot.Host != lobby.HostId)
+                                throw new ProtocolException("Snapshot-Host stimmt nicht mit der Lobby überein.");
+                            tickDriver = null;
+                            joinSnapshotReady = false;
+                            status = "Warte auf den Snapshot des Hosts …";
+                            break;
+                        case MessageType.PlayerSynced:
+                            Guid synced = LobbyPayloads.ReadGuid(message.Payload);
+                            if (synced == client?.SessionId)
+                            { tickDriver?.MarkSynced(); status = "Gemeinsamer Tick erreicht."; }
+                            break;
+                        case MessageType.DesyncResolved:
+                            status = "Desync behoben (Tick " + LockstepPayloads.ReadTickPayload(message.Payload) + ").";
+                            break;
+                        case MessageType.ResyncGaveUp:
+                            var gaveUp = LockstepPayloads.ReadDesync(message.Payload);
+                            string names = string.Join(", ", gaveUp.Sessions.Select(id =>
+                                lobby?.Players.FirstOrDefault(p => p.Id == id)?.Name ?? "unbekannt"));
+                            status = "Desync-Reparatur nach Tick " + gaveUp.Tick + " aufgegeben: " + names;
+                            Messages.Message(status, MessageTypeDefOf.RejectInput, false);
+                            break;
                         case MessageType.ModManifestRequest:
                         case MessageType.TransferBegin:
                         case MessageType.TransferChunk:
@@ -1665,6 +2044,7 @@ namespace Multiplayer.Foundation.RimWorld
                             var reader = new PayloadReader(message.Payload);
                             byte code = reader.ReadByte(); string reason = reader.ReadString(); reader.EnsureComplete();
                             advancePending = false;
+                            requestedPause = null; requestedSpeed = null; saveRequested = false;
                             if (startRequested)
                             {
                                 startRequested = false;
@@ -1674,16 +2054,28 @@ namespace Multiplayer.Foundation.RimWorld
                             status = "Serverfehler " + code + ": " + reason; break;
                     }
                 }
+                if (SharedGame && lobby?.Phase == SetupPhase.Playing && TryStartTickDriver(Find.TickManager))
+                {
+                    try
+                    {
+                        tickDriver!.TakeAtCurrentBoundary(Find.TickManager);
+                        ReconcileControls();
+                        if (tickDriver.Faulted) StopTickDriver(tickDriver.Failure);
+                        ReportTickProgress(Find.TickManager);
+                    }
+                    catch (Exception error) when (error is ProtocolException || error is InvalidOperationException)
+                    { StopTickDriver("Tick-Grenze verletzt: " + error.Message); }
+                }
             }
-            catch (ProtocolException error)
+            catch (Exception error) when (error is ProtocolException || error is InvalidOperationException)
             {
                 string failure = "Ungültige Serverdaten: " + error.Message;
                 Disconnect(); status = failure; return;
             }
-            if (!client.IsConnected)
+            if (!connectedClient.IsConnected)
             {
-                status = "Verbindung unterbrochen: " + (client.LastError ?? "Unbekannt");
-                client.Dispose(); client = null; lobby = null; chatMessages.Clear();
+                status = "Verbindung unterbrochen: " + (connectedClient.LastError ?? "Unbekannt");
+                connectedClient.Dispose(); client = null; lobby = null; chatMessages.Clear();
                 ResetTransfers();
                 if (hosted != null)
                 {

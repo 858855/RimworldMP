@@ -20,12 +20,26 @@
 - Weicht ein Spiel dreimal hintereinander ab, gibt der Koordinator auf und lässt die Zeit angehalten; der Host entscheidet.
 - Im Spiel noch nicht aktiv: Neuladen und Anzeigen gehören zur Spielseite.
 
+### Spielseite für Save/Join, C2-Reparatur und Zustands-Hash (lokaler Arbeitsbranch `codex/resync-game`)
+
+- Nach dem Merge der Koordinatorarbeit auf `main` wurde die Spielseite darauf rebasiert. Das erste Hashfenster nach Beitritt oder Reparatur wird auch bei einer 60-Tick-Grenze ausgelassen. Speicherbefehle behalten ihre Position zwischen Spielbefehlen; nachfolgende Befehle warten, bis der Save abgeschlossen ist. Ein gecachter Gesundheitswert und Fraktionsbeziehungen zu sich selbst wurden aus dem Vergleichshash entfernt.
+- Geplante Speicherbefehle unterbrechen den Gleichlauf nicht mehr. Alle Spieler speichern am selben Tick; der Host kann seinen Stand als Snapshot gezielt an einen neuen Spieler senden. Der neue Spieler lädt ihn, holt auf und zeigt seinen Fortschritt an. Nach einer Desync-Meldung bleibt ein Neuladen möglich.
+- Die Spielzufallsfolge wird je gemeinsamem Tick neu gesetzt. Der Vergleichshash berücksichtigt nun die im Entwicklungsplan genannten Dinge, Pawns, Fraktionen und Quests sowie die Rand-Ziehungen. Vanilla-Autosaves außerhalb der Koordinator-Regel sind während der Sitzung abgeschaltet.
+- Nach dem Laden bestätigt der Client den Snapshot; nur betroffene Spieler warten bei einer Desync-Meldung auf die Reparatur. Erfolg und Abbruch der Reparatur werden angezeigt.
+- Der Mod-Build und spielunabhängige Koordinator-/Host-Tests bestanden. Save, Join, Wiederverbindung, C2-Reparatur und Hash-Gleichheit in zwei RimWorld-Instanzen sind noch nicht geprüft.
+
 ### Speichern und Beitritt im laufenden Spiel (Arbeitsbranch `claude/save-join`, SAVE-001/JOIN-001)
 
 - Alle Spiele speichern an derselben Stelle: automatisch einmal pro Spieltag oder wenn der Host speichert.
 - Spieler können einem laufenden Spiel beitreten oder nach einem Abbruch zurückkehren. Der Host speichert dafür an einer festen Stelle; der Neue lädt diesen Stand, holt auf und läuft danach im Gleichschritt mit. Die anderen spielen währenddessen weiter. In einer Simulation führte der Neue danach exakt dieselben Befehle aus wie alle anderen.
 - Wer andere Mods hat, kann nicht beitreten.
 - Im Spiel noch nicht aktiv: Speichern, Laden und Aufholen gehören zur Spielseite.
+
+### Tick-Treiber (Arbeitsbranch `codex/tick-driver`, X2)
+
+- Nach der gemeinsamen Landung übernimmt der Spielclient den Tick-Horizont des Hosts. Er verarbeitet Befehle auch während einer Pause und lässt einen Tick nur nach Freigabe durch `LockstepClient` zu. Bei fehlendem Ausführer für Spielbefehle stoppt er mit einer Fehlermeldung.
+- Pause und Geschwindigkeit werden als Anfragen an den Koordinator gesendet. Das Spieloverlay zeigt Sitzungstick, Pause und den Spieler, auf dessen Fortschritt gewartet wird. Alle 60 Ticks wird ein vorläufiger Kernhash gemeldet.
+- Der RimWorld-1.6-Mod baut ohne Warnungen; Koordinator- und Client-Tests bestanden. Die Spielbedienung und der Gleichlauf mit zwei RimWorld-Clients sind noch nicht geprüft.
 
 ### Spielmodus (Arbeitsbranch `feat/game-mode`, MODE-001)
 

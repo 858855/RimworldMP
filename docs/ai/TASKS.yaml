@@ -932,16 +932,18 @@ tasks:
   acceptance:
   - 'Server-Unit-Tests für Reihenfolge und Flusskontrolle'
   - 'Zwei Clients laufen im Lockstep; der langsamste bestimmt das Tempo'
-  implementation: in_progress
-  verification: tests_passed
+  implementation: implemented
+  verification: build_passed
   integration: merged
-  branch: feat/lockstep-session
-  base_branch: feat/mod-check-setup-ui
-  base_commit: 08e7f9b
+  branch: codex/tick-driver
+  base_branch: main
+  base_commit: e4501df
   evidence:
   - docs/verification/2026-10-16-lockstep-coordinator.md
   - docs/decisions/0030-lockstep-coordinator.md
-  blocker: 'Koordinator-Seite fertig und getestet (Sequencer, Horizont, Flusssteuerung, Pause/Geschwindigkeit, geordnete Zustellung; LockstepClient für den Tick-Treiber). Fehlt: Tick-Treiber im Spiel statt Dauerpause (Spielseite, zweiter Beitragender). DET-001 offen.'
+  - docs/verification/2026-10-16-codex-tick-driver.md
+  - docs/decisions/0040-rimworld-tick-driver.md
+  blocker: 'Spielseite gebaut, aber zwei echte RimWorld-Clients, Tick-Gleichlauf und DET-001 noch ungeprüft. Spielbefehle stoppen bis SYNC-002 fail-closed.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: SYNC-002
   title: 'Befehls-Pipeline und Serializer-Registry'
@@ -978,11 +980,16 @@ tasks:
   acceptance:
   - 'Pause, Geschwindigkeit und Richtlinien mit zwei Clients geprüft'
   - 'Vanilla-Geschwindigkeitstasten werden abgefangen'
-  implementation: planned
-  verification: not_tested
-  integration: not_submitted
-  branch: null
-  evidence: []
+  implementation: implemented
+  verification: build_passed
+  integration: merged
+  branch: codex/tick-driver
+  base_branch: main
+  base_commit: e4501df
+  evidence:
+  - docs/verification/2026-10-16-codex-tick-driver.md
+  - docs/decisions/0040-rimworld-tick-driver.md
+  blocker: 'Vanilla-Eingaben im Mod-Build abgefangen; Pause, Tempo und Host-Recht mit zwei RimWorld-Clients noch nicht laufzeitgeprüft.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: SYNC-004
   title: 'Tier-1-Abdeckung (Grundkolonie spielbar)'
@@ -1038,15 +1045,18 @@ tasks:
   acceptance:
   - 'Ein absichtlich erzeugter Desync wird innerhalb von 60 Ticks erkannt'
   implementation: in_progress
-  verification: tests_passed
+  verification: build_passed
   integration: merged
-  branch: feat/lockstep-session
-  base_branch: feat/mod-check-setup-ui
-  base_commit: 08e7f9b
+  branch: codex/resync-game
+  base_branch: main
+  base_commit: 8f7c32f
   evidence:
   - docs/verification/2026-10-16-lockstep-coordinator.md
   - docs/decisions/0030-lockstep-coordinator.md
-  blocker: 'Koordinator-Seite fertig und getestet (Vergleich mit dem Host alle 60 Ticks, Meldung an alle, gemeinsame Pause). Fehlt: Zustands-Hash im Spiel.'
+  - docs/verification/2026-10-16-codex-save-join-hash.md
+  - docs/verification/2026-10-16-codex-rebase-review-fixes.md
+  - docs/decisions/0042-state-hash-and-rand.md
+  blocker: 'Plan-Hash und Rand-Neusaat im Mod gebaut; echter Zwei-Client-Desync-Test, Harmony-Laufzeit und DET-001 offen. Koordinator-Vergleich ist auf main bereits getestet.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: DESYNC-002
   title: 'Desync-Diagnosepaket und Diff-Werkzeug'
@@ -1408,6 +1418,57 @@ tasks:
   - docs/decisions/0031-game-modes.md
   blocker: 'Koordinator-Seite fertig und getestet. Fehlt Spielseite: Auswahl im Lobby-Fenster, Anzeige in der Liste, Modus im Spielstand und beim Laden.'
   plan_ref: docs/decisions/0031-game-modes.md
+- id: SAVE-003
+  title: 'Spielseite für koordiniertes Speichern'
+  goal: 'Save-Befehle an der gemeinsamen Tickgrenze als Vanilla-Spielstand ausführen.'
+  description: 'Codex-Spielseite zu Claudes SAVE-001; ADR 0041.'
+  priority: high
+  owner: codex
+  components:
+  - rimworld_adapter
+  depends_on:
+  - SAVE-001
+  - SYNC-001
+  acceptance:
+  - 'Alle Clients speichern beim Save-Befehl an derselben Grenze'
+  - 'Vanilla-Autosave löst während Playing keinen lokalen Sonderweg aus'
+  implementation: in_progress
+  verification: build_passed
+  integration: merged
+  branch: codex/resync-game
+  base_branch: main
+  base_commit: 8f7c32f
+  evidence:
+  - docs/decisions/0041-save-and-join-game-adapter.md
+  - docs/verification/2026-10-16-codex-save-join-hash.md
+  - docs/verification/2026-10-16-codex-rebase-review-fixes.md
+  blocker: 'Save/Load und Autosave bei Tick 60000 im laufenden Zwei-Client-Spiel ungeprüft.'
+- id: JOIN-002
+  title: 'Spielseite für Snapshot-Beitritt und Reparatur'
+  goal: 'Host-Snapshot senden, laden und mit korrekter Tickbasis aufholen.'
+  description: 'Codex-Spielseite zu Claudes JOIN-001 und künftigem C2; ADR 0041.'
+  priority: critical
+  owner: codex
+  components:
+  - rimworld_adapter
+  depends_on:
+  - JOIN-001
+  - SAVE-003
+  acceptance:
+  - 'Dritter Client lädt Snapshot und holt zum Horizont auf'
+  - 'Reconnect übernimmt PlayerKey-Besitz ohne doppelte Zuordnung'
+  - 'Nach Desync kann ein späterer Reparatur-Snapshot geladen werden'
+  implementation: in_progress
+  verification: build_passed
+  integration: merged
+  branch: codex/resync-game
+  base_branch: main
+  base_commit: 8f7c32f
+  evidence:
+  - docs/decisions/0041-save-and-join-game-adapter.md
+  - docs/verification/2026-10-16-codex-save-join-hash.md
+  - docs/verification/2026-10-16-codex-rebase-review-fixes.md
+  blocker: 'Zwei-Client-Spieltest und C2-Reparaturprotokoll offen; Besitzdaten aus dem Snapshot vorhanden, erneute Zuordnung im Spiel nicht geprüft.'
 - id: VOTE-001
   title: 'Coop-Demokratie: Abstimmung über Ereignisse im Spiel'
   goal: 'Im Modus Coop-Demokratie entscheiden alle per Abstimmung über Ereignisse im Spiel; der Host entscheidet bei Gleichstand.'

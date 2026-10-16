@@ -1,8 +1,28 @@
 # Übergabe Codex (Spielseite)
 
 - **Bahn:** siehe `docs/ai/ASSIGNMENTS.md`. Branch-Präfix `codex/`, ADR 0040–0049, Nachrichtencodes 80–95. Arbeitsverzeichnis `/mnt/Arbeit/Git Projekte/RimworldMP`.
-- **Erste Aufgabe:** X1 `VER-001` (Rest) oder X2 Tick-Treiber; Liste in `ASSIGNMENTS.md`.
-- **Wünsche an Claude:** (noch keine)
+- **Nächste Aufgaben:** X1 `VER-001` (Thread-Liste des 1.6-Tickpfads), danach X4 `SYNC-002` (Befehlserfassung). Siehe `ASSIGNMENTS.md`.
+- **Koordinator:** Claude C1–C3 sind seit `8f7c32f` auf `main`. `claude/save-join`, `claude/resync` und `claude/vote` sind gelöscht; für Snapshot-Ladefehler bleibt eine zeitliche Abbruchregel zu prüfen.
+
+## Aktuell – ADR 0032 auf Spielseite und X3
+
+- **Branch/Basis:** `codex/resync-game` auf `origin/main` @ `8f7c32f` rebasiert; aktuelles HEAD per `git log -1` prüfen. X2, Save/Join, X3 und C2-Spieladapter sind enthalten. Push von `codex/resync-game` ist vom Benutzer freigegeben; kein Merge ohne separate Freigabe. `codex/tick-driver` @ `19b3bf7` ist überholt.
+- **Aufgabenvertrag:** `SAVE-003`, `JOIN-002`, `DESYNC-001` (Spielseite). Ziel: Save-Befehle und Join-Snapshots im Verse-Spielpfad ausführen; Zustand gemäß Plan §7.9 hashen; `Rand` nach §7.4 isolieren. Nicht-Ziele: Spielbefehle (`SYNC-002`), C2-Koordinator, vollständige modübergreifende Determinismus-Zusage.
+- **Umfang:** Nur `src/Multiplayer.Foundation.RimWorld/`, eigene Docs/Task-Einträge. Save-Befehle laufen einzeln in Sequenz; Folgebefehle warten auf die Datei. Host versendet gezielt `TransferKind.Snapshot`. Joiner lädt die Datei, nutzt `ForJoin`, überspringt immer das erste Hashfenster nach Einstieg, bestätigt `SnapshotLoaded` und holt mit `Ultrafast` bis zum Horizont auf. Bei `DesyncDetected` wartet nur ein abweichender Client auf den Reparatur-Snapshot; unbetroffene folgen der Koordinator-Pause. Vanilla-Autosave wird während `Playing` unterdrückt.
+- **X3:** `SessionRandom` setzt `Verse.Rand` pro Tick und bietet einen Command-Scope für X4. `SessionStateHash` erfasst Dinge, Pawn-Jobs/Needs, Faction-Goodwill ohne Selbstbeziehung, Quest-State und Rand-Ziehungen. Der gecachte Health-Prozentwert wurde nach IL-Prüfung entfernt. ADR 0041/0042; aktuelle Prüfung `docs/verification/2026-10-16-codex-rebase-review-fixes.md`.
+- **Prüfstrategie/Ergebnis:** Lokale 1.6.4871 rev598-API per Reflection/IL, Mod-Build, `Session.Tests`, `Hosting.Tests`, Dokumentationsvalidator. Kein RimWorld-Zwei-Client-Test. Die Testprotokolle sind für tatsächlich ausgeführte Befehle maßgeblich.
+- **Risiken/Nächster Schritt:** Save/Load und Harmony unter realer Spiel-Last prüfen; im ersten Zwei-Client-Test Rand-Desync erwarten und ersten abweichenden Zustand protokollieren. Insbesondere C2-Snapshot und automatische Fortsetzung prüfen. Danach X4 Spielbefehle. `main` nicht ohne neue menschliche Merge-Freigabe verändern.
+
+## X2 – Aufgabenvertrag und Ergebnis
+
+- **Branch/Basis:** `codex/tick-driver` von `main`/`e4501df`; Feature-Commit `0ad1f31`, letzten Commit per `git log -1 --oneline` prüfen. `SYNC-001` und `SYNC-003` (Spielseite).
+- **Ziel:** Nach der Landung Tick `c+1` erst nach Befehlsübernahme und Freigabe durch `LockstepClient.MayRunTick(c)`; Pause/Tempo über den Koordinator; „Warte auf …“ anzeigen.
+- **Umfang/Nicht-Ziele:** Nur RimWorld-Adapter, eigene Übergabe, ADR 0040 und Prüfnachweis. Kein Koordinator-Code, keine Spielbefehls-Serializer (`SYNC-002`), kein vollständiger Zustands-Hash/Rand (`X3`).
+- **Abhängigkeiten:** `LockstepClient`/ADR 0030 auf `main`; `Playing` und gemeinsamer Save aus `SETUP-005`. `DET-001` bleibt offen.
+- **Umgesetzt:** `SessionTickDriver` verbindet den Verse-Tickpfad mit `LockstepClient`; die Harmony-Hooks bearbeiten Grenzbefehle, Tickfreigabe und Koordinator-Pause/-Tempo. Overlay zeigt Sitzungstick und Wartezustand. Fortschritt etwa 10/s und vorläufiger Kernhash alle 60 Ticks. Paketliste enthält `Session.dll` bereits.
+- **Prüfung:** Lokale 1.6-API per Reflection, Mod-Build ohne Warnungen, `Session.Tests` und `Client.Tests` bestanden; Mod-ZIP mit 10 Dateien einschließlich `Session.dll` geprüft. Details: `docs/verification/2026-10-16-codex-tick-driver.md`. Spieltest mit zwei Clients laut Projektstatus nicht möglich.
+- **Risiken:** Harmony-Reihenfolge, automatisch ausgelöste Vanilla-Pause, noch fehlender Ausführer für Spielbefehle. Design: `docs/decisions/0040-rimworld-tick-driver.md`.
+- **Offen / nächster Schritt:** X2 im Spiel mit zwei Clients prüfen, insbesondere Pause, Host-Tempo, langsamen Client, Tick-/Hash-Gleichheit und Disconnect. Danach X3 oder X4 auf eigenem `codex/…`-Branch von aktuellem `main` gemäß `ASSIGNMENTS.md`. `main` nicht ohne menschliche Freigabe mergen.
 
 ## Vorgeschichte der Spielseite (bisherige gemeinsame Übergabe, unverändert übernommen)
 
