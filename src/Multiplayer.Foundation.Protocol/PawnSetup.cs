@@ -7,11 +7,26 @@ namespace Multiplayer.Foundation.Protocol
 {
     // SETUP-004 (plan §6.3, ADR 0015): the host's game owns the starting pawns. Guests see cards and send requests;
     // the host carries them out, so every random roll happens on the host.
-    public enum PawnRequestKind : byte { Claim = 1, Release = 2, Reroll = 3, Swap = 4, Rename = 5 }
+    // 6–8 give guests what the vanilla page gives the host: all three names, xenotype (also custom) and development stage.
+    public enum PawnRequestKind : byte { Claim = 1, Release = 2, Reroll = 3, Swap = 4, Rename = 5, SetName = 6, SetXenotype = 7, SetDevelopmentStage = 8 }
 
     public sealed class PawnRequest
     {
         public const int MaximumNameBytes = 64;
+        /// <summary>Request text: a name, three names (<see cref="Names"/>) or a xenotype choice (<see cref="PawnXenotypeChoice"/>).</summary>
+        public const int MaximumTextBytes = 4096;
+        private const char Separator = '\u001f';
+
+        /// <summary>SetName text: first, nick and last name.</summary>
+        public static string Names(string first, string nick, string last) => first + Separator + nick + Separator + last;
+
+        /// <summary>Splits a SetName text; false if it is not three parts.</summary>
+        public static bool TryReadNames(string text, out string first, out string nick, out string last)
+        {
+            string[] parts = (text ?? "").Split(Separator);
+            first = parts.Length == 3 ? parts[0] : ""; nick = parts.Length == 3 ? parts[1] : ""; last = parts.Length == 3 ? parts[2] : "";
+            return parts.Length == 3;
+        }
 
         public PawnRequest(PawnRequestKind kind, int pawnId, int otherPawnId = 0, string text = "", PlayerKey? requester = null)
         {
@@ -20,9 +35,9 @@ namespace Multiplayer.Foundation.Protocol
         }
         public PawnRequestKind Kind { get; }
         public int PawnId { get; }
-        /// <summary>Swap: the left-behind pawn to bring in.</summary>
+        /// <summary>Swap: the left-behind pawn to bring in. SetDevelopmentStage: the stage flags (RimWorld's DevelopmentalStage).</summary>
         public int OtherPawnId { get; }
-        /// <summary>Rename: the new nickname.</summary>
+        /// <summary>Rename: the new nickname. SetName: <see cref="Names"/>. SetXenotype: <see cref="PawnXenotypeChoice.ToText"/>.</summary>
         public string Text { get; }
         /// <summary>Set by the server from the sender's session; a client's own value is ignored.</summary>
         public PlayerKey? Requester { get; }
@@ -32,7 +47,7 @@ namespace Multiplayer.Foundation.Protocol
         {
             var writer = new PayloadWriter();
             writer.WriteByte((byte)Kind); writer.WriteUInt32((uint)PawnId); writer.WriteUInt32((uint)OtherPawnId);
-            writer.WriteString(Text, MaximumNameBytes);
+            writer.WriteString(Text, MaximumTextBytes);
             writer.WriteBool(Requester.HasValue); Requester?.Write(writer);
             return writer.ToArray();
         }
@@ -40,10 +55,54 @@ namespace Multiplayer.Foundation.Protocol
         {
             var reader = new PayloadReader(bytes);
             var kind = (PawnRequestKind)reader.ReadByte(); int pawn = (int)reader.ReadUInt32(), other = (int)reader.ReadUInt32();
-            string text = reader.ReadString(MaximumNameBytes);
+            string text = reader.ReadString(MaximumTextBytes);
             PlayerKey? requester = reader.ReadBool() ? PlayerKey.Read(reader) : (PlayerKey?)null;
             reader.EnsureComplete();
             return new PawnRequest(kind, pawn, other, text, requester);
+        }
+    }
+
+    /// <summary>
+    /// A xenotype as a guest picks it on its page: a XenotypeDef by name, or a custom xenotype made in the vanilla editor
+    /// (name, inheritable, icon, genes by def name). The host resolves the names against its own defs.
+    /// </summary>
+    public sealed class PawnXenotypeChoice
+    {
+        public const int MaximumGenes = 256;
+        private const char Separator = '\u001f';
+
+        private PawnXenotypeChoice(string defName, string name, bool inheritable, string iconDef, IReadOnlyList<string> genes, bool custom)
+        { DefName = defName; Name = name; Inheritable = inheritable; IconDef = iconDef; Genes = genes; Custom = custom; }
+
+        public static PawnXenotypeChoice Standard(string defName) =>
+            new PawnXenotypeChoice(defName ?? "", "", false, "", Array.Empty<string>(), false);
+
+        public static PawnXenotypeChoice CustomXenotype(string name, bool inheritable, string iconDef, IReadOnlyList<string> genes)
+        {
+            if (genes == null || genes.Count > MaximumGenes) throw new ProtocolException("Too many genes.");
+            return new PawnXenotypeChoice("", name ?? "", inheritable, iconDef ?? "", genes, true);
+        }
+
+        public bool Custom { get; }
+        public string DefName { get; }
+        public string Name { get; }
+        public bool Inheritable { get; }
+        public string IconDef { get; }
+        public IReadOnlyList<string> Genes { get; }
+
+        public string ToText() => Custom
+            ? "c:" + Name + Separator + (Inheritable ? "1" : "0") + Separator + IconDef + Separator + string.Join(",", Genes)
+            : "x:" + DefName;
+
+        public static PawnXenotypeChoice Parse(string text)
+        {
+            text ??= "";
+            if (text.StartsWith("x:") && text.Length > 2) return Standard(text.Substring(2));
+            if (!text.StartsWith("c:")) throw new ProtocolException("Unknown xenotype choice.");
+            string[] parts = text.Substring(2).Split(Separator);
+            if (parts.Length != 4) throw new ProtocolException("Malformed custom xenotype.");
+            string[] genes = parts[3].Length == 0 ? Array.Empty<string>() : parts[3].Split(',');
+            return CustomXenotype(parts[0], parts[1] == "1", parts[2], genes);
         }
     }
 
@@ -137,15 +196,20 @@ namespace Multiplayer.Foundation.Protocol
     /// </summary>
     public sealed class PawnCardDetails
     {
+        public const int MaximumTipBytes = 1024;
+
         public PawnCardDetails(string first, string nick, string last, byte gender, ushort ageBiological, ushort ageChronological,
             string xenotype, string xenotypeIcon, uint favoriteColor, IReadOnlyList<(string Part, string Label)> health,
             IReadOnlyList<(string Relation, string Name, short Opinion, short TheirOpinion)> relations,
-            IReadOnlyList<(string Label, int Count)> possessions)
+            IReadOnlyList<(string Label, int Count)> possessions, byte developmentStage = 0, string childhoodTip = "", string adulthoodTip = "",
+            IReadOnlyList<string>? traitTips = null, IReadOnlyList<string>? abilities = null, IReadOnlyList<string>? possessionDefs = null)
         {
             First = first ?? ""; Nick = nick ?? ""; Last = last ?? ""; Gender = gender;
             AgeBiological = ageBiological; AgeChronological = ageChronological;
             Xenotype = xenotype ?? ""; XenotypeIcon = xenotypeIcon ?? ""; FavoriteColor = favoriteColor;
             Health = PawnCard.Limit(health); Relations = PawnCard.Limit(relations); Possessions = PawnCard.Limit(possessions);
+            DevelopmentStage = developmentStage; ChildhoodTip = childhoodTip ?? ""; AdulthoodTip = adulthoodTip ?? "";
+            TraitTips = PawnCard.Limit(traitTips); Abilities = PawnCard.Limit(abilities); PossessionDefs = PawnCard.Limit(possessionDefs);
         }
         public string First { get; }
         public string Nick { get; }
@@ -163,6 +227,17 @@ namespace Multiplayer.Foundation.Protocol
         /// <summary>Opinion: this pawn of the other; TheirOpinion: the other of this pawn.</summary>
         public IReadOnlyList<(string Relation, string Name, short Opinion, short TheirOpinion)> Relations { get; }
         public IReadOnlyList<(string Label, int Count)> Possessions { get; }
+        /// <summary>The development stage the slot generates (RimWorld's DevelopmentalStage flags), 0 if unknown.</summary>
+        public byte DevelopmentStage { get; }
+        /// <summary>Vanilla's tooltip texts, as the host's game writes them for this pawn.</summary>
+        public string ChildhoodTip { get; }
+        public string AdulthoodTip { get; }
+        /// <summary>One per entry of <see cref="PawnCard.Traits"/>, same order.</summary>
+        public IReadOnlyList<string> TraitTips { get; }
+        /// <summary>AbilityDef names, so the guest draws the icons from its own defs.</summary>
+        public IReadOnlyList<string> Abilities { get; }
+        /// <summary>ThingDef names, one per entry of <see cref="Possessions"/>, for vanilla's info button.</summary>
+        public IReadOnlyList<string> PossessionDefs { get; }
 
         internal void Write(PayloadWriter writer)
         {
@@ -176,6 +251,19 @@ namespace Multiplayer.Foundation.Protocol
             { writer.WriteString(relation, 64); writer.WriteString(name, 96); writer.WriteUInt16((ushort)opinion); writer.WriteUInt16((ushort)theirs); }
             writer.WriteByte((byte)Possessions.Count);
             foreach (var (label, count) in Possessions) { writer.WriteString(label, 96); writer.WriteUInt32((uint)count); }
+            writer.WriteByte(DevelopmentStage);
+            writer.WriteString(ChildhoodTip, MaximumTipBytes); writer.WriteString(AdulthoodTip, MaximumTipBytes);
+            WriteStrings(writer, TraitTips, MaximumTipBytes); WriteStrings(writer, Abilities, 64); WriteStrings(writer, PossessionDefs, 64);
+        }
+
+        private static void WriteStrings(PayloadWriter writer, IReadOnlyList<string> items, int bytes)
+        { writer.WriteByte((byte)items.Count); foreach (string item in items) writer.WriteString(item, bytes); }
+
+        private static List<string> ReadStrings(PayloadReader reader, int bytes)
+        {
+            var items = new List<string>();
+            for (int i = PawnCard.ReadCount(reader); i > 0; i--) items.Add(reader.ReadString(bytes));
+            return items;
         }
 
         internal static PawnCardDetails Read(PayloadReader reader)
@@ -190,7 +278,11 @@ namespace Multiplayer.Foundation.Protocol
                 relations.Add((reader.ReadString(64), reader.ReadString(96), (short)reader.ReadUInt16(), (short)reader.ReadUInt16()));
             var possessions = new List<(string, int)>();
             for (int i = PawnCard.ReadCount(reader); i > 0; i--) possessions.Add((reader.ReadString(96), (int)reader.ReadUInt32()));
-            return new PawnCardDetails(first, nick, last, gender, bio, chrono, xenotype, icon, color, health, relations, possessions);
+            byte stage = reader.ReadByte();
+            string childhoodTip = reader.ReadString(MaximumTipBytes), adulthoodTip = reader.ReadString(MaximumTipBytes);
+            List<string> traitTips = ReadStrings(reader, MaximumTipBytes), abilities = ReadStrings(reader, 64), possessionDefs = ReadStrings(reader, 64);
+            return new PawnCardDetails(first, nick, last, gender, bio, chrono, xenotype, icon, color, health, relations, possessions,
+                stage, childhoodTip, adulthoodTip, traitTips, abilities, possessionDefs);
         }
     }
 
@@ -201,27 +293,31 @@ namespace Multiplayer.Foundation.Protocol
     public sealed class PawnPortrait
     {
         public const int MaximumImageBytes = 48 * 1024;
+        /// <summary>Vanilla's view options: <see cref="Headgear"/> and/or <see cref="NoApparel"/>; 0 = apparel without headgear (its default).</summary>
+        public const byte Headgear = 1, NoApparel = 2, Variants = 4;
 
-        public PawnPortrait(int pawnId, byte[] png)
+        public PawnPortrait(int pawnId, byte[] png, byte variant = 0)
         {
             if (png == null || png.Length == 0 || png.Length > MaximumImageBytes) throw new ProtocolException("Invalid pawn portrait.");
-            PawnId = pawnId; Png = png;
+            if (variant >= Variants) throw new ProtocolException("Unknown portrait variant.");
+            PawnId = pawnId; Png = png; Variant = variant;
         }
         public int PawnId { get; }
         public byte[] Png { get; }
+        public byte Variant { get; }
 
         public byte[] ToPayload()
         {
             var writer = new PayloadWriter();
-            writer.WriteUInt32((uint)PawnId); writer.WriteBytes(Png, MaximumImageBytes);
+            writer.WriteUInt32((uint)PawnId); writer.WriteByte(Variant); writer.WriteBytes(Png, MaximumImageBytes);
             return writer.ToArray();
         }
         public static PawnPortrait Read(byte[] bytes)
         {
             var reader = new PayloadReader(bytes);
-            int id = (int)reader.ReadUInt32(); byte[] png = reader.ReadBytes(MaximumImageBytes);
+            int id = (int)reader.ReadUInt32(); byte variant = reader.ReadByte(); byte[] png = reader.ReadBytes(MaximumImageBytes);
             reader.EnsureComplete();
-            return new PawnPortrait(id, png);
+            return new PawnPortrait(id, png, variant);
         }
     }
 

@@ -288,10 +288,31 @@ await Run("pawn roster and requests", () =>
     Equal("Kim", d.Last); Equal((ushort)79, d.AgeChronological); Equal("x:Sanguophage", d.XenotypeIcon); Equal(0x80FF80FFu, d.FavoriteColor);
     Equal("Kratznarbe (juckt)", d.Health[0].Label); Equal((short)-15, d.Relations[0].TheirOpinion); Equal(12, d.Possessions[0].Count);
     Equal(null, back.Cards[1].Details);
-    var portrait = PawnPortrait.Read(new PawnPortrait(9, new byte[] { 137, 80, 78, 71 }).ToPayload());
-    Equal(9, portrait.PawnId); Equal(4, portrait.Png.Length);
+    var portrait = PawnPortrait.Read(new PawnPortrait(9, new byte[] { 137, 80, 78, 71 }, PawnPortrait.Headgear).ToPayload());
+    Equal(9, portrait.PawnId); Equal(4, portrait.Png.Length); Equal(PawnPortrait.Headgear, portrait.Variant);
     Throws<ProtocolException>(() => new PawnPortrait(9, new byte[PawnPortrait.MaximumImageBytes + 1]));
     Throws<ProtocolException>(() => new PawnPortrait(9, Array.Empty<byte>()));
+    Throws<ProtocolException>(() => new PawnPortrait(9, new byte[] { 1 }, PawnPortrait.Variants));
+    // The rest of the host page for guests: names, xenotype (also custom), development stage, tooltips, abilities.
+    var full = new PawnCardDetails("A", "B", "C", 1, 20, 20, "Hussar", "x:Hussar", 0, Array.Empty<(string, string)>(),
+        Array.Empty<(string, string, short, short)>(), new[] { ("Medizin", 5) }, 4, "Kindheit-Tipp", "Erwachsen-Tipp",
+        new[] { "Merkmal-Tipp" }, new[] { "Longjump" }, new[] { "MedicineIndustrial" });
+    PawnCardDetails fullBack = PawnRoster.Read(new PawnRoster(new[] { new PawnCard(10, true, null, "A B C", "B", "", "", "",
+        Array.Empty<string>(), Array.Empty<(string, byte, byte)>(), Array.Empty<string>(), Array.Empty<string>(), full) }).ToPayload()).Cards[0].Details!;
+    Equal((byte)4, fullBack.DevelopmentStage); Equal("Erwachsen-Tipp", fullBack.AdulthoodTip); Equal("Merkmal-Tipp", fullBack.TraitTips[0]);
+    Equal("Longjump", fullBack.Abilities[0]); Equal("MedicineIndustrial", fullBack.PossessionDefs[0]);
+    var names = PawnRequest.Read(new PawnRequest(PawnRequestKind.SetName, 7, 0, PawnRequest.Names("Irma", "Ir", "Dominguez")).ToPayload());
+    Equal(true, PawnRequest.TryReadNames(names.Text, out string first, out string nickName, out string last));
+    Equal("Irma", first); Equal("Ir", nickName); Equal("Dominguez", last);
+    Equal(false, PawnRequest.TryReadNames("only one", out _, out _, out _));
+    Equal("Hussar", PawnXenotypeChoice.Parse(PawnXenotypeChoice.Standard("Hussar").ToText()).DefName);
+    var custom = PawnXenotypeChoice.Parse(PawnRequest.Read(new PawnRequest(PawnRequestKind.SetXenotype, 7, 0,
+        PawnXenotypeChoice.CustomXenotype("Blutsauger", true, "Fang", new[] { "Hemogenic", "Bloodfeeder" }).ToText()).ToPayload()).Text);
+    Equal(true, custom.Custom); Equal("Blutsauger", custom.Name); Equal(true, custom.Inheritable); Equal("Fang", custom.IconDef);
+    Equal("Bloodfeeder", custom.Genes[1]);
+    Equal(0, PawnXenotypeChoice.Parse(PawnXenotypeChoice.CustomXenotype("Leer", false, "", Array.Empty<string>()).ToText()).Genes.Count);
+    Throws<ProtocolException>(() => PawnXenotypeChoice.Parse("Hussar"));
+    Throws<ProtocolException>(() => PawnXenotypeChoice.Parse("c:only-name"));
     return Task.CompletedTask;
 });
 Console.WriteLine($"PASS: {passed} protocol test groups");
