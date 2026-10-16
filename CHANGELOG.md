@@ -11,7 +11,7 @@
 
 ### Fraktions-Storyteller-Grundlage (`codex/faction-storytellers`, FACTION-003)
 
-- Der gemeinsame Spielstand kann für jeden Spieler einen Storyteller und für alle denselben Schwierigkeitsgrad festhalten. Fehlt eine Auswahl, eine Storyteller-Definition oder passt die Schwierigkeit nicht, startet der Tick-Treiber im Fraktionsmodus nicht. Der Fraktionsstart bleibt gesperrt; Auswahlfenster, Ereignissteuerung und Spieltests folgen später.
+- Der gemeinsame Spielstand bindet jetzt jeden Spieler an einen festen Fraktionsplatz, eine tatsächlich vorhandene Spielerfraktion und einen Storyteller. Die Reihenfolge ist stabil; auch die Custom-Werte der gemeinsamen Host-Schwierigkeit werden beim Laden auf Abweichungen geprüft. Fehlt eine Zuordnung oder ein gültiger Def, startet der Tick-Treiber nicht. Der Fraktionsstart bleibt gesperrt; Auswahlfenster, Ereignissteuerung und Spieltests folgen später.
 
 ### Gemeinsames Vorschaupaket für den späteren Spieltest (`codex/manual-test-candidate`, PKG-002)
 
