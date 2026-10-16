@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Lockstep-Koordinator (Arbeitsbranch `feat/lockstep-session`, SYNC-001/DESYNC-001)
+
+- Der Kern der Synchronität: Der Host ordnet alle Spielerbefehle in eine feste Reihenfolge und gibt vor, bis zu welchem Tick jedes Spiel rechnen darf. Alle Spiele führen dieselben Befehle an derselben Stelle aus. In einer Simulation mit drei Spielen, eines davon fünfmal langsamer, ist das in sechs Läufen nachgewiesen.
+- Der langsamste Spieler bestimmt das Tempo. Pausieren und Fortsetzen darf jeder, die Geschwindigkeit nur der Host. Befehle im Pausenmodus wirken sofort.
+- Weichen die Spielstände auseinander, wird das erkannt und die Zeit für alle an derselben Stelle angehalten, statt still weiterzulaufen.
+- Im Spiel noch nicht aktiv: Die Spielseite (Tick-Treiber, Befehlserfassung, Zustands-Hash) folgt.
+
 ### Mod-Prüfung, Start-Knopf und Seitenspiegel (Arbeitsbranch `feat/mod-check-setup-ui`, Basis `feat/setup-rules`)
 
 - In der Lobby werden Mods, Ladereihenfolge und Mod-Inhalte mit dem Host verglichen; die Spielversion wird nur angezeigt. Abweichende Spieler sind rot markiert und können nicht bereit sein; ein Bericht zeigt die Unterschiede. Die Lobbyliste zeigt vorab, ob die Mods passen.

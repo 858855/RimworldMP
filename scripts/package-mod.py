@@ -18,6 +18,7 @@ FILES = (
     "Assemblies/Multiplayer.Foundation.Protocol.dll",
     "Assemblies/Multiplayer.Foundation.Network.dll",
     "Assemblies/Multiplayer.Foundation.Lobby.dll",
+    "Assemblies/Multiplayer.Foundation.Session.dll",
     "Assemblies/Multiplayer.Foundation.Hosting.dll",
     "Assemblies/Multiplayer.Foundation.RimWorld.dll",
     "THIRD_PARTY_LICENSES/Harmony-MIT.txt",

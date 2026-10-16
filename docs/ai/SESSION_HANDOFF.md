@@ -1,5 +1,13 @@
 # Sitzungsübergabe
 
+- **Lockstep-Koordinator (`feat/lockstep-session`, ADR 0030):**
+  - Branch von `feat/mod-check-setup-ui` @ `08e7f9b`. Aufteilung laut Benutzer am 2026-10-16: Koordinator-Seite hier, Spielseite beim zweiten Beitragenden.
+  - Neues Projekt `Multiplayer.Foundation.Session` (`LockstepSession`), dazu `LockstepClient` im Network-Projekt sowie `LockstepHost` und `OrderedOutbox` im Server. Codes 64–70.
+  - Die Sitzung startet automatisch beim Eintritt in `Playing`, pausiert bei Tick 0.
+  - **Für die Spielseite:** Den Dauerpause-Patch (`SessionPauseTickPatch`) durch den Tick-Treiber ersetzen. Der rechnet Tick c+1 nur, wenn `LockstepClient.MayRunTick(c)`, und ruft vorher und während der Pause in jedem Frame `TakeCommandsAt(c)` auf. Sitzungstick = `TicksGame − TicksGame bei der Landung`. `ProgressMessage` ~10/s senden, alle 60 Ticks `HashMessage`. Spieler-Pause und -Geschwindigkeit als `ControlMessage` senden, statt lokal umzuschalten.
+  - Paketliste in `build-mod.sh` und `package-mod.py` um `Multiplayer.Foundation.Session.dll` ergänzt.
+  - Verifikation: `docs/verification/2026-10-16-lockstep-coordinator.md`.
+
 - **Bereich:** `MOD-001`, Spielseite von `START-001`, `SETUP-001`, `SETUP-002`, `SETUP-003`, `SETUP-004`, `SETUP-005`, `VER-001`, auf Basis von `feat/setup-rules` (ADR 0013–0017).
 - **Branch:** `feat/mod-check-setup-ui`, lokal unter `E:/RimworldMP`, abgezweigt von `origin/feat/setup-rules` @ `5798f95`. Ersetzt `origin/feat/lobby-hardening` (gleiche Funktionen auf eigenem Protokoll; auf Wunsch des Benutzers hierher übertragen).
 - **Stand:** Mod-Prüfung (Prüfsumme nur über Mods), Bereit-Sperre, Unterschiedsbericht über den Chunk-Kanal, **Spiel starten** mit Begründung; nach dem Start öffnet der Host die vanilla-Seiten, die Mod spiegelt Seite und Auswahl an die Gäste (Code 30) und schaltet die Serverphasen nach; der letzte Start ist während einer gemeinsamen Einrichtung gesperrt. ADR 0018 und 0019.

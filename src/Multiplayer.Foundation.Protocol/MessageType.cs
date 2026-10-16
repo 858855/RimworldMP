@@ -42,6 +42,14 @@ namespace Multiplayer.Foundation.Protocol
         PawnRequest = 34,
         // SETUP-005
         GameReady = 35,
-        GameLoaded = 36
+        GameLoaded = 36,
+        // SYNC-001 / DESYNC-001 lockstep coordinator (ADR 0030). Numbered apart from the setup codes on purpose.
+        Command = 64,
+        ScheduledCommand = 65,
+        TickHorizon = 66,
+        ClientTick = 67,
+        StateHash = 68,
+        DesyncDetected = 69,
+        SessionControl = 70
     }
 }

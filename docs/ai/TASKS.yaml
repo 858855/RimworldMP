@@ -920,7 +920,7 @@ tasks:
   priority: critical
   components:
   - session_core
-  - dedicated_server
+  - listen_host
   - rimworld_adapter
   - protocol
   depends_on:
@@ -929,11 +929,16 @@ tasks:
   acceptance:
   - 'Server-Unit-Tests für Reihenfolge und Flusskontrolle'
   - 'Zwei Clients laufen im Lockstep; der langsamste bestimmt das Tempo'
-  implementation: planned
-  verification: not_tested
+  implementation: in_progress
+  verification: tests_passed
   integration: not_submitted
-  branch: null
-  evidence: []
+  branch: feat/lockstep-session
+  base_branch: feat/mod-check-setup-ui
+  base_commit: 08e7f9b
+  evidence:
+  - docs/verification/2026-10-16-lockstep-coordinator.md
+  - docs/decisions/0030-lockstep-coordinator.md
+  blocker: 'Koordinator-Seite fertig und getestet (Sequencer, Horizont, Flusssteuerung, Pause/Geschwindigkeit, geordnete Zustellung; LockstepClient für den Tick-Treiber). Fehlt: Tick-Treiber im Spiel statt Dauerpause (Spielseite, zweiter Beitragender). DET-001 offen.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: SYNC-002
   title: 'Befehls-Pipeline und Serializer-Registry'
@@ -1026,11 +1031,16 @@ tasks:
   - SYNC-001
   acceptance:
   - 'Ein absichtlich erzeugter Desync wird innerhalb von 60 Ticks erkannt'
-  implementation: planned
-  verification: not_tested
+  implementation: in_progress
+  verification: tests_passed
   integration: not_submitted
-  branch: null
-  evidence: []
+  branch: feat/lockstep-session
+  base_branch: feat/mod-check-setup-ui
+  base_commit: 08e7f9b
+  evidence:
+  - docs/verification/2026-10-16-lockstep-coordinator.md
+  - docs/decisions/0030-lockstep-coordinator.md
+  blocker: 'Koordinator-Seite fertig und getestet (Vergleich mit dem Host alle 60 Ticks, Meldung an alle, gemeinsame Pause). Fehlt: Zustands-Hash im Spiel.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: DESYNC-002
   title: 'Desync-Diagnosepaket und Diff-Werkzeug'

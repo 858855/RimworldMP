@@ -45,6 +45,13 @@ Strings sind `length:u16` plus strikt gültige UTF-8-Bytes. Allgemeine Strings: 
 | 34 | PawnRequest | C→S→C | Art `u8`, Figur `u32`, andere Figur `u32`, Text (≤ 64 Byte), optional `PlayerKey`; nur Gäste, nur in `Characters`, an den Host |
 | 35 | GameReady | C→S | Fingerabdruck des geladenen Startspiels (32 Byte); nur Host, nur in `Generating` |
 | 36 | GameLoaded | C→S | Fingerabdruck des geladenen Startspiels (32 Byte); nur Gäste, nur in `Generating` |
+| 64 | Command | C→S | Befehlsdaten, für den Koordinator undurchsichtig, ≤ 32 KiB |
+| 65 | ScheduledCommand | S→C | Grenze `u32`, Sequenz `u64`, Absender-Session, Absender-PlayerKey (optional), Art `u8`, Daten |
+| 66 | TickHorizon | S→C | Horizont `u32`, Geschwindigkeit `u8`, pausiert `bool`, langsamster Spieler, dessen Tick |
+| 67 | ClientTick | C→S | zuletzt fertig gerechneter Sitzungstick |
+| 68 | StateHash | C→S | Tick (Vielfaches von 60), Hash `u64` |
+| 69 | DesyncDetected | S→C | Tick, betroffene Spieler |
+| 70 | SessionControl | C→S | Art (1 Pause, 2 Geschwindigkeit), Wert |
 
 Listen- und Zustandsupdates sind in `LobbyPayloads.cs` kodiert: Liste mit `count:u8`, je Lobby GUID, Name, Hostname, Spielerzahl und Kapazität; Snapshot mit GUID, Name, Host-GUID, Revision `u64`, Kapazität, Setup-Phase `u8`, optional gewähltes Feld und Spielerarray (Session-GUID, Name, Ready, PlayerKey, optional Fähnchen). Die Liste trägt je Lobby zusätzlich die Phase. Der TCP-Server verwendet diese Payloads; zwei unabhängige TCP-Testclients bestanden die Integrationstests. RimWorld-Client-Kompatibilität ist noch offen. Fehlercodes: `1=InvalidMessage`, `2=VersionMismatch`, `3=Unauthorized`, `4=NotFound`, `5=Capacity`, `6=InvalidState`, `7=ServerBusy`.
 
@@ -96,3 +103,12 @@ Figuren gibt es nur im Spiel des Hosts. Eine Karte in `PawnRoster`: Thing-ID `u3
 ## Gemeinsamer Spielstart (SETUP-005, ADR 0023)
 
 In `Generating` startet der Host das vanilla-Spiel, speichert es, sendet den Spielstand als Chunk-Übertragung der Art `3` und lädt ihn selbst neu. Ab `Generating` meldet `WorldStatus` je Spieler den Spielstand (`1` lädt, `2` passt, `3` weicht ab). `GameLoaded` eines Gastes darf vor `GameReady` kommen und zählt, sobald der Host meldet. `SetupAdvance(Playing)` verlangt `GameReady` und „passt“ bei allen; Abweichung Code 8, fehlende Meldung Code 6. In `Playing` gibt es keinen weiteren Schritt (bis SYNC-001); Bereit ist nicht gültig, Beitritte bleiben gesperrt, `SetupAbort` des Hosts beendet die Sitzung.
+
+## Lockstep (Codes 64–70)
+
+Ab der Phase `Playing` führt der Koordinator im eingebetteten Server des Hosts einen Horizont h. Kein Spiel rechnet Tick h+1, bevor es `TickHorizon ≥ h+1` erhalten hat. Ein Befehl, der bei Horizont h eintrifft, bekommt die Grenze h und wird nach Tick h in Sequenzreihenfolge ausgeführt, auch pausiert. Alle Befehle mit Grenze h erreichen jeden Spieler vor einem Horizont größer h; dafür hat jeder Spieler eine geordnete Warteschlange. Weitere Regeln:
+- Der langsamste Spieler bestimmt das Tempo.
+- Pause und Geschwindigkeit sind geplante Befehle.
+- Hashes werden alle 60 Ticks mit dem Host verglichen; eine Abweichung meldet der Koordinator an alle und pausiert.
+
+Codes bewusst ab 64, abseits der fortlaufenden Setup-Codes. Siehe ADR 0030.

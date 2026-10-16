@@ -19,3 +19,9 @@ Nach Änderungstyp testen. Ausgeführte Nachweise liegen unter `docs/verificatio
 - Internet-Erreichbarkeit (`NET-002`): Dual-Stack-Listener, IPv6/DNS-Verbindung, Endpunkt-Parser und UPnP gegen Fake-Gateway in `Network.Tests`/`Hosting.Tests`; alle sieben Testprojekte bestanden (unter .NET 8, da .NET 10 lokal fehlte). SSDP-Suche gegen echte FRITZ!Box nur lesend geprüft; echte Verbindung aus dem Internet offen. Siehe `docs/verification/2026-10-15-internet-reachability.md`.
 
 - Direkt-Hosting: `dotnet run --project tests/Hosting.Tests/Hosting.Tests.csproj -c Release --nologo`; vier Gruppen für integrierten Host, Gast, Ready und Stopp bestanden. Server-Integration (16 Gruppen), Mehrprozess-Test (acht Schritte) und Client-Test (drei Gruppen) nach der Auslagerung erneut bestanden. Der Mod-Build gegen lokale RimWorld-1.6-Assemblies gelang ohne Warnungen; Spiel-UI bleibt offen.
+
+- Lockstep-Koordinator (`SYNC-001`/`DESYNC-001`, ADR 0030): neues achtes Testprojekt `dotnet run --project tests/Session.Tests/Session.Tests.csproj -c Release --nologo`.
+  - Payloads, Koordinator-Regeln, Hash-Vergleich und Schutzregeln des `LockstepClient`.
+  - Sechs simulierte Läufe mit drei Spielen (eines 5× langsamer, zufällige Latenz) mit identischer Ausführungsfolge; Desync-Gegenprobe mit gemeinsamem Halt.
+  - Dazu Ende zu Ende in `Hosting.Tests`.
+  - Siehe `docs/verification/2026-10-16-lockstep-coordinator.md`.

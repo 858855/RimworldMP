@@ -5,6 +5,7 @@ using System.Net.Sockets;
 using Multiplayer.Foundation.Lobby;
 using Multiplayer.Foundation.Network;
 using Multiplayer.Foundation.Protocol;
+using Multiplayer.Foundation.Session;
 
 namespace Multiplayer.Foundation.Server;
 
@@ -17,6 +18,8 @@ public sealed class FoundationServer : IAsyncDisposable
     private readonly ConcurrentDictionary<Guid, Task> peerTasks = new();
     private readonly CancellationTokenSource stopping = new();
     private TcpListener? listener;
+    private readonly LockstepHost lockstep;
+    private Task? clockTask;
     private Task? acceptTask;
     private int pendingConnections;
 
@@ -24,6 +27,7 @@ public sealed class FoundationServer : IAsyncDisposable
     {
         this.config = config ?? throw new ArgumentNullException(nameof(config));
         lobbies = new LobbyRegistry(config.MaxPlayersPerLobby, config.AllowSoloStart ? (byte)1 : (byte)2);
+        lockstep = new LockstepHost((to, message) => { if (peers.TryGetValue(to, out Peer? target)) target.Outbox?.Enqueue(message); });
     }
     public int BoundPort => listener == null ? 0 : ((IPEndPoint)listener.LocalEndpoint).Port;
     public int ConnectedClients => peers.Count;
@@ -50,6 +54,7 @@ public sealed class FoundationServer : IAsyncDisposable
         IPAddress address = config.Validate(true);
         listener = StartListener(address, config.Port);
         acceptTask = AcceptLoopAsync(stopping.Token);
+        clockTask = LockstepClockAsync(stopping.Token);
         return Task.CompletedTask;
     }
 
@@ -87,6 +92,7 @@ public sealed class FoundationServer : IAsyncDisposable
         stopping.Cancel(); listener?.Stop();
         foreach (Peer peer in peers.Values) peer.Connection.Dispose();
         if (acceptTask != null) await acceptTask.ConfigureAwait(false);
+        if (clockTask != null) await clockTask.ConfigureAwait(false);
         await Task.WhenAll(peerTasks.Values.ToArray()).ConfigureAwait(false);
     }
 
@@ -163,6 +169,7 @@ public sealed class FoundationServer : IAsyncDisposable
             // Per-connection stop: without it the heartbeat's delay holds up cleanup (PlayerLeft, freeing the
             // player key, aborting transfers) by up to one heartbeat interval after the client is gone.
             using var peerStop = CancellationTokenSource.CreateLinkedTokenSource(serverToken);
+            peer.Outbox = new OrderedOutbox(connection, peerStop.Token);
             Task heartbeat = HeartbeatLoopAsync(peer, peerStop.Token);
             try
             {
@@ -172,6 +179,8 @@ public sealed class FoundationServer : IAsyncDisposable
                     if (message == null || message.Type == MessageType.Disconnect) break;
                     try { await ProcessAsync(peer, message, serverToken).ConfigureAwait(false); }
                     catch (LobbyRuleException error)
+                    { await SendErrorAsync(peer, message.RequestId, error.Code, error.Message, serverToken).ConfigureAwait(false); }
+                    catch (LockstepRuleException error)
                     { await SendErrorAsync(peer, message.RequestId, error.Code, error.Message, serverToken).ConfigureAwait(false); }
                     catch (ProtocolException error)
                     { await SendErrorAsync(peer, message.RequestId, 1, error.Message, serverToken).ConfigureAwait(false); break; }
@@ -191,6 +200,7 @@ public sealed class FoundationServer : IAsyncDisposable
                 peers.TryRemove(sessionId, out _);
                 LobbyChange? change = lobbies.RemoveMember(sessionId);
                 var gone = transfers.PeerGone(sessionId);
+                lockstep.RemovePeer(sessionId);
                 if (!serverToken.IsCancellationRequested)
                 {
                     try
@@ -239,6 +249,7 @@ public sealed class FoundationServer : IAsyncDisposable
                 RequireEmpty(message.Payload);
                 await PublishAsync(lobbies.Leave(peer.Id), MessageType.PlayerLeft, token).ConfigureAwait(false);
                 await DeliverAsync(transfers.PeerGone(peer.Id), token).ConfigureAwait(false);
+                lockstep.RemovePeer(peer.Id);
                 await peer.Connection.SendAsync(new WireMessage(MessageType.LeaveLobby, message.RequestId, Array.Empty<byte>()), token).ConfigureAwait(false);
                 break;
             case MessageType.PlayerReadyChanged:
@@ -247,7 +258,9 @@ public sealed class FoundationServer : IAsyncDisposable
                 break;
             case MessageType.CloseLobby:
                 RequireEmpty(message.Payload);
+                Guid closedLobby = lobbies.ChatRecipients(peer.Id).LobbyId;
                 LobbyChange closed = lobbies.Close(peer.Id);
+                lockstep.RemoveLobby(closedLobby);
                 foreach (Guid member in closed.Recipients)
                     await DeliverAsync(transfers.PeerGone(member), token).ConfigureAwait(false);
                 foreach (Guid recipient in closed.Recipients)
@@ -306,6 +319,22 @@ public sealed class FoundationServer : IAsyncDisposable
                 await PublishAsync(lobbies.ReportWorld(peer.Id, SetupPayloads.ReadFingerprint(message.Payload)), null, token,
                     message.RequestId).ConfigureAwait(false);
                 break;
+            case MessageType.Command:
+                byte[] commandData = LockstepPayloads.ReadCommand(message.Payload);
+                lockstep.Run(LobbyOf(peer), session => session.Submit(peer.Id, commandData, LockstepHost.NowMs));
+                break;
+            case MessageType.ClientTick:
+                int completed = LockstepPayloads.ReadTickPayload(message.Payload);
+                lockstep.Run(LobbyOf(peer), session => session.ReportTick(peer.Id, completed, LockstepHost.NowMs));
+                break;
+            case MessageType.StateHash:
+                var stateHash = LockstepPayloads.ReadHash(message.Payload);
+                lockstep.Run(LobbyOf(peer), session => session.ReportHash(peer.Id, stateHash.Tick, stateHash.Hash));
+                break;
+            case MessageType.SessionControl:
+                var control = LockstepPayloads.ReadControl(message.Payload);
+                lockstep.Run(LobbyOf(peer), session => session.Control(peer.Id, control.Kind, control.Value, LockstepHost.NowMs));
+                break;
             case MessageType.GameReady:
                 await PublishAsync(lobbies.SetHostGame(peer.Id, SetupPayloads.ReadFingerprint(message.Payload)), null, token,
                     message.RequestId).ConfigureAwait(false);
@@ -363,6 +392,7 @@ public sealed class FoundationServer : IAsyncDisposable
         uint actorRequestId = 0, bool ready = false)
     {
         if (change.State == null) return;
+        lockstep.OnLobbyState(change.State);
         byte[] state = LobbyPayloads.State(change.State);
         foreach (Guid recipient in change.Recipients)
         {
@@ -417,6 +447,22 @@ public sealed class FoundationServer : IAsyncDisposable
     { if (payload.Length != 0) throw new ProtocolException("Unexpected payload."); }
     private static Task RejectAsync(NetworkConnection connection, byte code, string reason, CancellationToken token)
         => connection.SendAsync(new WireMessage(MessageType.HandshakeRejected, 1, LobbyPayloads.Error(code, reason)), token);
+    private Guid LobbyOf(Peer peer) => lobbies.ChatRecipients(peer.Id).LobbyId;
+    public int ActiveSessions => lockstep.ActiveSessions;
+
+    private async Task LockstepClockAsync(CancellationToken token)
+    {
+        try
+        {
+            while (!token.IsCancellationRequested)
+            {
+                await Task.Delay(50, token).ConfigureAwait(false);
+                lockstep.Tick();
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
     private static Task SendErrorAsync(Peer peer, uint requestId, byte code, string reason, CancellationToken token)
         => peer.Connection.SendAsync(new WireMessage(MessageType.Error, requestId, LobbyPayloads.Error(code, reason)), token);
 
@@ -427,6 +473,8 @@ public sealed class FoundationServer : IAsyncDisposable
         public Guid Id { get; }
         public string Name { get; }
         public NetworkConnection Connection { get; }
+        /// <summary>Ordered sender for lockstep messages; set right after the handshake.</summary>
+        public OrderedOutbox? Outbox { get; set; }
         public long LastPongStamp;
         public long NextNonce;
         public long LastAcknowledgedNonce;

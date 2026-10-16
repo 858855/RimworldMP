@@ -340,6 +340,80 @@ await using (var modHost = await ListenHost.StartAsync("127.0.0.1", 0, "ModHost"
 }
 Console.WriteLine("PASS: mod check over a Steam-like link: status, ready gate, host list request and diff (MOD-001)");
 
+// SYNC-001/DESYNC-001 (ADR 0030) end to end: after landing, the host's embedded coordinator drives lockstep over a
+// Steam-like link. Both games run ticks only within the horizon and execute the guest's command at the same point.
+PlayerKey lockHostKey = PlayerKey.Steam(76561198000000070UL), lockGuestKey = PlayerKey.Steam(76561198000000080UL);
+await using (var lockHost = await ListenHost.StartAsync("127.0.0.1", 0, "Host", "Lockstep Room", 4, lockHostKey))
+{
+    LobbyView lockRoom = LobbyPayloads.ReadState((await ReceiveAsync(lockHost.Client, MessageType.LobbyStateUpdate)).Payload);
+    using var lockLink = new SteamLikeLink();
+    Assert(lockHost.AttachConnection(NetworkConnection.FromDuplexStream(lockLink.A), lockGuestKey), "lockstep guest attached");
+    using LobbyClient lockGuest = await LobbyClient.ConnectOverStreamAsync(lockLink.B, "Guest", TimeSpan.FromSeconds(4), CancellationToken.None, lockGuestKey);
+    await lockGuest.SendAsync(MessageType.JoinLobby, 2, LobbyPayloads.GuidValue(lockRoom.Id));
+    await ReceiveAsync(lockGuest, MessageType.LobbyStateUpdate);
+    await ReachPlayingAsync(lockHost.Client, lockGuest, lockHostKey, lockGuestKey);
+
+    var games = new[] { (Client: lockHost.Client, Game: new LockstepClient()), (Client: lockGuest, Game: new LockstepClient()) };
+    var completed = new int[2];
+    var executed = new[] { new List<(int Boundary, ulong Sequence, PlayerKey? Issuer)>(), new List<(int Boundary, ulong Sequence, PlayerKey? Issuer)>() };
+    var errors = new List<byte>[] { new(), new() };
+    int desyncs = 0;
+    async Task Pump(int ticksPerRound)
+    {
+        for (int i = 0; i < 2; i++)
+        {
+            var (client, game) = games[i];
+            while (client.TryDequeue(out WireMessage? message) && message != null)
+            {
+                if (LockstepClient.Handles(message)) { game.Receive(message); if (message.Type == MessageType.DesyncDetected) desyncs++; }
+                else if (message.Type == MessageType.Error) errors[i].Add(message.Payload[0]);
+            }
+            foreach (ScheduledCommand command in game.TakeCommandsAt(completed[i])) executed[i].Add((command.Boundary, command.Sequence, command.IssuerKey));
+            for (int t = 0; t < ticksPerRound && game.MayRunTick(completed[i]); t++)
+            {
+                completed[i]++;
+                foreach (ScheduledCommand command in game.TakeCommandsAt(completed[i])) executed[i].Add((command.Boundary, command.Sequence, command.IssuerKey));
+            }
+            if (game.ProgressMessage(completed[i], Environment.TickCount64) is WireMessage progress)
+                await client.SendAsync(progress.Type, 0, progress.Payload);
+        }
+    }
+    async Task RunFor(int milliseconds, int ticksPerRound)
+    {
+        var until = System.Diagnostics.Stopwatch.StartNew();
+        while (until.ElapsedMilliseconds < milliseconds) { await Pump(ticksPerRound); await Task.Delay(16); }
+    }
+
+    await RunFor(300, 50);
+    Assert(completed.All(c => c == 0) && games.All(g => g.Game.Paused), "session starts paused at tick 0");
+    await lockGuest.SendAsync(MessageType.Command, 0, LockstepPayloads.Command(new byte[] { 42 }));        // order given in pause
+    await RunFor(300, 50);
+    Assert(executed.All(log => log.Count == 1 && log[0].Boundary == 0 && log[0].Issuer == lockGuestKey),
+        "order given in pause runs at once in both games, issuer stamped by the coordinator");
+    await lockGuest.SendAsync(MessageType.SessionControl, 0, LockstepPayloads.Control(ScheduledKind.Speed, 3));
+    await lockGuest.SendAsync(MessageType.SessionControl, 0, LockstepPayloads.Control(ScheduledKind.Pause, 0));   // anyone may resume
+    await RunFor(1500, 4);                                                                                       // guest computes slowly
+    Assert(errors[1].Contains(3), "guest cannot change the speed");
+    Assert(completed.All(c => c > 30), "time runs after resuming: " + string.Join(",", completed));
+    Assert(games.All(g => !g.Game.Paused), "both games resumed at the same point");
+    await lockHost.Client.SendAsync(MessageType.Command, 0, LockstepPayloads.Command(new byte[] { 7 }));
+    await lockGuest.SendAsync(MessageType.Command, 0, LockstepPayloads.Command(new byte[] { 8 }));
+    await RunFor(800, 4);
+    int common = completed.Min();
+    Assert(executed[0].Where(e => e.Boundary < common).SequenceEqual(executed[1].Where(e => e.Boundary < common)) && executed[0].Count >= 3,
+        "both games executed the same commands at the same ticks: " + executed[0].Count);
+
+    // A diverging state is caught and stops time for both at one point.
+    int hashTick = (Math.Min(completed[0], completed[1]) / 60) * 60;
+    Assert(hashTick > 0, "a hash tick was reached");
+    await lockHost.Client.SendAsync(MessageType.StateHash, 0, LockstepPayloads.Hash(hashTick, 111));
+    await lockGuest.SendAsync(MessageType.StateHash, 0, LockstepPayloads.Hash(hashTick, 222));
+    await RunFor(1000, 50);
+    Assert(desyncs == 2 && games.All(g => g.Game.Desyncs.Single().Sessions.Single() == lockGuest.SessionId), "both games told the guest diverged");
+    Assert(games.All(g => g.Game.Paused) && completed[0] == completed[1], "time stopped for both at the same tick: " + string.Join(",", completed));
+}
+Console.WriteLine("PASS: lockstep over the network: pause orders act at once, slow guest sets the pace, same commands at the same ticks, desync stops both");
+
 // SETUP-001: the host's page mirror reaches guests only while setup runs, and only from the host.
 await using (var mirrorHost = await ListenHost.StartAsync("127.0.0.1", 0, "Host", "Mirror Room", 4, PlayerKey.Steam(76561198000000070UL)))
 {
@@ -588,6 +662,31 @@ static async Task<WireMessage> ReceiveAsync(LobbyClient client, MessageType want
 }
 
 // One selected pawn per given owner (SETUP-004 test helper).
+// Walks a two-player lobby through setup to Playing, as the setup test above does.
+static async Task ReachPlayingAsync(LobbyClient host, LobbyClient guest, PlayerKey hostKey, PlayerKey guestKey)
+{
+    uint id = 500;
+    await StateAsync(host, MessageType.PlayerReadyChanged, ++id, LobbyPayloads.Bool(true));
+    await StateAsync(guest, MessageType.PlayerReadyChanged, ++id, LobbyPayloads.Bool(true));
+    foreach (SetupPhase next in new[] { SetupPhase.Scenario, SetupPhase.Storyteller, SetupPhase.WorldParams, SetupPhase.WorldTransfer })
+        await StateAsync(host, MessageType.SetupAdvance, ++id, SetupPayloads.Advance(next));
+    byte[] world = Enumerable.Repeat((byte)5, 32).ToArray();
+    await StateAsync(host, MessageType.WorldReady, ++id, SetupPayloads.Fingerprint(world));
+    await StateAsync(guest, MessageType.WorldLoaded, ++id, SetupPayloads.Fingerprint(world));
+    await StateAsync(host, MessageType.SetupAdvance, ++id, SetupPayloads.Advance(SetupPhase.SiteSelection));
+    await StateAsync(host, MessageType.SiteDecided, ++id, SetupPayloads.Site(new SiteTile(1, 0)));
+    await StateAsync(host, MessageType.SetupAdvance, ++id, SetupPayloads.Advance(SetupPhase.Characters));
+    await StateAsync(host, MessageType.PawnRoster, ++id, RosterFor(hostKey, guestKey).ToPayload());
+    await StateAsync(host, MessageType.PlayerReadyChanged, ++id, LobbyPayloads.Bool(true));
+    await StateAsync(guest, MessageType.PlayerReadyChanged, ++id, LobbyPayloads.Bool(true));
+    await StateAsync(host, MessageType.SetupAdvance, ++id, SetupPayloads.Advance(SetupPhase.Generating));
+    byte[] game = Enumerable.Repeat((byte)3, 32).ToArray();
+    await StateAsync(host, MessageType.GameReady, ++id, SetupPayloads.Fingerprint(game));
+    await StateAsync(guest, MessageType.GameLoaded, ++id, SetupPayloads.Fingerprint(game));
+    LobbyView landed = await StateAsync(host, MessageType.SetupAdvance, ++id, SetupPayloads.Advance(SetupPhase.Playing));
+    if (landed.Phase != SetupPhase.Playing) throw new Exception("FAIL: did not reach Playing");
+}
+
 static PawnRoster RosterFor(params PlayerKey[] owners) => new PawnRoster(owners.Select((owner, i) => new PawnCard(100 + i, true, owner,
     "Pawn " + i, "P" + i, "Age 30", "", "", Array.Empty<string>(), Array.Empty<(string, byte, byte)>(),
     Array.Empty<string>(), Array.Empty<string>())).ToArray());
