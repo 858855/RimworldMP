@@ -1674,3 +1674,29 @@ tasks:
   - docs/verification/2026-10-16-faction-ui-merge-gate.md
   blocker: 'FACTION-001 erzeugt noch keine getrennten Spielerfraktionen. Vanilla Tick, Ziele und Queue nutzen globalen Storyteller; sichere Mehrfachausführung, Save/Load, UI-Spieltest und Zwei-Client-Test fehlen. Fraktionsstart gesperrt.'
   plan_ref: docs/decisions/0045-faction-storyteller-boundary.md
+- id: FACTION-005
+  title: 'Fraktionsmodus: Spielseiten-Audit und sichere Generierungsgrenze'
+  goal: 'Den Vanilla-Startpfad für mehrere Spielerfraktionen prüfen und eine deterministische, gespeicherte Slot-zu-Fraktion-Zuordnung vorbereiten.'
+  description: 'Codex-Teil von FACTION-001. Erste Arbeitseinheit: reproduzierbarer Assembly-Audit; noch keine zweite Fraktion und keine Freischaltung des Fraktionsstarts.'
+  priority: high
+  owner: codex
+  components:
+  - rimworld_adapter
+  depends_on:
+  - MODE-001
+  - FACTION-004
+  acceptance:
+  - '1.6-Startpfad und relevante API-Signaturen aus lokaler Assembly dokumentiert'
+  - 'Hook-Grenze und Datenübergabe zum Koordinator konkret beschrieben'
+  - 'Coop bleibt unverändert und Fraktionsstart gesperrt'
+  implementation: in_progress
+  verification: build_passed
+  integration: not_submitted
+  branch: codex/faction-setup
+  base_branch: main
+  base_commit: 9fc1519
+  evidence:
+  - docs/decisions/0046-faction-setup-preflight.md
+  - docs/verification/2026-10-16-faction-setup-audit.md
+  blocker: 'Audit bestätigt globale Faction.OfPlayer- und GameInitData-Einzelwerte. Echte getrennte Fraktionen, Ideologie, Startorte und Spieltests fehlen. Koordinator-Vertrag für eigene Startorte/Ideologien je FactionSlot noch nicht implementiert.'
+  plan_ref: docs/decisions/0031-game-modes.md

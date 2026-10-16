@@ -9,6 +9,10 @@
 - Ein gespeichertes Fraktionsspiel kann fortgesetzt werden: Der Host spielt die Fraktionen aus seinem Spielstand ein, nur diese Spieler können beitreten, und der Start geht direkt zur Übertragung des Spielstands.
 - Coop ändert sich nicht. Der Fraktionsstart bleibt gesperrt; im Spiel ist davon noch nichts sichtbar.
 
+### Fraktionsstart-Audit (`codex/faction-setup`, FACTION-005)
+
+- Ein reproduzierbares Prüfwerkzeug untersucht den lokalen RimWorld-1.6-Startpfad. Es bestätigt, dass Vanilla vor der Kartenerzeugung eine einzige globale Spielerfraktion verwendet. Der bekannte Generator kann weitere Fraktionen erzeugen und registrieren; dafür fehlen aber noch serverbestätigte Startorte und Ideologien je Spieler. Der Fraktionsstart bleibt gesperrt.
+
 ### Fraktions-Storyteller-Auswahl im Spiel (`codex/faction-ui`, FACTION-003)
 
 - Die Spieloberfläche zeigt im Fraktionsmodus die gemeinsame Schwierigkeit, Fraktionsplätze, Erzählerwahl und den Fertig-Status. Der Host veröffentlicht die auf seiner RimWorld-Seite gewählte Schwierigkeit samt kompatibler Erzählerliste; Spieler wählen daraus ihren eigenen Erzähler. Die vorhandenen Servernachrichten 96/97 übertragen die Auswahl.

@@ -12,6 +12,7 @@
 | Protokoll/Netzwerk | `docs/protocol.md`, `docs/ai/ARCHITECTURE.md`, `src/Multiplayer.Foundation.Protocol/`, `src/Multiplayer.Foundation.Network/`, zugehörige Tests |
 | Server/Lobby | `docs/dedicated-server.md`, `docs/protocol.md`, `src/Multiplayer.Foundation.Server/`, `src/Multiplayer.Foundation.Lobby/`, Integrationstests |
 | RimWorld-Client | `docs/client.md`, `docs/build.md`, `references/verified-apis.md`, `src/Multiplayer.Foundation.RimWorld/`, `src/Multiplayer.Foundation.Network/LobbyClient.cs`, `tests/Client.Tests/`, Mod-XML, `docs/verification/2026-10-15-client.md` |
+| Fraktionsstart (FACTION-005) | `docs/decisions/0031-game-modes.md`, `docs/decisions/0037-faction-storytellers-coordinator.md`, `docs/decisions/0046-faction-setup-preflight.md`, `docs/verification/2026-10-16-faction-setup-audit.md`, `scripts/faction-setup-probe/`, `FoundationMod.cs`, `MultiplayerSession.cs` |
 | Steam-Hosting | `docs/decisions/0010-steam-home-host.md`, `docs/client.md`, `src/Multiplayer.Foundation.RimWorld/SteamLobbyBridge.cs`, `SteamPeerStream.cs`, `docs/verification/2026-10-15-steam-transport.md`, `docs/verification/2026-10-15-steam-user-connection.md` |
 | Hauptmenü/Chat | `docs/decisions/0011-main-menu-and-lobby-chat.md`, `docs/client.md`, `docs/protocol.md`, `MainMenuOptionPatch.cs`, `FoundationWindow.cs`, `FoundationMod.cs`, `FoundationServer.cs`, zugehörige Tests |
 | Planung / nächste Meilensteine | `docs/plans/rimworldmp-full-plan.md` (Gesamtplan bis 1.0, Englisch), Einträge `VER-001` … `REL-001` in `TASKS.yaml` |
