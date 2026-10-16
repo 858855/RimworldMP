@@ -1673,7 +1673,7 @@ tasks:
   - docs/verification/2026-10-16-faction-storyteller-ui.md
   - docs/verification/2026-10-16-faction-ui-merge-gate.md
   - docs/verification/2026-10-16-faction-storyteller-runtime.md
-  blocker: 'FACTION-001 erzeugt noch keine getrennten Spielerfraktionen. Neuer Mehrfach-Tick, Zieltrennung und Save/Load sind nur gebaut, nicht im Spiel geprüft. UI-Spieltest und Zwei-Client-Test fehlen. Fraktionsstart gesperrt.'
+  blocker: 'FACTION-001 erzeugt noch keine getrennten Spielerfraktionen. Neuer Mehrfach-Tick, Zieltrennung und Save/Load sind nur gebaut, nicht im Spiel geprüft. Quest-Incidents sind ausgenommen, Anomaly blockiert; UI- und Zwei-Client-Test fehlen. Fraktionsstart gesperrt.'
   plan_ref: docs/decisions/0045-faction-storyteller-boundary.md
 - id: FACTION-005
   title: 'Fraktionsmodus: Spielseite für Standort, Ideologie und Fortsetzen'

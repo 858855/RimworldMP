@@ -72,6 +72,17 @@ namespace Multiplayer.Foundation.RimWorld
         }
     }
 
+    // The 1.6 interval iterator also visits every global quest part for every storyteller.
+    // Until quests are assigned to factions, none may schedule a repeated faction incident.
+    [HarmonyPatch(typeof(QuestManager), nameof(QuestManager.QuestsListForReading), MethodType.Getter)]
+    internal static class FactionQuestIncidentSourcePatch
+    {
+        private static void Postfix(ref List<Quest> __result)
+        {
+            if (FactionStorytellerScope.Current != null) __result = new List<Quest>();
+        }
+    }
+
     // Even if an incident obtains its target without AllIncidentTargets, it may not cross a faction boundary.
     [HarmonyPatch(typeof(Storyteller), nameof(Storyteller.TryFire), new[] { typeof(FiringIncident), typeof(bool) })]
     internal static class FactionIncidentFirePatch

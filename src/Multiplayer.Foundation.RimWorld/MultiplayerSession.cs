@@ -225,6 +225,8 @@ namespace Multiplayer.Foundation.RimWorld
         internal string? FactionStorytellerError()
         {
             if (Mode?.Mode != GameMode.Factions) return null;
+            if (ModsConfig.AnomalyActive)
+                return "Anomaly-Ereignisse sind für getrennte Fraktions-Erzähler noch nicht zugeordnet.";
             Game? game = Current.Game;
             if (sharedDifficultyDef.Length == 0 || sharedDifficultyFingerprint.Length == 0 ||
                 game?.storyteller?.difficultyDef?.defName != sharedDifficultyDef ||

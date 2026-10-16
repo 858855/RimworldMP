@@ -49,6 +49,29 @@ CheckCall("RimWorld.Storyteller", "get_AllIncidentTargets", "Verse.Find", "get_M
 CheckCall("RimWorld.Storyteller", "get_AllIncidentTargets", "Verse.Find", "get_WorldObjects");
 CheckCall("RimWorld.IncidentQueue", "IncidentQueueTick", "Verse.Find", "get_Storyteller");
 CheckCall("RimWorld.Storyteller", "StorytellerTick", "RimWorld.Storyteller", "MakeIncidentsForInterval");
+Type storytellerType = game.GetType("RimWorld.Storyteller", throwOnError: true)!;
+foreach (MethodInfo method in storytellerType.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+    .Where(method => method.Name is "StorytellerTick" or "MakeIncidentsForInterval"))
+    Console.WriteLine("CALLS " + method + ": " + string.Join(", ", Calls(method).Select(member => member.DeclaringType?.Name + "." + member.Name)));
+var intervalCalls = storytellerType.GetNestedTypes(BindingFlags.NonPublic)
+    .Where(type => type.Name.Contains("MakeIncidentsForInterval", StringComparison.Ordinal))
+    .Select(type => type.GetMethod("MoveNext", BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance))
+    .Where(method => method != null).SelectMany(method => Calls(method!)).ToList();
+if (!intervalCalls.Any(member => member.DeclaringType == storytellerType && member.Name == "get_AllIncidentTargets") ||
+    !intervalCalls.Any(member => member.DeclaringType?.FullName == "RimWorld.QuestManager" && member.Name == "get_QuestsListForReading") ||
+    !intervalCalls.Any(member => member.DeclaringType?.FullName == "Verse.Find" && member.Name == "get_Anomaly"))
+    throw new InvalidOperationException("Storyteller interval target, quest or Anomaly path changed.");
+Type questManager = game.GetType("RimWorld.QuestManager", throwOnError: true)!;
+Type quest = game.GetType("RimWorld.Quest", throwOnError: true)!;
+if (questManager.GetProperty("QuestsListForReading")?.PropertyType != typeof(System.Collections.Generic.List<>).MakeGenericType(quest))
+    throw new InvalidOperationException("Quest list patch return type changed.");
+foreach (Type nested in storytellerType.GetNestedTypes(BindingFlags.NonPublic)
+    .Where(type => type.Name.Contains("MakeIncidentsForInterval", StringComparison.Ordinal)))
+{
+    MethodInfo? next = nested.GetMethod("MoveNext", BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance);
+    if (next != null)
+        Console.WriteLine("ITERATOR " + nested.Name + ": " + string.Join(", ", Calls(next).Select(member => member.DeclaringType?.Name + "." + member.Name)));
+}
 Console.WriteLine("PASS: vanilla tick, global incident targets and global queued-incident owner paths confirmed.");
 PrintSurface("RimWorld.Storyteller", "StorytellerTick", "TryFire", "get_AllIncidentTargets", "ExposeData");
 PrintSurface("RimWorld.IncidentQueue", "IncidentQueueTick", "ExposeData");
