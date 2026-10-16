@@ -109,9 +109,13 @@ namespace Multiplayer.Foundation.RimWorld
         internal bool SessionPaused => WorldSelfTest.HoldsPause ||
             (client != null && lobby != null && lobby.Phase >= SetupPhase.Generating && Current.ProgramState == ProgramState.Playing);
 
-        /// <summary>A guest's received world lives only while a window is open in the main menu (see FoundationWindow).</summary>
-        internal bool KeepWindowOpen => lobby != null && client != null && lobby.HostId != client.SessionId && guestWorldLoaded &&
-            Current.ProgramState == ProgramState.Entry && (lobby.Phase == SetupPhase.WorldTransfer || lobby.Phase == SetupPhase.SiteSelection);
+        /// <summary>
+        /// The game in the main menu lives only while a window is open (see FoundationWindow): a guest's received world,
+        /// and the host's set-up game while its start waits for the server (vanilla has closed the character page by then).
+        /// </summary>
+        internal bool KeepWindowOpen => lobby != null && client != null && Current.ProgramState == ProgramState.Entry &&
+            (lobby.HostId == client.SessionId ? startRequested
+                : guestWorldLoaded && (lobby.Phase == SetupPhase.WorldTransfer || lobby.Phase == SetupPhase.SiteSelection));
 
         internal void NotifySessionPaused()
         {
@@ -837,6 +841,9 @@ namespace Multiplayer.Foundation.RimWorld
             {
                 startRequested = true; advancePending = true;
                 status = "Gemeinsamer Spielstart angefragt …";
+                // Vanilla closes the character page right after this call. Without a window the main menu drops the
+                // set-up game before the server answers, and the start then ran vanilla's random quick-test game (2026-10-16).
+                OpenWindow();
             }
             return false;
         }
@@ -850,6 +857,14 @@ namespace Multiplayer.Foundation.RimWorld
             bool requested = startRequested;
             startRequested = false;
             if (!requested) return;
+            if (Find.GameInitData == null)
+            {
+                // Without it vanilla starts a quick-test game (random world, site and pawns) and everyone would get that.
+                Log.Error("Multiplayer game start: the set-up game is gone (no GameInitData); setup aborted.");
+                Messages.Message("Spielstart abgebrochen: Die Einrichtung ging verloren.", MessageTypeDefOf.RejectInput, false);
+                Send(MessageType.SetupAbort, Array.Empty<byte>());
+                return;
+            }
             gameText = "Spiel wird erzeugt …";
             allowGameStart = true;
             try { PageUtility.InitGameStart(); }
@@ -864,8 +879,9 @@ namespace Multiplayer.Foundation.RimWorld
         // The server refused the start (someone took back "done" in the meantime): back to the character page.
         private void ReopenCharacterPage()
         {
-            if (Current.ProgramState != ProgramState.Entry || Find.WindowStack.IsOpen<Page_ConfigureStartingPawns>()) return;
+            if (Current.ProgramState != ProgramState.Entry || Find.GameInitData == null || Find.WindowStack.IsOpen<Page_ConfigureStartingPawns>()) return;
             Find.WindowStack.Add(new Page_ConfigureStartingPawns { nextAct = PageUtility.InitGameStart });
+            Find.WindowStack.TryRemove(typeof(FoundationWindow), false); // it only held the game while the start was asked for
         }
 
         private void ConfirmLeave() =>

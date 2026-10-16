@@ -29,9 +29,11 @@ namespace Multiplayer.Foundation.RimWorld
         /// <summary>True while the self-test owns the flags on the site page.</summary>
         internal static bool ShowingSitePage => siteStage != 0;
 
-        // SETUP-005: 1 start, 2 save as host, 3 copy for the guest and reload as host, 4 host fingerprint and pause probe,
-        // 5 load as guest, 6 compare and pause probe, 7 done.
+        // SETUP-005: 1 prepare, 8 character page, 9 start asked, 10 answer and start, 2 save as host, 3 copy for the guest
+        // and reload as host, 4 host fingerprint and pause probe, 5 load as guest, 6 compare and pause probe, 7 done.
         private static int gameStage;
+        private static Page_ConfigureStartingPawns? startPage;
+        private static int[] chosenPawns = Array.Empty<int>();
         private static PlanetTile startTile = PlanetTile.Invalid;
         private static float gameStageAt;
         private static int pausedTick;
@@ -134,10 +136,35 @@ namespace Multiplayer.Foundation.RimWorld
                         });
                         return;
                     case 8:
-                        // Like the host after everyone is done: vanilla's own start on the prepared GameInitData.
+                        // Like the host after everyone is done: the vanilla character page on the prepared GameInitData,
+                        // and no multiplayer window (the host only has its overlay there).
                         if (LongEventHandler.AnyEventNowOrWaiting) return;
                         if (Current.Game?.InitData == null || !startTile.Valid) { Check("hostGame", false); Finish(); return; }
                         Find.GameInitData.startingTile = startTile;
+                        chosenPawns = Find.GameInitData.startingAndOptionalPawns.Take(Find.GameInitData.startingPawnCount)
+                            .Select(p => p.thingIDNumber).OrderBy(id => id).ToArray();
+                        startPage = new Page_ConfigureStartingPawns { nextAct = PageUtility.InitGameStart };
+                        Find.WindowStack.Add(startPage);
+                        Find.WindowStack.TryRemove(typeof(FoundationWindow), false);
+                        gameStage = 9; gameStageAt = UnityEngine.Time.realtimeSinceStartup;
+                        return;
+                    case 9:
+                        // Start pressed: the mod asks the server and holds the game with its window (as in
+                        // TryBeginSharedStart), then vanilla closes the page.
+                        if (UnityEngine.Time.realtimeSinceStartup - gameStageAt < 1f) return;
+                        FoundationMod.Instance?.OpenWindow();
+                        if (startPage != null) Find.WindowStack.TryRemove(startPage, false);
+                        startPage = null;
+                        gameStage = 10; gameStageAt = UnityEngine.Time.realtimeSinceStartup;
+                        return;
+                    case 10:
+                        // The server answers later; until then the main menu must not drop the chosen pawns and site.
+                        if (UnityEngine.Time.realtimeSinceStartup - gameStageAt < 1.5f) return;
+                        bool kept = Current.Game?.InitData != null && Find.GameInitData.startingTile == startTile &&
+                            Find.GameInitData.startingAndOptionalPawns.Take(Find.GameInitData.startingPawnCount)
+                                .Select(p => p.thingIDNumber).OrderBy(id => id).SequenceEqual(chosenPawns);
+                        Check("startKept", kept);
+                        if (!kept) { Finish(); return; }
                         gameStage = 2; gameWatch.Restart(); hostGame = null;
                         PageUtility.InitGameStart();
                         return;
@@ -147,6 +174,9 @@ namespace Multiplayer.Foundation.RimWorld
                         generateMs = gameWatch.ElapsedMilliseconds;
                         var colonists = GameFingerprint.Colonists();
                         Check("colonists", colonists.Count >= 2);
+                        // The game must land the chosen pawns on the chosen site, not a quick-test game (2026-10-16).
+                        Check("landedChosen", colonists.Select(p => p.thingIDNumber).OrderBy(id => id).SequenceEqual(chosenPawns));
+                        Check("site", Find.Maps[0].Tile == startTile);
                         Protocol.PlayerKey a = Protocol.PlayerKey.Local(Guid.NewGuid()), b = Protocol.PlayerKey.Local(Guid.NewGuid());
                         var owners = new System.Collections.Generic.Dictionary<int, Protocol.PlayerKey>();
                         if (colonists.Count >= 2) { owners[colonists[0].thingIDNumber] = a; owners[colonists[1].thingIDNumber] = b; }
@@ -292,7 +322,8 @@ namespace Multiplayer.Foundation.RimWorld
                 try { if (System.IO.File.Exists(GameCodec.PathFor(name))) System.IO.File.Delete(GameCodec.PathFor(name)); }
                 catch (Exception error) { Log.Warning("Multiplayer Foundation game self-test: could not remove " + name + ": " + error.Message); }
             }
-            gameStage = 0; hostGame = null; guestFile = null; hostFile = null;
+            if (startPage != null) Find.WindowStack.TryRemove(startPage, false);
+            gameStage = 0; hostGame = null; guestFile = null; hostFile = null; startPage = null;
             if (!quitWhenIdle && Current.ProgramState == ProgramState.Playing) GenScene.GoToMainMenu();
         }
 
