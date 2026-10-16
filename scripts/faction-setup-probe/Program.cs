@@ -80,12 +80,12 @@ foreach (string name in new[] { "RimWorld.Planet.WorldGrid", "RimWorld.Planet.Ti
 // A proposed test slice must not guess how vanilla creates maps, factions, pawns or incident targets.
 foreach (string name in new[]
 {
-    "RimWorld.FactionGeneratorParms", "RimWorld.FactionDefOf", "RimWorld.FactionGenerator",
+    "RimWorld.FactionGeneratorParms", "RimWorld.IdeoGenerationParms", "RimWorld.FactionDefOf", "RimWorld.FactionGenerator",
     "RimWorld.Planet.Settlement", "RimWorld.Planet.WorldObjectsHolder", "RimWorld.Planet.WorldObjectMaker",
     "Verse.GetOrGenerateMapUtility", "Verse.MapGenerator", "Verse.Map", "RimWorld.Planet.MapParent",
     "RimWorld.Storyteller", "RimWorld.IncidentQueue", "RimWorld.IncidentParms", "RimWorld.FiringIncident",
     "RimWorld.IncidentWorker", "RimWorld.IncidentDef", "RimWorld.IIncidentTarget",
-    "RimWorld.Planet.WorldObject", "RimWorld.Planet.Caravan", "Verse.Pawn", "Verse.CellFinder",
+    "RimWorld.Planet.WorldObject", "RimWorld.Planet.Caravan", "Verse.Pawn", "RimWorld.Pawn_IdeoTracker", "Verse.CellFinder",
     "Verse.PawnGenerator", "Verse.GenSpawn"
 })
 {
@@ -93,7 +93,8 @@ foreach (string name in new[]
     if (type == null) { Console.WriteLine("TEST-SLICE MISSING TYPE: " + name); continue; }
     Console.WriteLine("TEST-SLICE TYPE: " + name);
     foreach (FieldInfo field in type.GetFields(flags).Where(field => field.DeclaringType == type &&
-        (field.Name.Contains("faction", StringComparison.OrdinalIgnoreCase) ||
+        (name == "RimWorld.IdeoGenerationParms" ||
+         field.Name.Contains("faction", StringComparison.OrdinalIgnoreCase) ||
          field.Name.Contains("ideo", StringComparison.OrdinalIgnoreCase) ||
          field.Name.Contains("story", StringComparison.OrdinalIgnoreCase) ||
          field.Name.Contains("incident", StringComparison.OrdinalIgnoreCase) ||

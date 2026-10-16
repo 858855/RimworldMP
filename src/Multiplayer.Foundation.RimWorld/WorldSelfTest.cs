@@ -45,6 +45,9 @@ namespace Multiplayer.Foundation.RimWorld
         private static readonly Stopwatch gameWatch = new Stopwatch();
         private static long generateMs, saveMs;
         private static bool saveSynchronous, pawnsPassed;
+        private static bool factionTest;
+        private static Faction? secondTestFaction;
+        private static string[] factionSetupBefore = Array.Empty<string>();
         private static readonly System.Collections.Generic.List<string> gameResults = new System.Collections.Generic.List<string>();
         private const string HostSave = "Multiplayer - Selbsttest Host", GuestSave = "Multiplayer - Selbsttest Gast";
 
@@ -55,6 +58,17 @@ namespace Multiplayer.Foundation.RimWorld
 
         internal static void TryStart()
         {
+            if (siteStage == 4 && !LongEventHandler.AnyEventNowOrWaiting)
+            {
+                // The faction generator test does not depend on the graphical site-page probe.
+                pawnsPassed = RunPawnTest();
+                bool kept = Current.Game?.World != null && Current.Game.InitData != null;
+                Log.Message("Multiplayer Foundation faction self-test: prepared world=" + kept);
+                siteStage = 0;
+                if (kept && startTile.Valid) gameStage = 1;
+                else cleanupWhenIdle = true;
+                return;
+            }
             if (siteStage == 1 && !LongEventHandler.AnyEventNowOrWaiting)
             {
                 siteStage = 2; siteOpenedAt = UnityEngine.Time.realtimeSinceStartup; SiteFlags.FramesDrawn = 0;
@@ -94,7 +108,9 @@ namespace Multiplayer.Foundation.RimWorld
                     " (game=" + (Current.Game != null) + " world=" + (Current.Game?.World != null) + " initData=" + (Current.Game?.InitData != null) + ")");
                 // The window stays open: without any window the main menu drops the game (found by this check).
                 siteStage = 0;
-                if (kept && pawnsPassed && startTile.Valid) gameStage = 1;
+                // The faction slice checks generation/save independently of the older character-card check.
+                // Keep its failure visible in the log; it must not hide later generator evidence.
+                if (kept && (pawnsPassed || factionTest) && startTile.Valid) gameStage = 1;
                 else cleanupWhenIdle = true;
                 return;
             }
@@ -110,6 +126,7 @@ namespace Multiplayer.Foundation.RimWorld
             { quitWhenIdle = false; Root.Shutdown(); return; }
             if (started || !Requested || Current.ProgramState != ProgramState.Entry || LongEventHandler.AnyEventNowOrWaiting) return;
             started = true;
+            factionTest = Environment.GetCommandLineArgs().Any(a => a == "-mpFactionSelfTest");
             LongEventHandler.QueueLongEvent(Run, "LoadingLongEvent", false, error => Log.Error("Multiplayer Foundation world self-test: FAIL " + error));
         }
 
@@ -130,6 +147,7 @@ namespace Multiplayer.Foundation.RimWorld
                         LongEventHandler.QueueLongEvent(PrepareHostGame, "LoadingLongEvent", false, error =>
                         {
                             Log.Error("Multiplayer Foundation game self-test: FAIL preparing " + error);
+                            gameResults.Add("preparing=FAIL");
                             gameStage = 0; cleanupWhenIdle = true;
                         });
                         return;
@@ -138,6 +156,7 @@ namespace Multiplayer.Foundation.RimWorld
                         if (LongEventHandler.AnyEventNowOrWaiting) return;
                         if (Current.Game?.InitData == null || !startTile.Valid) { Check("hostGame", false); Finish(); return; }
                         Find.GameInitData.startingTile = startTile;
+                        if (factionTest) secondTestFaction = FactionRuntimeTestSlice.CreateFactionBeforeLanding();
                         gameStage = 2; gameWatch.Restart(); hostGame = null;
                         PageUtility.InitGameStart();
                         return;
@@ -153,7 +172,26 @@ namespace Multiplayer.Foundation.RimWorld
                         owners[-1] = b; // a pawn that did not land must not be saved
                         MultiplayerSession? session = MultiplayerSession.ForCurrentGame;
                         Check("component", session != null);
-                        session?.Begin(Guid.NewGuid(), Protocol.LobbyMode.CoopHost,
+                        if (factionTest)
+                        {
+                            var assignments = FactionRuntimeTestSlice.Create(a, b, colonists,
+                                secondTestFaction ?? throw new InvalidOperationException("Zweite Testfraktion fehlt."));
+                            session?.Begin(Guid.NewGuid(), Protocol.LobbyMode.Factions(Protocol.FactionRelation.Neutral),
+                                new[] { (a, "Test-Host"), (b, "Test-Gast") }, owners,
+                                GameFingerprint.PlayerFactionPawns().Select(p => p.thingIDNumber).ToList(), assignments);
+                            Log.Message("Multiplayer Foundation faction self-test: before save error=" +
+                                (session == null ? "session missing" : FactionRuntimeTestSlice.Diagnostic(session) ?? "none") +
+                                " playerPawns=" + GameFingerprint.PlayerFactionPawns().Count);
+                            Check("factionSetup", session != null && session.FactionStorytellerError() == null &&
+                                FactionRuntimeTestSlice.CheckCurrentGame(session));
+                            factionSetupBefore = session?.FactionSetupInSlotOrder.Select(x =>
+                                x.PlayerKey + "/" + x.Slot + "/" + x.FactionId + "/" + x.Storyteller + "/" + x.Site).ToArray()
+                                ?? Array.Empty<string>();
+                            // Exercises the installed Harmony replacement once while the generated game is paused.
+                            Current.Game.storyteller.StorytellerTick();
+                            Check("factionTick", session?.FactionStorytellerError() == null);
+                        }
+                        else session?.Begin(Guid.NewGuid(), Protocol.LobbyMode.CoopHost,
                             new[] { (a, "Test-Host"), (b, "Test-Gast") }, owners,
                             colonists.Select(p => p.thingIDNumber).ToList());
                         Check("ownersLanded", session != null && session.Owners.Count() == Math.Min(2, colonists.Count));
@@ -190,6 +228,12 @@ namespace Multiplayer.Foundation.RimWorld
                         if (!Loaded()) { TimeOut("hostReloaded"); return; }
                         reloadMs = gameWatch.ElapsedMilliseconds;
                         (hostFingerprint, hostLines) = GameFingerprint.Compute(hostFile!, MultiplayerSession.ForCurrentGame!);
+                        if (factionTest) Check("hostFactions", FactionRuntimeTestSlice.CheckCurrentGame(MultiplayerSession.ForCurrentGame!) &&
+                            factionSetupBefore.SequenceEqual(MultiplayerSession.ForCurrentGame!.FactionSetupInSlotOrder.Select(x =>
+                                x.PlayerKey + "/" + x.Slot + "/" + x.FactionId + "/" + x.Storyteller + "/" + x.Site)));
+                        if (factionTest) Log.Message("Multiplayer Foundation faction self-test: host load error=" +
+                            (MultiplayerSession.ForCurrentGame is MultiplayerSession hostSession ? FactionRuntimeTestSlice.Diagnostic(hostSession) ?? "none" : "session missing") +
+                            " playerPawns=" + GameFingerprint.PlayerFactionPawns().Count);
                         hostTick = Find.TickManager.TicksGame;
                         StartPauseProbe();
                         gameStage = 5;
@@ -208,6 +252,12 @@ namespace Multiplayer.Foundation.RimWorld
                         long loadMs = gameWatch.ElapsedMilliseconds;
                         MultiplayerSession? loaded = MultiplayerSession.ForCurrentGame;
                         Check("sessionLoaded", loaded?.Active == true && loaded.Owners.Count() == 2);
+                        if (factionTest) Check("guestFactions", loaded != null && FactionRuntimeTestSlice.CheckCurrentGame(loaded) &&
+                            factionSetupBefore.SequenceEqual(loaded.FactionSetupInSlotOrder.Select(x =>
+                                x.PlayerKey + "/" + x.Slot + "/" + x.FactionId + "/" + x.Storyteller + "/" + x.Site)));
+                        if (factionTest) Log.Message("Multiplayer Foundation faction self-test: guest load error=" +
+                            (loaded == null ? "session missing" : FactionRuntimeTestSlice.Diagnostic(loaded) ?? "none") +
+                            " playerPawns=" + GameFingerprint.PlayerFactionPawns().Count);
                         var (guestFingerprint, guestLines) = GameFingerprint.Compute(guestFile!, loaded!);
                         bool same = guestFingerprint.SequenceEqual(hostFingerprint!);
                         Check("fingerprint", same);
@@ -235,6 +285,7 @@ namespace Multiplayer.Foundation.RimWorld
             catch (Exception error)
             {
                 Log.Error("Multiplayer Foundation game self-test: FAIL " + error);
+                gameResults.Add("exception=FAIL");
                 Finish();
             }
         }
@@ -293,7 +344,7 @@ namespace Multiplayer.Foundation.RimWorld
                 try { if (System.IO.File.Exists(GameCodec.PathFor(name))) System.IO.File.Delete(GameCodec.PathFor(name)); }
                 catch (Exception error) { Log.Warning("Multiplayer Foundation game self-test: could not remove " + name + ": " + error.Message); }
             }
-            gameStage = 0; hostGame = null; guestFile = null; hostFile = null;
+            gameStage = 0; hostGame = null; guestFile = null; hostFile = null; secondTestFaction = null;
             if (!quitWhenIdle && Current.ProgramState == ProgramState.Playing) GenScene.GoToMainMenu();
         }
 
@@ -407,7 +458,7 @@ namespace Multiplayer.Foundation.RimWorld
                 Log.Message("Multiplayer Foundation world self-test: flag tiles " + flagTiles.Count + " found in " + scan.ElapsedMilliseconds + "ms");
                 SiteFlags.Shown = flagTiles.Select((t, i) => (i == 0 ? "Test-Host" : "Test-Gast", t, SiteFlags.ColorFor(i))).ToList();
                 if (flagTiles.Count > 0) { Find.WorldCameraDriver.JumpTo(flagTiles[0]); startTile = flagTiles[0]; }
-                siteStage = match ? 1 : 0;
+                siteStage = match ? factionTest ? 4 : 1 : 0;
                 Log.Message("Multiplayer Foundation world self-test: " + (match ? "PASS" : "FAIL") +
                     " coverage=" + coverage + " tiles=" + tiles + " settlements=" + settlements + " loadedSettlements=" + loaded.worldObjects.Settlements.Count +
                     " gzip=" + data.Length + " bytes generate=" + generateMs + "ms save=" + saveMs + "ms load=" + loadMs + "ms" +

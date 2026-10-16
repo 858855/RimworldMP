@@ -82,7 +82,8 @@ namespace Multiplayer.Foundation.RimWorld
             lines.Add("tick " + Find.TickManager.TicksGame);
             foreach (Map map in Find.Maps.OrderBy(m => m.uniqueID))
                 lines.Add("map " + map.uniqueID + " " + map.Tile.tileId + "/" + map.Tile.Layer.LayerID + " " + map.Size.x + "x" + map.Size.z);
-            foreach (Pawn pawn in Colonists().OrderBy(p => p.thingIDNumber))
+            foreach (Pawn pawn in (session.Mode?.Mode == Multiplayer.Foundation.Protocol.GameMode.Factions ? PlayerFactionPawns() : Colonists())
+                .OrderBy(p => p.thingIDNumber))
                 lines.Add("pawn " + pawn.thingIDNumber + " " + (pawn.Name?.ToStringFull ?? ""));
             lines.Add("session " + session.SessionId);
             foreach (var (key, name) in session.Players.OrderBy(p => p.Key, StringComparer.Ordinal)) lines.Add("player " + key + " " + name);
@@ -92,6 +93,12 @@ namespace Multiplayer.Foundation.RimWorld
         }
 
         internal static List<Pawn> Colonists() => Find.Maps.SelectMany(m => m.mapPawns.FreeColonists).ToList();
+
+        // FreeColonists is tied to Faction.OfPlayer in vanilla; it omits other player factions.
+        internal static List<Pawn> PlayerFactionPawns() => Find.Maps
+            .SelectMany(map => map.mapPawns.AllPawnsSpawned)
+            .Where(pawn => pawn.Faction?.def?.isPlayer == true && pawn.RaceProps.Humanlike && !pawn.Dead)
+            .ToList();
 
         /// <summary>The fingerprint lines for Player.log, without player keys (Steam IDs).</summary>
         internal static string LogSummary(string[] lines) =>
