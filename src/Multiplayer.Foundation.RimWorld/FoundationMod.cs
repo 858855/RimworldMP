@@ -11,6 +11,7 @@ using RimWorld.Planet;
 using Multiplayer.Foundation.Hosting;
 using Multiplayer.Foundation.Lobby;
 using Multiplayer.Foundation.Protocol;
+using Multiplayer.Foundation.Session;
 using Steamworks;
 using UnityEngine;
 using Verse;
@@ -101,15 +102,20 @@ namespace Multiplayer.Foundation.RimWorld
         private float guestLoadStartedAt;
         private string gameText = "";
         private float nextPauseNoteAt;
+        // SYNC-001 (ADR 0024): runs the shared game's ticks once everyone has landed. The self-test installs its own.
+        private LockstepDriver? lockstep;
+        internal LockstepDriver? TestLockstep;
+        internal LockstepDriver? Lockstep => TestLockstep ?? lockstep;
         internal bool HostSetupActive => hostSetupActive;
         internal bool GuestSiteMapActive => guestSiteMapActive;
 
         /// <summary>
-        /// SETUP-005: the shared game is open and lockstep does not exist yet, so time must not run. While the lobby is
-        /// in Generating or Playing, the game in Play is the shared one: setup starts from the main menu only.
+        /// SETUP-005: the shared game is open but lockstep is not running yet (the game is still sent and loaded), so time
+        /// must not run. While the lobby is in Generating or Playing, the game in Play is the shared one: setup starts from
+        /// the main menu only. Once the lockstep driver runs, it decides when ticks run (SYNC-001).
         /// </summary>
-        internal bool SessionPaused => WorldSelfTest.HoldsPause ||
-            (client != null && lobby != null && lobby.Phase >= SetupPhase.Generating && Current.ProgramState == ProgramState.Playing);
+        internal bool SessionPaused => WorldSelfTest.HoldsPause || LockstepSelfTest.HoldsPause || (Lockstep == null &&
+            client != null && lobby != null && lobby.Phase >= SetupPhase.Generating && Current.ProgramState == ProgramState.Playing);
 
         /// <summary>
         /// The game in the main menu lives only while a window is open (see FoundationWindow): a guest's received world,
@@ -123,9 +129,38 @@ namespace Multiplayer.Foundation.RimWorld
         {
             if (Time.realtimeSinceStartup < nextPauseNoteAt) return;
             nextPauseNoteAt = Time.realtimeSinceStartup + 3f;
-            Messages.Message("Die Zeit läuft erst mit dem Gleichlauf (SYNC-001). Bis dahin bleibt das Spiel für alle pausiert.",
+            Messages.Message("Die Zeit läuft, sobald alle Spieler das Spiel geladen haben. Bis dahin bleibt es für alle pausiert.",
                 MessageTypeDefOf.RejectInput, false);
         }
+
+        // SYNC-001: the driver runs while the lobby's shared game is the game in Play; it ends with the session or the game.
+        private void UpdateLockstep()
+        {
+            if (lockstep != null && (client == null || lobby?.Phase != SetupPhase.Playing || !ReferenceEquals(Current.Game, lockstep.Game) ||
+                Current.ProgramState != ProgramState.Playing))
+                StopLockstep();
+            if (lockstep != null || TestLockstep != null || client == null || lobby == null || lobby.Phase != SetupPhase.Playing ||
+                Current.ProgramState != ProgramState.Playing || LongEventHandler.AnyEventNowOrWaiting) return;
+            MultiplayerSession? session = MultiplayerSession.ForCurrentGame;
+            if (session == null || session.SessionId != lobby.Id.ToString("N")) return;
+            LobbyView room = lobby;
+            lockstep = new LockstepDriver(Current.Game, SessionSeed.FromSessionId(session.SessionId), room.HostId == client.SessionId,
+                (type, payload) => SendBackground(new WireMessage(type, type == MessageType.LockstepCommand ? requestId++ : 0, payload)),
+                key => lobby?.Players.FirstOrDefault(p => p.Key == key)?.Name ?? "?");
+            lockstep.Start();
+            status = "Gleichlauf: Das Spiel startet pausiert. Leertaste oder ▶ lässt die Zeit für alle laufen.";
+            Log.Message("Multiplayer Foundation: lockstep started at tick " + Find.TickManager.TicksGame);
+        }
+
+        private void StopLockstep()
+        {
+            if (lockstep == null) return;
+            Log.Message("Multiplayer Foundation: lockstep stopped after " + lockstep.TicksRun + " ticks and " + lockstep.CommandsRun + " commands");
+            lockstep.Stop();
+            lockstep = null;
+        }
+
+        private string PlayerName(Guid sessionId) => lobby?.Players.FirstOrDefault(p => p.Id == sessionId)?.Name ?? "ein Spieler";
         internal static FoundationMod? Instance { get; private set; }
         private static bool menuPatched;
 
@@ -737,21 +772,27 @@ namespace Multiplayer.Foundation.RimWorld
             if (isHost && Widgets.ButtonText(new Rect(inRect.x + 150f, buttonY, 140f, 30f), "Abbrechen")) ConfirmAbort();
         }
 
-        // SETUP-005: panel in the shared game, for host and guests, until lockstep exists.
+        // SETUP-005 / SYNC-001: panel in the shared game, for host and guests.
         private void DrawGameOverlay(Rect inRect)
         {
             if (lobby == null || client == null) return;
             bool isHost = lobby.HostId == client.SessionId;
             Widgets.Label(new Rect(inRect.x, inRect.y, inRect.width, 26f), "Multiplayer · " + PhaseName(lobby.Phase));
-            string second = gameUpload != null
-                ? "Spielstand wird gesendet: " + (100 * gameUpload.AcknowledgedChunks / Math.Max(1u, gameUpload.ChunkCount)) + " %"
-                : lobby.Phase == SetupPhase.Playing ? "Alle sind gelandet."
-                : "Spiel geladen: " + lobby.Players.Count(p => p.WorldStatus == WorldStatus.Match) + "/" + lobby.Players.Count;
-            Widgets.Label(new Rect(inRect.x, inRect.y + 24f, inRect.width, 24f), second);
-            GUI.color = new Color(1f, 0.85f, 0.45f);
-            Widgets.Label(new Rect(inRect.x, inRect.y + 46f, inRect.width, 24f), "Pausiert bis zum Gleichlauf (SYNC-001)");
-            GUI.color = Color.white;
-            float y = inRect.y + 72f;
+            float y = inRect.y + 24f;
+            LockstepDriver? driver = lockstep;
+            if (driver != null) y = DrawLockstepLines(inRect, y, driver);
+            else
+            {
+                string second = gameUpload != null
+                    ? "Spielstand wird gesendet: " + (100 * gameUpload.AcknowledgedChunks / Math.Max(1u, gameUpload.ChunkCount)) + " %"
+                    : lobby.Phase == SetupPhase.Playing ? "Alle sind gelandet."
+                    : "Spiel geladen: " + lobby.Players.Count(p => p.WorldStatus == WorldStatus.Match) + "/" + lobby.Players.Count;
+                Widgets.Label(new Rect(inRect.x, y, inRect.width, 24f), second);
+                GUI.color = new Color(1f, 0.85f, 0.45f);
+                Widgets.Label(new Rect(inRect.x, y + 22f, inRect.width, 24f), "Pausiert, bis alle das Spiel geladen haben");
+                GUI.color = Color.white;
+                y += 48f;
+            }
             MultiplayerSession? session = MultiplayerSession.ForCurrentGame;
             List<Pawn> colonists = session?.Active == true ? GameFingerprint.Colonists() : new List<Pawn>();
             foreach (PlayerView player in lobby.Players.Take(4))
@@ -766,12 +807,53 @@ namespace Multiplayer.Foundation.RimWorld
                 GUI.color = Color.white;
                 y += 24f;
             }
+            // SYNC-001: a command without game effect; every player sees it run at the same tick.
+            if (driver != null && Widgets.ButtonText(new Rect(inRect.x, inRect.yMax - 64f, 140f, 28f), "Testmarkierung"))
+                driver.SendMarker("Test");
             if (Widgets.ButtonText(new Rect(inRect.x, inRect.yMax - 30f, 140f, 28f), "Chat / Lobby")) OpenWindow();
             if (Widgets.ButtonText(new Rect(inRect.x + 150f, inRect.yMax - 30f, 160f, 28f), isHost ? "Sitzung beenden" : "Sitzung verlassen"))
             {
                 if (isHost) ConfirmAbort();
                 else ConfirmLeave();
             }
+        }
+
+        // SYNC-001: tick and speed, who holds the game back, the last hash check and the last marker.
+        private float DrawLockstepLines(Rect inRect, float y, LockstepDriver driver)
+        {
+            Color yellow = new Color(1f, 0.85f, 0.45f), red = new Color(1f, 0.45f, 0.45f), green = new Color(0.6f, 1f, 0.6f);
+            void Line(string text, Color color)
+            {
+                GUI.color = color;
+                Widgets.Label(new Rect(inRect.x, y, inRect.width, 22f), text.Truncate(inRect.width));
+                GUI.color = Color.white;
+                y += 21f;
+            }
+            LockstepClientState state = driver.State;
+            int tick = Find.TickManager.TicksGame;
+            if (!state.Started) Line("Gleichlauf: warte auf alle Spieler …", yellow);
+            else Line("Tick " + tick + " · " + (driver.Speed == SessionSpeed.Paused ? "pausiert – Leertaste startet für alle"
+                : driver.Speed == SessionSpeed.Normal ? "Normal (1×)" : driver.Speed == SessionSpeed.Fast ? "Schnell (3×)" : "Superschnell (6×)"),
+                Color.white);
+            if (state.Started)
+            {
+                if (state.WaitingFor != Guid.Empty)
+                    Line("Warte auf " + PlayerName(state.WaitingFor) + " (" + Math.Max(0, tick - state.WaitingTick) + " Ticks zurück)", yellow);
+                else if (state.Horizon - tick > 120) Line("Hole auf: " + (state.Horizon - tick) + " Ticks", yellow);
+                else Line("Alle im Takt", Color.white);
+            }
+            if (driver.DesyncTick != null) Line("Abweichung bei Tick " + driver.DesyncTick + " (siehe Log)", red);
+            else if (driver.MissedCommands > 0) Line("Befehl zu spät angekommen – Abweichung", red);
+            else if (state.CheckedTick >= 0) Line("Prüfsummen gleich bis Tick " + state.CheckedTick, green);
+            else Line("Prüfsummen: noch kein Vergleich", Color.white);
+            if (driver.LastMarker.Length > 0) Line(driver.LastMarker, Color.white);
+            Text.Font = GameFont.Tiny;
+            GUI.color = yellow;
+            Widgets.Label(new Rect(inRect.x, y, inRect.width, 32f),
+                "Befehle wie Bauen, Zeichnen oder Einziehen werden noch nicht geteilt (SYNC-002): jede solche Aktion führt zur Abweichung.");
+            GUI.color = Color.white;
+            Text.Font = GameFont.Small;
+            return y + 34f;
         }
 
         // SETUP-004, host: claim the pawn shown on the vanilla page, mark yourself done, see who owns what.
@@ -967,7 +1049,7 @@ namespace Multiplayer.Foundation.RimWorld
                 if (Current.ProgramState == ProgramState.Entry) OpenWindow();
             }
             if (now == SetupPhase.Playing && before != SetupPhase.Playing)
-                status = "Alle sind gelandet. Das Spiel bleibt pausiert, bis der Gleichlauf fertig ist (SYNC-001).";
+                status = "Alle sind gelandet. Der Gleichlauf startet, sobald jedes Spiel bereit ist; die Zeit beginnt pausiert.";
             if (guest && now == SetupPhase.Characters && before != SetupPhase.Characters)
             {
                 Find.WindowStack.TryRemove(typeof(FoundationWindow), false);
@@ -1298,7 +1380,7 @@ namespace Multiplayer.Foundation.RimWorld
                 case SetupPhase.Ideology: return "Ideoligion";
                 case SetupPhase.Characters: return "Figuren";
                 case SetupPhase.Generating: return "Spiel wird erzeugt";
-                case SetupPhase.Playing: return "Gelandet (pausiert)";
+                case SetupPhase.Playing: return "Gemeinsames Spiel";
                 default: return "Lobby";
             }
         }
@@ -1561,6 +1643,7 @@ namespace Multiplayer.Foundation.RimWorld
             UpdateHostSetup();
             UpdateGuestGame();
             UpdateSiteFlags();
+            UpdateLockstep();
             if (client == null) return;
             try
             {
@@ -1629,10 +1712,25 @@ namespace Multiplayer.Foundation.RimWorld
                         case MessageType.TransferAck:
                         case MessageType.TransferAbort:
                             HandleTransfer(message); break;
+                        // SYNC-001: the server starts lockstep only after this game's driver reported its tick.
+                        case MessageType.ScheduledCommand:
+                            ScheduledCommand scheduled = ScheduledCommand.Read(message.Payload);
+                            if (lockstep != null) lockstep.State.OnScheduled(scheduled);
+                            else Log.Warning("Multiplayer Foundation: lockstep command #" + scheduled.Seq + " without a running shared game");
+                            break;
+                        case MessageType.TickHorizon:
+                            TickHorizon horizon = TickHorizon.Read(message.Payload);
+                            lockstep?.State.OnHorizon(horizon);
+                            break;
+                        case MessageType.DesyncDetected:
+                            DesyncDetected desync = DesyncDetected.Read(message.Payload);
+                            lockstep?.OnDesync(desync, string.Join(", ", desync.Players.Select(PlayerName)));
+                            break;
                         case MessageType.Error:
                             var reader = new PayloadReader(message.Payload);
                             byte code = reader.ReadByte(); string reason = reader.ReadString(); reader.EnsureComplete();
                             advancePending = false;
+                            if (lockstep != null) Messages.Message("Server: " + reason, MessageTypeDefOf.RejectInput, false);
                             if (startRequested)
                             {
                                 startRequested = false;
@@ -1646,11 +1744,13 @@ namespace Multiplayer.Foundation.RimWorld
             catch (ProtocolException error)
             {
                 string failure = "Ungültige Serverdaten: " + error.Message;
-                Disconnect(); status = failure; return;
+                Disconnect(); status = failure; StopLockstep(); return;
             }
+            UpdateLockstep();
             if (!client.IsConnected)
             {
                 status = "Verbindung unterbrochen: " + (client.LastError ?? "Unbekannt");
+                StopLockstep();
                 client.Dispose(); client = null; lobby = null; chatMessages.Clear();
                 ResetTransfers();
                 if (hosted != null)

@@ -380,7 +380,12 @@ namespace Multiplayer.Foundation.RimWorld
                         if (UnityEngine.Time.realtimeSinceStartup - gameStageAt < 2f) return;
                         Check("ticksHeldAfterLoad", Find.TickManager.TicksGame == pausedTick && Find.TickManager.Paused);
                         gameResults.Add(ProbeText());
-                        Finish();
+                        // SYNC-001: lockstep on the loaded copy, then the determinism runs on the same save
+                        LockstepSelfTest.Begin(GuestSave, gameResults);
+                        gameStage = 11;
+                        return;
+                    case 11:
+                        if (LockstepSelfTest.Step()) Finish();
                         return;
                 }
             }

@@ -10,6 +10,7 @@
     <PackageReference Include="Lib.Harmony" Version="2.4.3" />
     <ProjectReference Include="../Multiplayer.Foundation.Network/Multiplayer.Foundation.Network.csproj" />
     <ProjectReference Include="../Multiplayer.Foundation.Hosting/Multiplayer.Foundation.Hosting.csproj" />
+    <ProjectReference Include="../Multiplayer.Foundation.Session/Multiplayer.Foundation.Session.csproj" />
     <Reference Include="Assembly-CSharp"><HintPath>$(RimWorldManaged)/Assembly-CSharp.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.CoreModule"><HintPath>$(RimWorldManaged)/UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.IMGUIModule"><HintPath>$(RimWorldManaged)/UnityEngine.IMGUIModule.dll</HintPath><Private>false</Private></Reference>

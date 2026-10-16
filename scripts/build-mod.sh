@@ -12,7 +12,7 @@ fi
 output_dir="$project_root/dist/RimWorldMultiplayerFoundation"
 mkdir -p "$output_dir/About" "$output_dir/Assemblies" "$output_dir/THIRD_PARTY_LICENSES"
 cp "$project_root/mod/About/About.xml" "$output_dir/About/About.xml"
-for assembly in Multiplayer.Foundation.Protocol Multiplayer.Foundation.Network Multiplayer.Foundation.Lobby Multiplayer.Foundation.Hosting Multiplayer.Foundation.RimWorld; do
+for assembly in Multiplayer.Foundation.Protocol Multiplayer.Foundation.Network Multiplayer.Foundation.Lobby Multiplayer.Foundation.Session Multiplayer.Foundation.Hosting Multiplayer.Foundation.RimWorld; do
   source_file="$project_root/src/$assembly/bin/Release/$(if [[ "$assembly" == Multiplayer.Foundation.RimWorld || "$assembly" == Multiplayer.Foundation.Hosting ]]; then echo netstandard2.1; else echo netstandard2.0; fi)/$assembly.dll"
   cp "$source_file" "$output_dir/Assemblies/$assembly.dll"
 done
