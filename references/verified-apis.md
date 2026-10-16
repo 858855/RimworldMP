@@ -97,7 +97,7 @@ Wichtiger Unterschied: `Multiplayer.Client.Multiplayer` ist eine interne Clientk
 | `Verse.Profile.MemoryUtility.ClearAllMapsAndWorld()`; `RimWorld.ScenarioLister.AllScenarios()`; `ScenarioDefOf.Crashlanded`; `Scenario.CopyForEditing()`, `.PreConfigure()`; `FactionGenerator.ConfigurableFactions`; `FactionDef.startingCountAtWorldCreation`; `Storyteller(StorytellerDef, DifficultyDef)`; `StorytellerDefOf.Cassandra`; `DifficultyDefOf.Rough` | public | BESTÄTIGT (Metadaten), im Selbsttest genutzt |
 | `Verse.Steam.SteamManager.Initialized` | public static | BESTÄTIGT (Metadaten); Steam-Pumpe pausiert danach beim Beenden |
 
-**VER-001, Laufzeitteil:** Eine Welt ohne Karte lässt sich speichern und im Hauptmenü wieder laden (Selbsttest, 5/30/50 % Abdeckung, PASS). Größen: 50 % Welt 1,9 MB gzip. Anzeige auf der Startortseite beim Gast: mit `SETUP-003`. Threads im Tickpfad: weiter offen.
+**VER-001, Laufzeitteil:** Eine Welt ohne Karte lässt sich speichern und im Hauptmenü wieder laden (Selbsttest, 5/30/50 % Abdeckung, PASS). Größen: 50 % Welt 1,9 MB gzip. Anzeige auf der Startortseite beim Gast: mit `SETUP-003`. Statischer Thread-/Job-Audit der lokalen Linux-1.6-Assembly: `docs/verification/2026-10-16-tick-thread-audit.md`; Laufzeit-Threadtrace bleibt offen.
 
 ## SETUP-003: Weltkarte und Fähnchen (2026-10-15, gleiche Quelle)
 
@@ -109,7 +109,7 @@ Wichtiger Unterschied: `Multiplayer.Client.Multiplayer` ist eine interne Clientk
 | `RimWorld.Planet.PlanetTile(int tileId, int layerId)`, `PlanetTile.Invalid`; `TileFinder.IsValidTileForNewSettlement(PlanetTile, StringBuilder, bool)` | public | BESTÄTIGT (Metadaten), im Selbsttest genutzt |
 | `Verse.Widgets.DrawBoxSolid(Rect, Color)`; `Verse.Text.Font`, `.Anchor`; `UnityEngine.ScreenCapture.CaptureScreenshot(string)` (`UnityEngine.ScreenCaptureModule`, nur Kompilierreferenz) | public | BESTÄTIGT (Metadaten/Build) |
 
-**VER-001, Laufzeitteil:** Die Startortseite zeigt beim Gast die übertragene Welt (Selbsttest PASS). Offen bleibt nur: Threads im Tickpfad.
+**VER-001, Laufzeitteil:** Die Startortseite zeigt beim Gast die übertragene Welt (Selbsttest PASS). Tickpfad-Scheduler sind statisch belegt; vollständiger Laufzeit-Threadtrace und deterministischer Zwei-Instanzen-Test bleiben offen (siehe Audit oben).
 
 ## SETUP-004: Figurenwahl (2026-10-15, gleiche Quelle)
 

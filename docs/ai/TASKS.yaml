@@ -577,7 +577,8 @@ tasks:
   - references/verified-apis.md
   - docs/verification/2026-10-15-mod-check-setup-ui.md
   - docs/verification/2026-10-15-world-transfer.md
-  blocker: 'Metadatenteil erledigt; Laufzeit: Welt ohne Karte speichern/laden und Anzeige auf der Startortseite im Hauptmenü nachgewiesen, Größen gemessen (Selbsttest, ADR 0020/0021). Offen: Threads im Tickpfad.'
+  - docs/verification/2026-10-16-tick-thread-audit.md
+  blocker: 'Metadaten und Welt-Selbsttest belegt; direkte Thread-/Job-Aufrufketten im 1.6-Tickpfad statisch erfasst. Virtuelle Tick-Methoden, native Jobs, Mods und Laufzeit-Threadtrace bleiben offen; kein Determinismusnachweis.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: ID-001
   title: 'Persistente Spieleridentität (PlayerKey)'
