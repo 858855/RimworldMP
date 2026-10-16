@@ -34,5 +34,5 @@
      - [A] Während der Abstimmung ist das Spiel für alle pausiert (gemeinsame Pause, Plan §7.6).
      - [A] Die Abstimmung endet, wenn alle verbundenen Spieler abgestimmt haben; die Mehrheit gewinnt, bei Gleichstand der Host.
      - [A] Getrennte Spieler zählen nicht mit.
-     - **Offen:** Was geschieht, wenn ein verbundener Spieler nicht abstimmt? Ohne Frist würde das Spiel bis dahin stehen. Möglich wäre etwa, dass der Host die Abstimmung beenden kann.
+     - **Host beendet vorzeitig (Benutzer, 2026-10-16):** Stimmt ein verbundener Spieler nicht ab, etwa weil er nicht am Rechner ist, hat der Host Vorrecht und kann die Abstimmung vorzeitig beenden. Wer bis dahin nicht abgestimmt hat, zählt als **„enthalten“**. Danach gilt die Mehrheit der abgegebenen Stimmen, bei Gleichstand der Host.
 - **Rollback:** ADR zurückziehen; ohne Moduswahl gilt Coop mit Host-Entscheid.
