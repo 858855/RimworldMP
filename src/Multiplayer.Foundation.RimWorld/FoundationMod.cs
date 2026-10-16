@@ -1470,6 +1470,9 @@ namespace Multiplayer.Foundation.RimWorld
                 y += 24f;
             }
             if (Widgets.ButtonText(new Rect(inRect.x, inRect.yMax - 30f, 140f, 28f), "Chat / Lobby")) OpenWindow();
+            if (!isHost && lobby.Phase == SetupPhase.Playing &&
+                Widgets.ButtonText(new Rect(inRect.x, inRect.yMax - 64f, 140f, 28f), "Resync starten"))
+                HandleUnexpectedDisconnect(client, "Manueller Resync");
             if (isHost && lobby.Phase == SetupPhase.Playing &&
                 Widgets.ButtonText(new Rect(inRect.x + 150f, inRect.yMax - 64f, 160f, 28f), "Gemeinsam speichern"))
                 RequestControl(ScheduledKind.Save, 0);

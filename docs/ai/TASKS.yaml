@@ -1750,6 +1750,7 @@ tasks:
   acceptance:
   - 'Ein unterbrochenes Gastspiel rechnet bis zum erfolgreichen Snapshot-Rejoin keinen weiteren Tick'
   - 'IP- und Steam-Gast können dieselbe Lobby mit derselben Identität erneut beitreten; kein alter Tick-Treiber läuft davor an'
+  - 'Ein Gast kann über die Spieloberfläche einen Snapshot-Resync manuell anstoßen'
   - 'RTT und ausgefallene Ping-Antworten werden ehrlich beschriftet angezeigt'
   - 'Bei schlechter Qualität begrenzt die Spielseite das lokale Tempo ohne Änderung der autoritativen Befehlsfolge'
   - 'Mod-Build und Zwei-Client-Spieltest mit Unterbrechung, Resync und Tempoänderung dokumentiert'
