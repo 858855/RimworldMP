@@ -57,6 +57,11 @@ namespace Multiplayer.Foundation.Protocol
         // DESYNC-003 (ADR 0033)
         DesyncResolved = 73,
         ResyncGaveUp = 74,
-        SnapshotLoaded = 75
+        SnapshotLoaded = 75,
+        // VOTE-001 (ADR 0034); last codes of the Claude lane
+        VoteOpen = 76,
+        VoteCast = 77,
+        VoteClose = 78,
+        VoteState = 79
     }
 }

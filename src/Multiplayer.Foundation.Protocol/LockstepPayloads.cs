@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Multiplayer.Foundation.Protocol
 {
@@ -9,7 +10,25 @@ namespace Multiplayer.Foundation.Protocol
         Pause = 1,
         Speed = 2,
         /// <summary>Save here (ADR 0032). Empty data: coordinated save. n × 16 bytes: snapshot for these sessions (join or resync, ADR 0033).</summary>
-        Save = 3
+        Save = 3,
+        /// <summary>Outcome of a Coop democracy vote (ADR 0034); data: vote id u32, option u8, event key.</summary>
+        VoteResult = 4
+    }
+
+    /// <summary>A Coop democracy vote as everyone sees it (ADR 0034).</summary>
+    public sealed class VoteView
+    {
+        public const byte NoResult = 255;
+        public VoteView(uint id, byte[] eventKey, byte options, bool open, byte result, IReadOnlyList<(Guid Session, byte Option)> choices)
+        { Id = id; EventKey = eventKey; Options = options; Open = open; Result = result; Choices = choices; }
+        public uint Id { get; }
+        /// <summary>Opaque key the games use to find the event that needs the choice.</summary>
+        public byte[] EventKey { get; }
+        public byte Options { get; }
+        public bool Open { get; }
+        /// <summary>Chosen option once closed, else <see cref="NoResult"/>. Players without a choice abstained.</summary>
+        public byte Result { get; }
+        public IReadOnlyList<(Guid Session, byte Option)> Choices { get; }
     }
 
     /// <summary>Where a joining game starts (ADR 0032): the host's save after boundary/sequence.</summary>
@@ -142,6 +161,62 @@ namespace Multiplayer.Foundation.Protocol
             var targets = new List<Guid>(data.Length / 16);
             for (int i = 0; i < data.Length; i += 16) { byte[] id = new byte[16]; Buffer.BlockCopy(data, i, id, 0, 16); targets.Add(new Guid(id)); }
             return targets;
+        }
+
+        public const int MaximumEventKeyBytes = 256;
+        public const byte MinimumVoteOptions = 2, MaximumVoteOptions = 10;
+
+        public static byte[] VoteOpen(byte options, byte[] eventKey)
+        {
+            ValidateVote(options, eventKey);
+            var writer = new PayloadWriter(); writer.WriteByte(options); writer.WriteBytes(eventKey, MaximumEventKeyBytes);
+            return writer.ToArray();
+        }
+        public static (byte Options, byte[] EventKey) ReadVoteOpen(byte[] payload)
+        {
+            var reader = new PayloadReader(payload); byte options = reader.ReadByte(); byte[] key = reader.ReadBytes(MaximumEventKeyBytes);
+            reader.EnsureComplete(); ValidateVote(options, key);
+            return (options, key);
+        }
+        public static byte[] VoteCast(uint voteId, byte option)
+        { var writer = new PayloadWriter(); writer.WriteUInt32(voteId); writer.WriteByte(option); return writer.ToArray(); }
+        public static (uint VoteId, byte Option) ReadVoteCast(byte[] payload)
+        { var reader = new PayloadReader(payload); uint id = reader.ReadUInt32(); byte option = reader.ReadByte(); reader.EnsureComplete(); return (id, option); }
+        public static byte[] VoteClose(uint voteId) { var writer = new PayloadWriter(); writer.WriteUInt32(voteId); return writer.ToArray(); }
+        public static uint ReadVoteClose(byte[] payload) { var reader = new PayloadReader(payload); uint id = reader.ReadUInt32(); reader.EnsureComplete(); return id; }
+
+        public static byte[] VoteState(VoteView vote)
+        {
+            if (vote.Choices.Count > 64) throw new ProtocolException("Too many voters.");
+            var writer = new PayloadWriter();
+            writer.WriteUInt32(vote.Id); writer.WriteBytes(vote.EventKey, MaximumEventKeyBytes); writer.WriteByte(vote.Options);
+            writer.WriteBool(vote.Open); writer.WriteByte(vote.Result); writer.WriteByte((byte)vote.Choices.Count);
+            foreach (var (session, option) in vote.Choices) { writer.WriteGuid(session); writer.WriteByte(option); }
+            return writer.ToArray();
+        }
+        public static VoteView ReadVoteState(byte[] payload)
+        {
+            var reader = new PayloadReader(payload);
+            uint id = reader.ReadUInt32(); byte[] key = reader.ReadBytes(MaximumEventKeyBytes); byte options = reader.ReadByte();
+            bool open = reader.ReadBool(); byte result = reader.ReadByte(); byte count = reader.ReadByte();
+            if (count > 64) throw new ProtocolException("Too many voters.");
+            var choices = new List<(Guid, byte)>(count);
+            for (int i = 0; i < count; i++) choices.Add((reader.ReadGuid(), reader.ReadByte()));
+            reader.EnsureComplete(); ValidateVote(options, key);
+            if (open ? result != VoteView.NoResult : result >= options) throw new ProtocolException("Invalid vote result.");
+            if (choices.Any(c => c.Item2 >= options)) throw new ProtocolException("Invalid vote option.");
+            return new VoteView(id, key, options, open, result, choices);
+        }
+
+        public static byte[] VoteResultData(uint voteId, byte option, byte[] eventKey)
+        { var writer = new PayloadWriter(); writer.WriteUInt32(voteId); writer.WriteByte(option); writer.WriteBytes(eventKey, MaximumEventKeyBytes); return writer.ToArray(); }
+        public static (uint VoteId, byte Option, byte[] EventKey) ReadVoteResultData(byte[] data)
+        { var reader = new PayloadReader(data); uint id = reader.ReadUInt32(); byte option = reader.ReadByte(); byte[] key = reader.ReadBytes(MaximumEventKeyBytes); reader.EnsureComplete(); return (id, option, key); }
+
+        private static void ValidateVote(byte options, byte[] eventKey)
+        {
+            if (options < MinimumVoteOptions || options > MaximumVoteOptions) throw new ProtocolException("A vote needs 2 to 10 options.");
+            if (eventKey == null || eventKey.Length == 0 || eventKey.Length > MaximumEventKeyBytes) throw new ProtocolException("Invalid event key.");
         }
 
         public static byte[] Tick(int tick) { var writer = new PayloadWriter(); WriteTick(writer, tick); return writer.ToArray(); }

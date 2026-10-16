@@ -41,11 +41,18 @@ namespace Multiplayer.Foundation.Session
         private long clockBaseMs;
         private int lastComparedHashTick = -1;
         private int nextAutosave;
-        private bool pausedForResync;
+        // Paused by the coordinator itself (desync repair, vote); it resumes only when every such reason is done (ADR 0034).
+        private bool systemPaused;
         private int resyncTick = -1;
+        private readonly SortedDictionary<uint, Vote> votes = new SortedDictionary<uint, Vote>();
+        private uint nextVoteId = 1;
+        private readonly CoopDecisions decisions;
 
-        public LockstepSession(Guid host, IEnumerable<(Guid Session, PlayerKey Key)> members, long nowMs, LockstepOptions? options = null)
+        /// <param name="decisions">Coop decision rule from the lobby mode (ADR 0031); votes exist only with Democracy.</param>
+        public LockstepSession(Guid host, IEnumerable<(Guid Session, PlayerKey Key)> members, long nowMs, LockstepOptions? options = null,
+            CoopDecisions decisions = CoopDecisions.Host)
         {
+            this.decisions = decisions;
             this.options = options ?? new LockstepOptions();
             if (this.options.TicksPerSecond.Length != LockstepPayloads.MaximumSpeed) throw new ArgumentException("Need one tick rate per speed.");
             foreach (var (session, key) in members) participants[session] = new Participant(session, key, this.options, nowMs);
@@ -88,6 +95,12 @@ namespace Multiplayer.Foundation.Session
             if (kind == ScheduledKind.Save && issuer != Host) throw new LockstepRuleException(3, "Only the host saves.");
             if (!who.Bucket.TryTake(nowMs)) throw new LockstepRuleException(7, "Too many commands.");
             if (kind == ScheduledKind.Save) return Schedule(issuer, who.Key, ScheduledKind.Save, Array.Empty<byte>());
+            if (kind == ScheduledKind.Pause)
+            {
+                // Resuming would undo the shared pause of a running vote; pausing is always allowed (ADR 0034).
+                if (value == 0 && votes.Count > 0) throw new LockstepRuleException(6, "A vote is running.");
+                systemPaused = false;   // a player's own pause or resume takes over from the coordinator's
+            }
             var outgoing = new List<(Guid, WireMessage)>(Schedule(issuer, who.Key, kind, new[] { value }));
             Apply(kind, value, nowMs);
             outgoing.AddRange(BroadcastHorizon());
@@ -119,19 +132,43 @@ namespace Multiplayer.Foundation.Session
         {
             if (who.Active || !who.Loaded || who.Tick < participants.Values.Where(p => p.Active).Min(p => p.Tick))
                 return Array.Empty<(Guid, WireMessage)>();
-            who.Active = true;
+            who.Active = true; who.Resyncing = false;
             var synced = new WireMessage(MessageType.PlayerSynced, 0, LobbyPayloads.GuidValue(who.Session));
             var outgoing = new List<(Guid, WireMessage)>(participants.Keys.Select(to => (to, synced)));
-            if (pausedForResync && participants.Values.All(p => p.Active))
-            {
-                // Every repaired game is back: resume where the coordinator paused (plan §7.9 step 4).
-                pausedForResync = false;
-                outgoing.AddRange(Schedule(Guid.Empty, null, ScheduledKind.Pause, new byte[] { 0 }));
-                Apply(ScheduledKind.Pause, 0, nowMs);
-                var resolved = new WireMessage(MessageType.DesyncResolved, 0, LockstepPayloads.Tick(resyncTick));
-                outgoing.AddRange(participants.Keys.Select(to => (to, resolved)));
-                outgoing.AddRange(BroadcastHorizon());
-            }
+            outgoing.AddRange(FinishResyncIfDone());
+            outgoing.AddRange(TryResume(nowMs));
+            return outgoing;
+        }
+
+        // Every repaired game is back (plan §7.9 step 5), whoever paused. A catching-up joiner does not hold this up.
+        private IReadOnlyList<(Guid To, WireMessage Message)> FinishResyncIfDone()
+        {
+            if (resyncTick < 0 || participants.Values.Any(p => p.Resyncing)) return Array.Empty<(Guid, WireMessage)>();
+            var resolved = new WireMessage(MessageType.DesyncResolved, 0, LockstepPayloads.Tick(resyncTick));
+            resyncTick = -1;
+            return participants.Keys.Select(to => (to, resolved)).ToList();
+        }
+
+        private IReadOnlyList<(Guid To, WireMessage Message)> PauseBySystem()
+        {
+            if (Paused) return Array.Empty<(Guid, WireMessage)>();
+            var outgoing = new List<(Guid, WireMessage)>(Schedule(Guid.Empty, null, ScheduledKind.Pause, new byte[] { 1 }));
+            Paused = true; clockBaseTick = Horizon; systemPaused = true;
+            outgoing.AddRange(BroadcastHorizon());
+            return outgoing;
+        }
+
+        // Resume at one shared point once nothing the coordinator paused for is left (plan §7.9 step 4, ADR 0034).
+        private IReadOnlyList<(Guid To, WireMessage Message)> TryResume(long nowMs)
+        {
+            // Without the real time (nowMs < 0) the clock cannot be rebased; resuming then would count the whole pause as
+            // elapsed and make every game catch up in one burst. The next call with a time resumes instead.
+            if (nowMs < 0 || !systemPaused || !Paused || votes.Count > 0 || participants.Values.Any(p => p.Resyncing))
+                return Array.Empty<(Guid, WireMessage)>();
+            systemPaused = false;
+            var outgoing = new List<(Guid, WireMessage)>(Schedule(Guid.Empty, null, ScheduledKind.Pause, new byte[] { 0 }));
+            Apply(ScheduledKind.Pause, 0, nowMs);
+            outgoing.AddRange(BroadcastHorizon());
             return outgoing;
         }
 
@@ -191,12 +228,112 @@ namespace Multiplayer.Foundation.Session
             return outgoing;
         }
 
-        public IReadOnlyList<(Guid To, WireMessage Message)> RemoveParticipant(Guid session)
+        public IReadOnlyList<(Guid To, WireMessage Message)> RemoveParticipant(Guid session, long nowMs = -1)
         {
             if (!participants.Remove(session)) return Array.Empty<(Guid, WireMessage)>();
             if (session == Host || participants.Count == 0) { Ended = true; return Array.Empty<(Guid, WireMessage)>(); }
             foreach (var reports in pendingHashes.Values) reports.Remove(session);
-            return CompareReadyHashes();
+            var outgoing = new List<(Guid, WireMessage)>(CompareReadyHashes());
+            // Disconnected players do not count in votes (ADR 0031); a vote may now be complete.
+            foreach (Vote vote in votes.Values.ToList())
+            {
+                vote.Choices.Remove(session);
+                outgoing.AddRange(CloseIfEveryoneVoted(vote, nowMs));
+            }
+            outgoing.AddRange(FinishResyncIfDone());
+            outgoing.AddRange(TryResume(nowMs));
+            return outgoing;
+        }
+
+        /// <summary>The host's game opens a vote for an event that needs a choice (ADR 0034). Pauses for everyone.</summary>
+        public IReadOnlyList<(Guid To, WireMessage Message)> OpenVote(Guid issuer, byte options, byte[] eventKey, long nowMs)
+        {
+            Require(issuer);
+            if (decisions != CoopDecisions.Democracy) throw new LockstepRuleException(6, "Votes are only used in the Coop democracy mode.");
+            if (issuer != Host) throw new LockstepRuleException(3, "Only the host opens a vote.");
+            LockstepPayloads.VoteOpen(options, eventKey);
+            var vote = new Vote(nextVoteId++, (byte[])eventKey.Clone(), options);
+            votes[vote.Id] = vote;
+            var outgoing = new List<(Guid, WireMessage)>(PauseBySystem());
+            outgoing.AddRange(BroadcastVote(vote, open: true, VoteView.NoResult));
+            return outgoing;
+        }
+
+        /// <summary>An active player picks or changes an option. The vote ends once every active player has chosen.</summary>
+        public IReadOnlyList<(Guid To, WireMessage Message)> CastVote(Guid voter, uint voteId, byte option, long nowMs)
+        {
+            Participant who = Require(voter);
+            Vote vote = RequireVote(voteId);
+            if (!who.Active) throw new LockstepRuleException(6, "Only active players vote.");
+            if (option >= vote.Options) throw new LockstepRuleException(1, "No such option.");
+            vote.Choices[voter] = option;
+            var outgoing = new List<(Guid, WireMessage)>(BroadcastVote(vote, open: true, VoteView.NoResult));
+            outgoing.AddRange(CloseIfEveryoneVoted(vote, nowMs));
+            return outgoing;
+        }
+
+        /// <summary>The host ends a vote early; players without a choice abstain (ADR 0031).</summary>
+        public IReadOnlyList<(Guid To, WireMessage Message)> CloseVote(Guid issuer, uint voteId, long nowMs)
+        {
+            Require(issuer);
+            if (issuer != Host) throw new LockstepRuleException(3, "Only the host ends a vote.");
+            Vote vote = RequireVote(voteId);
+            byte? result = Decide(vote) ?? throw new LockstepRuleException(6, "Tie: the host has to vote first.");
+            return Close(vote, result.Value, nowMs);
+        }
+
+        private IReadOnlyList<(Guid To, WireMessage Message)> CloseIfEveryoneVoted(Vote vote, long nowMs)
+        {
+            if (!votes.ContainsKey(vote.Id) || participants.Values.Where(p => p.Active).Any(p => !vote.Choices.ContainsKey(p.Session)))
+                return Array.Empty<(Guid, WireMessage)>();
+            byte? result = Decide(vote);
+            // A tie the host's choice does not break stays open until someone changes their vote or the host does.
+            return result == null ? Array.Empty<(Guid, WireMessage)>() : Close(vote, result.Value, nowMs);
+        }
+
+        // Majority of the cast votes; a tie goes to the host's option if it is among the tied ones.
+        private byte? Decide(Vote vote)
+        {
+            var counts = new int[vote.Options];
+            foreach (byte choice in vote.Choices.Values) counts[choice]++;
+            int best = counts.Max();
+            List<byte> tied = Enumerable.Range(0, vote.Options).Where(o => counts[o] == best).Select(o => (byte)o).ToList();
+            if (tied.Count == 1) return tied[0];
+            return vote.Choices.TryGetValue(Host, out byte hostChoice) && tied.Contains(hostChoice) ? hostChoice : (byte?)null;
+        }
+
+        private IReadOnlyList<(Guid To, WireMessage Message)> Close(Vote vote, byte result, long nowMs)
+        {
+            votes.Remove(vote.Id);
+            // Every game applies the outcome at the same point.
+            var outgoing = new List<(Guid, WireMessage)>(Schedule(Guid.Empty, null, ScheduledKind.VoteResult,
+                LockstepPayloads.VoteResultData(vote.Id, result, vote.EventKey)));
+            outgoing.AddRange(BroadcastVote(vote, open: false, result));
+            outgoing.AddRange(TryResume(nowMs));
+            return outgoing;
+        }
+
+        private IReadOnlyList<(Guid To, WireMessage Message)> BroadcastVote(Vote vote, bool open, byte result)
+        {
+            var view = new VoteView(vote.Id, vote.EventKey, vote.Options, open, result,
+                vote.Choices.OrderBy(c => c.Key).Select(c => (c.Key, c.Value)).ToList());
+            var message = new WireMessage(MessageType.VoteState, 0, LockstepPayloads.VoteState(view));
+            return participants.Keys.Select(to => (to, message)).ToList();
+        }
+
+        private Vote RequireVote(uint voteId)
+        {
+            if (!votes.TryGetValue(voteId, out Vote? vote)) throw new LockstepRuleException(4, "No such vote.");
+            return vote;
+        }
+
+        private sealed class Vote
+        {
+            public Vote(uint id, byte[] eventKey, byte options) { Id = id; EventKey = eventKey; Options = options; }
+            public uint Id { get; }
+            public byte[] EventKey { get; }
+            public byte Options { get; }
+            public Dictionary<Guid, byte> Choices { get; } = new Dictionary<Guid, byte>();
         }
 
         private IReadOnlyList<(Guid To, WireMessage Message)> Schedule(Guid issuer, PlayerKey? key, ScheduledKind kind, byte[] data)
@@ -234,12 +371,7 @@ namespace Multiplayer.Foundation.Session
                 // Absolutely in sync means never run on silently: tell everyone and stop time at one shared point.
                 var alarm = new WireMessage(MessageType.DesyncDetected, 0, LockstepPayloads.Desync(tick, differing));
                 outgoing.AddRange(participants.Keys.Select(to => (to, alarm)));
-                if (!Paused)
-                {
-                    outgoing.AddRange(Schedule(Guid.Empty, null, ScheduledKind.Pause, new byte[] { 1 }));
-                    Paused = true; clockBaseTick = Horizon; pausedForResync = true;
-                    outgoing.AddRange(BroadcastHorizon());
-                }
+                outgoing.AddRange(PauseBySystem());
                 outgoing.AddRange(Resync(tick, differing));
             }
             return outgoing;
@@ -261,7 +393,7 @@ namespace Multiplayer.Foundation.Session
             if (gaveUp.Count > 0)
             {
                 // Stays paused; the host decides, e.g. by removing the player.
-                pausedForResync = false;
+                systemPaused = false;
                 var message = new WireMessage(MessageType.ResyncGaveUp, 0, LockstepPayloads.Desync(tick, gaveUp));
                 outgoing.AddRange(participants.Keys.Select(to => (to, message)));
             }
@@ -273,7 +405,7 @@ namespace Multiplayer.Foundation.Session
             foreach (Participant p in targets)
             {
                 p.ResyncsInARow++;
-                p.Active = false; p.Loaded = false; p.Tick = Horizon; p.ResyncFrom = Horizon;
+                p.Active = false; p.Loaded = false; p.Resyncing = true; p.Tick = Horizon; p.ResyncFrom = Horizon;
                 foreach (var reports in pendingHashes.Values) reports.Remove(p.Session);
                 outgoing.Add((p.Session, new WireMessage(MessageType.JoinSnapshot, 0, LockstepPayloads.Join(snapshot))));
             }
@@ -308,6 +440,8 @@ namespace Multiplayer.Foundation.Session
             /// <summary>Hash reports at or before this tick come from the state before a resync and are dropped.</summary>
             public int? ResyncFrom { get; set; }
             public int ResyncsInARow { get; set; }
+            /// <summary>Reloading after a desync; until done the coordinator does not resume (ADR 0033).</summary>
+            public bool Resyncing { get; set; }
             public TokenBucket Bucket { get; }
         }
 

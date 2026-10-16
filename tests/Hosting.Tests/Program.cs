@@ -564,6 +564,53 @@ await using (var repairHost = await ListenHost.StartAsync("127.0.0.1", 0, "Host"
 }
 Console.WriteLine("PASS: desync repair over the network: snapshot ordered for the differing guest, guest reloads and confirms, time resumes for both");
 
+// VOTE-001 (ADR 0034) end to end in a Coop democracy lobby: the host's game opens a vote, the Steam guest cannot resume
+// during it, both vote, and both games get the same result at the same point.
+PlayerKey vHostKey = PlayerKey.Steam(76561198000000120UL), vGuestKey = PlayerKey.Steam(76561198000000121UL);
+await using (var voteHost = await ListenHost.StartAsync("127.0.0.1", 0, "Host", "Vote Room", 4, vHostKey, mode: LobbyMode.CoopDemocracy))
+{
+    LobbyView voteRoom = LobbyPayloads.ReadState((await ReceiveAsync(voteHost.Client, MessageType.LobbyStateUpdate)).Payload);
+    using var voteLink = new SteamLikeLink();
+    Assert(voteHost.AttachConnection(NetworkConnection.FromDuplexStream(voteLink.A), vGuestKey), "vote guest attached");
+    using LobbyClient vGuest = await LobbyClient.ConnectOverStreamAsync(voteLink.B, "Guest", TimeSpan.FromSeconds(4), CancellationToken.None, vGuestKey);
+    await StateAsync(vGuest, MessageType.JoinLobby, 1000, LobbyPayloads.GuidValue(voteRoom.Id));
+    await ReachPlayingAsync(voteHost.Client, vGuest, vHostKey, vGuestKey);
+
+    Assert(await ErrorCodeAsync(vGuest, MessageType.VoteOpen, 1001, LockstepPayloads.VoteOpen(2, new byte[] { 7 })) == 3, "only the host opens a vote");
+    await voteHost.Client.SendAsync(MessageType.VoteOpen, 1002, LockstepPayloads.VoteOpen(2, new byte[] { 7 }));
+    VoteView? hostView = null, guestView = null;
+    var hostLockstep = new LockstepClient(); var guestLockstep = new LockstepClient();
+    var hostResults = new List<(int, ulong, byte)>(); var guestResults = new List<(int, ulong, byte)>();
+    async Task PumpVotes(int ms)
+    {
+        var until = System.Diagnostics.Stopwatch.StartNew();
+        while (until.ElapsedMilliseconds < ms)
+        {
+            foreach (var (client, game, results, isHost) in new[] { (voteHost.Client, hostLockstep, hostResults, true), (vGuest, guestLockstep, guestResults, false) })
+            {
+                while (client.TryDequeue(out WireMessage? m) && m != null)
+                {
+                    if (m.Type == MessageType.VoteState) { if (isHost) hostView = LockstepPayloads.ReadVoteState(m.Payload); else guestView = LockstepPayloads.ReadVoteState(m.Payload); }
+                    else if (LockstepClient.Handles(m)) game.Receive(m);
+                }
+                foreach (var c in game.TakeCommandsAt(0))
+                    if (c.Kind == ScheduledKind.VoteResult) results.Add((c.Boundary, c.Sequence, LockstepPayloads.ReadVoteResultData(c.Data).Option));
+            }
+            await Task.Delay(16);
+        }
+    }
+    await PumpVotes(400);
+    Assert(hostView is { Open: true } && guestView is { Open: true } && hostView.Id == guestView.Id, "both see the open vote");
+    Assert(await ErrorCodeAsync(vGuest, MessageType.SessionControl, 1003, LockstepPayloads.Control(ScheduledKind.Pause, 0)) == 6, "no resuming during the vote");
+    await vGuest.SendAsync(MessageType.VoteCast, 1004, LockstepPayloads.VoteCast(guestView!.Id, 1));
+    await voteHost.Client.SendAsync(MessageType.VoteCast, 1005, LockstepPayloads.VoteCast(hostView!.Id, 1));
+    await PumpVotes(600);
+    Assert(hostResults.Count == 1 && hostResults.SequenceEqual(guestResults) && hostResults[0].Item3 == 1,
+        "both games got the same result at the same point: " + string.Join(";", hostResults) + " / " + string.Join(";", guestResults));
+    Assert(hostView is { Open: false, Result: 1 } && guestView is { Open: false, Result: 1 }, "both see the closed vote with its result");
+}
+Console.WriteLine("PASS: democracy vote over the network: host opens, no resuming meanwhile, both vote, same result at the same point in both games");
+
 // SETUP-001: the host's page mirror reaches guests only while setup runs, and only from the host.
 await using (var mirrorHost = await ListenHost.StartAsync("127.0.0.1", 0, "Host", "Mirror Room", 4, PlayerKey.Steam(76561198000000070UL)))
 {

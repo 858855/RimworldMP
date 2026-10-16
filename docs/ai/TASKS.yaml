@@ -1423,11 +1423,16 @@ tasks:
   - 'Mehrheit gewinnt; bei Gleichstand entscheidet der Host'
   - 'Der Host kann die Abstimmung vorzeitig beenden; wer nicht abgestimmt hat, zählt als enthalten'
   - 'Ergebnis wird in allen Spielen am selben Tick ausgeführt'
-  implementation: planned
-  verification: not_tested
+  implementation: in_progress
+  verification: tests_passed
   integration: not_submitted
-  branch: null
-  evidence: []
+  branch: claude/vote
+  base_branch: claude/resync
+  base_commit: bd4c98e
+  evidence:
+  - docs/verification/2026-10-16-votes.md
+  - docs/decisions/0034-democracy-votes-coordinator.md
+  blocker: 'Koordinator-Seite fertig und getestet. Fehlt Spielseite (Codex): Ereignisse erkennen und VoteOpen senden, Abstimmungsfenster, VoteResult anwenden; setzt SYNC-004/SYNC-007 voraus.'
   plan_ref: docs/decisions/0031-game-modes.md
 - id: FACTION-001
   title: 'Fraktionsmodus: Einrichtung je Spieler'

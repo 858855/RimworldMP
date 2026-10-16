@@ -57,6 +57,10 @@ Strings sind `length:u16` plus strikt gültige UTF-8-Bytes. Allgemeine Strings: 
 | 73 | DesyncResolved | S→C | Tick des Desyncs |
 | 74 | ResyncGaveUp | S→C | Tick, aufgegebene Spieler |
 | 75 | SnapshotLoaded | C→S | leer; nach dem Laden eines Snapshots (Beitritt oder Resync) |
+| 76 | VoteOpen | C→S, nur Host | Optionen (2–10), Ereignisschlüssel (≤ 256 Byte) |
+| 77 | VoteCast | C→S | Abstimmungsnummer, Option |
+| 78 | VoteClose | C→S, nur Host | Abstimmungsnummer |
+| 79 | VoteState | S→C | Nummer, Schlüssel, Optionen, offen, Ergebnis (255 = keins), Stimmen je Spieler |
 
 Listen- und Zustandsupdates sind in `LobbyPayloads.cs` kodiert: Liste mit `count:u8`, je Lobby GUID, Name, Hostname, Spielerzahl und Kapazität; Snapshot mit GUID, Name, Host-GUID, Revision `u64`, Kapazität, Setup-Phase `u8`, optional gewähltes Feld und Spielerarray (Session-GUID, Name, Ready, PlayerKey, optional Fähnchen). Die Liste trägt je Lobby zusätzlich die Phase. Der TCP-Server verwendet diese Payloads; zwei unabhängige TCP-Testclients bestanden die Integrationstests. RimWorld-Client-Kompatibilität ist noch offen. Fehlercodes: `1=InvalidMessage`, `2=VersionMismatch`, `3=Unauthorized`, `4=NotFound`, `5=Capacity`, `6=InvalidState`, `7=ServerBusy`.
 
@@ -133,3 +137,7 @@ Geplante Befehle der Art `Save` (3) lassen alle Spiele an derselben Stelle speic
 ## Desync-Reparatur (Codes 73–75, ADR 0033)
 
 Bei einem Desync speichert der Host an der aktuellen Stelle einen Snapshot für alle abweichenden Spiele (Daten des `Save`-Befehls: n × 16 Byte Session-IDs). Diese erhalten `JoinSnapshot`, laden neu, bestätigen mit `SnapshotLoaded` und werden nach dem Aufholen wieder aktiv. Hatte der Koordinator wegen des Desyncs pausiert, setzt er danach fort und meldet `DesyncResolved`. Nach drei Reparaturen eines Spiels in Folge meldet er `ResyncGaveUp` und bleibt pausiert. `SnapshotLoaded` ist auch beim Beitritt Pflicht.
+
+## Abstimmung (Codes 76–79, ADR 0034)
+
+Nur im Modus Coop-Demokratie. Das Spiel des Hosts öffnet eine Abstimmung, wenn ein Ereignis eine Wahl verlangt; die Zeit pausiert für alle, Fortsetzen ist bis zum Ende gesperrt. Jeder aktive Spieler stimmt ab und kann umstimmen. Ende: alle aktiven haben abgestimmt, oder der Host beendet (Nichtabstimmende enthalten). Die Mehrheit gewinnt; bei Gleichstand die Option des Hosts, wenn sie gleichauf liegt, sonst bleibt es offen bzw. das Beenden wird abgelehnt. Das Ergebnis kommt als geplanter Befehl `VoteResult` (Art 4), damit alle Spiele es an derselben Stelle anwenden.

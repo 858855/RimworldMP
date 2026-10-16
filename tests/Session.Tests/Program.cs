@@ -437,6 +437,180 @@ static SimResult SimulateResync(int seed, bool corruptAgain)
     return new SimResult(logs, completed, gaveUpSeen, desyncs, repairTick);
 }
 
+// --- VOTE-001 (ADR 0034) ---
+var openBack = LockstepPayloads.ReadVoteOpen(LockstepPayloads.VoteOpen(3, new byte[] { 1, 2 }));
+Assert(openBack.Options == 3 && openBack.EventKey.SequenceEqual(new byte[] { 1, 2 }), "vote open round trip");
+Expect<ProtocolException>(() => LockstepPayloads.VoteOpen(1, new byte[] { 1 }));
+Expect<ProtocolException>(() => LockstepPayloads.VoteOpen(11, new byte[] { 1 }));
+Expect<ProtocolException>(() => LockstepPayloads.VoteOpen(2, Array.Empty<byte>()));
+var stateBack = LockstepPayloads.ReadVoteState(LockstepPayloads.VoteState(new VoteView(7, new byte[] { 9 }, 3, false, 2, new[] { (guest, (byte)2) })));
+Assert(stateBack.Id == 7 && !stateBack.Open && stateBack.Result == 2 && stateBack.Choices.Single() == (guest, (byte)2), "vote state round trip");
+Expect<ProtocolException>(() => LockstepPayloads.ReadVoteState(LockstepPayloads.VoteState(new VoteView(7, new byte[] { 9 }, 3, true, 1, Array.Empty<(Guid, byte)>()))));
+
+Expect<LockstepRuleException>(() => new LockstepSession(host, members, 0).OpenVote(host, 2, new byte[] { 1 }, 0), 6);   // Host mode
+var demo = new LockstepSession(host, members, 0, decisions: CoopDecisions.Democracy);
+demo.Control(host, ScheduledKind.Pause, 0, 0);
+Expect<LockstepRuleException>(() => demo.OpenVote(guest, 2, new byte[] { 1 }, 0), 3);
+var opened = demo.OpenVote(host, 3, new byte[] { 42 }, 100);
+Assert(demo.Paused && opened.Any(o => o.Message.Type == MessageType.ScheduledCommand &&
+    LockstepPayloads.ReadScheduled(o.Message.Payload) is { Kind: ScheduledKind.Pause, IssuerSession: var sys } && sys == Guid.Empty),
+    "opening a vote pauses for everyone at one point");
+uint voteId = VoteIdOf(opened);
+Assert(opened.Count(o => o.Message.Type == MessageType.VoteState) == 3, "everyone sees the vote");
+Expect<LockstepRuleException>(() => demo.CastVote(guest, voteId, 3, 100), 1);
+Expect<LockstepRuleException>(() => demo.CastVote(guest, 999, 0, 100), 4);
+Expect<LockstepRuleException>(() => demo.Control(guest, ScheduledKind.Pause, 0, 100), 6);     // no resuming during a vote
+demo.CastVote(guest, voteId, 0, 100); demo.CastVote(guest, voteId, 1, 110);                    // may change
+demo.CastVote(third, voteId, 1, 120);
+var finished = demo.CastVote(host, voteId, 2, 130);
+var decoded = LockstepPayloads.ReadVoteResultData(ResultOf(finished).Data);
+Assert(decoded.VoteId == voteId && decoded.Option == 1 && decoded.EventKey.SequenceEqual(new byte[] { 42 }), "all voted: majority wins (2 of 3 for option 1)");
+Assert(finished.Any(o => o.Message.Type == MessageType.ScheduledCommand && LockstepPayloads.ReadScheduled(o.Message.Payload) is { Kind: ScheduledKind.Pause } r && r.Data[0] == 0)
+    && !demo.Paused, "time resumes after the vote");
+
+var tie = new LockstepSession(host, members, 0, decisions: CoopDecisions.Democracy);
+uint t1 = VoteIdOf(tie.OpenVote(host, 3, new byte[] { 1 }, 0));
+tie.CastVote(guest, t1, 0, 0); tie.CastVote(third, t1, 1, 0);
+Assert(LockstepPayloads.ReadVoteResultData(ResultOf(tie.CastVote(host, t1, 1, 0)).Data).Option == 1, "2:1 counted, host on the winning side");
+uint t2 = VoteIdOf(tie.OpenVote(host, 2, new byte[] { 2 }, 0));
+Expect<LockstepRuleException>(() => tie.CloseVote(host, t2, 0), 6);                            // nobody voted: host must vote
+Expect<LockstepRuleException>(() => tie.CloseVote(guest, t2, 0), 3);
+tie.CastVote(guest, t2, 0, 0);
+Assert(LockstepPayloads.ReadVoteResultData(ResultOf(tie.CloseVote(host, t2, 0)).Data).Option == 0,
+    "host ends early: abstentions do not count, the cast vote decides");
+
+Guid g4 = Guid.NewGuid(), g5 = Guid.NewGuid();
+var five = new LockstepSession(host, members.Concat(new[] { (g4, PlayerKey.Steam(1005)), (g5, PlayerKey.Steam(1006)) }), 0, decisions: CoopDecisions.Democracy);
+uint fv = VoteIdOf(five.OpenVote(host, 3, new byte[] { 3 }, 0));
+five.CastVote(guest, fv, 0, 0); five.CastVote(third, fv, 0, 0); five.CastVote(g4, fv, 1, 0); five.CastVote(g5, fv, 1, 0);
+var stuck = five.CastVote(host, fv, 2, 0);                                                      // 2:2:1, host outside the tie
+Assert(stuck.All(o => o.Message.Type != MessageType.ScheduledCommand) && five.Paused, "tie the host does not break stays open");
+Expect<LockstepRuleException>(() => five.CloseVote(host, fv, 0), 6);
+Assert(LockstepPayloads.ReadVoteResultData(ResultOf(five.CastVote(host, fv, 1, 0)).Data).Option == 1, "host joins one side: 3:2 decides");
+
+var away = new LockstepSession(host, members, 0, decisions: CoopDecisions.Democracy);
+away.Control(host, ScheduledKind.Pause, 0, 0);
+uint a1 = VoteIdOf(away.OpenVote(host, 2, new byte[] { 4 }, 0));
+uint a2 = VoteIdOf(away.OpenVote(host, 2, new byte[] { 5 }, 0));
+away.CastVote(host, a1, 0, 0); away.CastVote(guest, a1, 0, 0);
+var gone = away.RemoveParticipant(third, 50);                                                   // the missing voter disconnects
+Assert(gone.Any(o => o.Message.Type == MessageType.ScheduledCommand && LockstepPayloads.ReadScheduled(o.Message.Payload).Kind == ScheduledKind.VoteResult),
+    "a disconnected player no longer counts: the vote completes");
+Assert(away.Paused, "second vote still open: time stays paused");
+away.CastVote(host, a2, 1, 60);
+var last = away.CastVote(guest, a2, 1, 70);
+Assert(!away.Paused && last.Any(o => o.Message.Type == MessageType.TickHorizon), "both votes done: time resumes");
+
+var playerPause = new LockstepSession(host, members, 0, decisions: CoopDecisions.Democracy);
+playerPause.Control(host, ScheduledKind.Pause, 0, 0);
+uint pp = VoteIdOf(playerPause.OpenVote(host, 2, new byte[] { 6 }, 0));
+playerPause.Control(guest, ScheduledKind.Pause, 1, 10);                                          // a player pauses during the vote
+foreach (Guid voter in new[] { host, guest, third }) playerPause.CastVote(voter, pp, 0, 20);
+Assert(playerPause.Paused, "a player's own pause is kept after the vote");
+Console.WriteLine("PASS: votes: democracy only, host opens and ends, shared pause, no resuming meanwhile, majority, host breaks ties, abstention, disconnects, concurrent votes, players' pause kept");
+
+SimResult voted = SimulateVotes(seed: 31);
+for (int seed = 32; seed <= 35; seed++) SimulateVotes(seed);
+Console.WriteLine($"PASS: 5 simulated runs with two votes (one ended early by the host, a player away): every game applied the same results at the same point, time resumed; {voted.Logs.Values.First().Count} commands");
+
+static uint VoteIdOf(IReadOnlyList<(Guid To, WireMessage Message)> outgoing) =>
+    LockstepPayloads.ReadVoteState(outgoing.First(o => o.Message.Type == MessageType.VoteState).Message.Payload).Id;
+static ScheduledCommand ResultOf(IReadOnlyList<(Guid To, WireMessage Message)> outgoing) =>
+    outgoing.Where(o => o.Message.Type == MessageType.ScheduledCommand).Select(o => LockstepPayloads.ReadScheduled(o.Message.Payload))
+        .First(c => c.Kind == ScheduledKind.VoteResult);
+
+// Three games in Coop democracy; the host's game opens two votes, players vote after random delays, the third player is
+// away in the second vote and the host ends it.
+static SimResult SimulateVotes(int seed)
+{
+    var random = new Random(seed);
+    Guid[] ids = { Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid() };
+    var coordinator = new LockstepSession(ids[0], ids.Select((id, i) => (id, PlayerKey.Steam((ulong)(i + 1)))), 0, decisions: CoopDecisions.Democracy);
+    var games = ids.ToDictionary(id => id, _ => new LockstepClient());
+    var down = ids.ToDictionary(id => id, _ => new Link());
+    var up = ids.ToDictionary(id => id, _ => new Link());
+    var completed = ids.ToDictionary(id => id, _ => 0);
+    var budget = ids.ToDictionary(id => id, _ => 0.0);
+    var logs = ids.ToDictionary(id => id, _ => new List<(int Boundary, ulong Sequence)>());
+    var results = ids.ToDictionary(id => id, _ => new List<(int Boundary, ulong Sequence, byte Option)>());
+    var castAt = new List<(long At, Guid Voter, uint Vote, byte Option)>();
+    var seenVotes = ids.ToDictionary(id => id, _ => new HashSet<uint>());
+    uint secondVote = 0; long closeAt = -1; int tickAtLastResult = -1;
+    void Out(IEnumerable<(Guid To, WireMessage Message)> messages, long now)
+    { foreach (var (to, message) in messages) down[to].Send(message, now + random.Next(5, 80)); }
+    Out(coordinator.Begin(), 0);
+    up[ids[1]].Send(LockstepClient.ControlMessage(ScheduledKind.Pause, 0), 20);
+    for (long now = 0; now < 20_000; now += 5)
+    {
+        if (now == 3000) Out(coordinator.OpenVote(ids[0], 3, new byte[] { 1 }, now), now);
+        if (now == 9000) Out(coordinator.OpenVote(ids[0], 2, new byte[] { 2 }, now), now);
+        foreach (var c in castAt.Where(c => c.At == now).ToList())
+            try { Out(coordinator.CastVote(c.Voter, c.Vote, c.Option, now), now); } catch (LockstepRuleException error) when (error.Code == 4) { }
+        if (now == closeAt) Out(coordinator.CloseVote(ids[0], secondVote, now), now);
+        foreach (Guid id in ids)
+            while (up[id].TryReceive(now, out WireMessage? m))
+            {
+                try
+                {
+                    Out(m!.Type switch
+                    {
+                        MessageType.Command => coordinator.Submit(id, m.Payload, now),
+                        MessageType.ClientTick => coordinator.ReportTick(id, LockstepPayloads.ReadTickPayload(m.Payload), now),
+                        MessageType.SessionControl => coordinator.Control(id, LockstepPayloads.ReadControl(m.Payload).Kind, LockstepPayloads.ReadControl(m.Payload).Value, now),
+                        _ => throw new Exception("unexpected " + m.Type)
+                    }, now);
+                }
+                catch (LockstepRuleException error) when (error.Code is 7) { }
+            }
+        if (now % 50 == 0) Out(coordinator.Advance(now), now);
+        foreach (Guid id in ids)
+        {
+            LockstepClient game = games[id];
+            while (down[id].TryReceive(now, out WireMessage? m))
+            {
+                if (m!.Type == MessageType.VoteState)
+                {
+                    VoteView vote = LockstepPayloads.ReadVoteState(m.Payload);
+                    if (vote.Open && seenVotes[id].Add(vote.Id))
+                    {
+                        bool second = vote.EventKey[0] == 2;
+                        if (second) { secondVote = vote.Id; if (id == ids[0]) closeAt = now + 1500; }
+                        if (!(second && id == ids[2]))                                     // third player is away in vote 2
+                            castAt.Add((now + 5 * random.Next(20, 160), id, vote.Id, (byte)random.Next(vote.Options)));
+                    }
+                    continue;
+                }
+                if (!LockstepClient.Handles(m)) continue;
+                game.Receive(m);
+            }
+            void Execute()
+            {
+                foreach (ScheduledCommand command in game.TakeCommandsAt(completed[id]))
+                {
+                    if (command.Kind == ScheduledKind.VoteResult)
+                    {
+                        results[id].Add((command.Boundary, command.Sequence, LockstepPayloads.ReadVoteResultData(command.Data).Option));
+                        if (id == ids[0]) tickAtLastResult = completed[id];
+                    }
+                    logs[id].Add((command.Boundary, command.Sequence));
+                }
+            }
+            Execute();
+            budget[id] = Math.Min(budget[id] + 0.8 * 5, 2000);
+            while (budget[id] >= 1 && game.MayRunTick(completed[id])) { completed[id]++; budget[id]--; Execute(); }
+            if (!game.MayRunTick(completed[id])) budget[id] = Math.Min(budget[id], 1);
+            if (game.ProgressMessage(completed[id], now) is WireMessage progress) up[id].Send(progress, now + random.Next(5, 80));
+            if (random.Next(100) < 3) up[id].Send(LockstepClient.CommandMessage(new[] { (byte)random.Next(256) }), now + random.Next(5, 80));
+        }
+    }
+    var run = new SimResult(logs, completed, new Dictionary<Guid, int>(), 0, 0);
+    AssertSameOrder(run);
+    Assert(results.Values.All(r => r.Count == 2) && results.Values.Select(r => string.Join(";", r)).Distinct().Count() == 1,
+        "every game applied both results identically: " + string.Join(" | ", results.Values.Select(r => string.Join(";", r))));
+    Assert(completed.Values.Min() > tickAtLastResult + 200, $"time resumed after the second vote (result at {tickAtLastResult}, now {completed.Values.Min()})");
+    return run;
+}
+
 static void AssertSameOrder(SimResult run)
 {
     int common = run.Completed.Values.Min();

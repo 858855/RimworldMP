@@ -7,7 +7,9 @@
   - Spielmodus (ADR 0031, Koordinator-Seite): `LobbyMode` in `CreateLobby`, Lobbyzustand und -liste; Fraktionsstart abgelehnt bis `FACTION-001`.
 - **C1 erledigt (Koordinator-Seite), Branch `claude/save-join`, ADR 0032:** Speichern als geplanter Befehl (`ScheduledKind.Save`), Autosave je 60 000 Ticks, Host-Speichern; Beitritt während `Playing` mit passenden Mods; Snapshot-Befehl, `JoinSnapshot` (71), Aufholen ohne Flusssteuerung, `PlayerSynced` (72). Simulation: Der Neue führt danach exakt dieselbe Folge aus.
 - **C2 erledigt (Koordinator-Seite), Branch `claude/resync` auf `claude/save-join`, ADR 0033:** Desync führt zu Snapshot und Neuladen der Abweichenden; automatisches Fortsetzen, `DesyncResolved` (73); nach drei Fehlschlägen `ResyncGaveUp` (74); `SnapshotLoaded` (75) jetzt Pflicht für Beitritt **und** Resync.
-- **Nächste Aufgabe:** C3 `VOTE-001` (Koordinator) auf `claude/vote`.
+- **C3 erledigt (Koordinator-Seite), Branch `claude/vote` auf `claude/resync`, ADR 0034:** Abstimmungen nur in Coop-Demokratie; Host öffnet und beendet; gemeinsame Pause, Fortsetzen gesperrt; Mehrheit, Host bei Gleichstand, Enthaltung; Ergebnis als `ScheduledKind.VoteResult` (4); Codes 76–79. Gemeinsame System-Pause für Desync und Abstimmung.
+- **Nummernbereich 71–79 ist ausgeschöpft.** C4 (`SEC-001`, Lobby-Passwort) kommt ohne neue Codes aus (Erweiterung von `CreateLobby`/`JoinLobby`); sonst neuen Bereich mit dem Benutzer abstimmen.
+- **Nächste Aufgabe:** C4 `SEC-001` auf `claude/ip-password`.
 - **Wünsche an Codex:**
   - Tick-Treiber nach ADR 0030:
     - Tick c+1 nur, wenn `LockstepClient.MayRunTick(c)` wahr ist; vorher und in jedem Frame während der Pause `TakeCommandsAt(c)`.
@@ -30,4 +32,10 @@
     - Der Speicherbefehl davor nennt dich in `LockstepPayloads.SaveTargets(data)`. Für dich ist das kein Speicherauftrag; für den Host heißt es: an diese Spieler senden.
     - Beim Beitritt ebenfalls `SnapshotLoadedMessage()` nach dem Laden senden (neu gegenüber ADR 0032).
     - Anzeigen: `DesyncResolved` (73) als „Desync behoben (Tick X)“, `ResyncGaveUp` (74) als Hinweis an den Host.
+  - **Abstimmung (ADR 0034)**, alles Spielseite; setzt die Befehlserfassung voraus:
+    - Im Modus Coop-Demokratie (`LobbyMode.CoopDemocracy`) sendet das Spiel des **Hosts** bei einem Ereignis mit Wahl (Wanderer, Quest annehmen) `VoteOpen(Optionen, Ereignisschlüssel)`. Der Schlüssel muss in allen Spielen dasselbe Ereignis bezeichnen.
+    - Ein Fenster zeigt `VoteState` (79): Optionen, Stimmen je Spieler, beim Host einen Knopf „Beenden“ (`VoteClose`).
+    - Spieler stimmen mit `VoteCast` ab.
+    - `ScheduledKind.VoteResult` kommt über `TakeCommandsAt`: `LockstepPayloads.ReadVoteResultData` liefert Nummer, Option und Schlüssel. Das Ereignis an dieser Stelle mit dieser Option ausführen.
+    - Im Modus Coop-Host trifft der Host die Wahl über einen normalen Spielbefehl; Gäste dürfen dort nicht wählen (Rechte, `SYNC-005`).
 

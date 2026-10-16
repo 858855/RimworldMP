@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Abstimmung im Coop-Demokratie-Modus (Arbeitsbranch `claude/vote`, VOTE-001)
+
+- Verlangt ein Ereignis eine Entscheidung, etwa ein Wanderer will beitreten, öffnet der Host eine Abstimmung. Die Zeit hält an, bis entschieden ist. Die Mehrheit gewinnt, bei Gleichstand der Host. Ist jemand nicht am Rechner, kann der Host vorzeitig beenden; wer nicht abgestimmt hat, gilt als enthalten.
+- Alle Spiele wenden das Ergebnis an derselben Stelle an.
+- Im Spiel noch nicht aktiv: Abstimmungsfenster und Erkennen der Ereignisse gehören zur Spielseite.
+
 ### Desync-Reparatur (Arbeitsbranch `claude/resync`, DESYNC-003)
 
 - Ein Desync beendet die Partie nicht mehr. Das abweichende Spiel lädt den Stand des Hosts neu, holt auf, und die Zeit läuft von selbst weiter; alle sehen „Desync behoben“. In einer Simulation mit echter Abweichung blieben danach alle Spiele identisch.

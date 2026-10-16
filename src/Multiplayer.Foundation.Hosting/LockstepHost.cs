@@ -24,7 +24,8 @@ internal sealed class LockstepHost
     {
         if (state.Phase != SetupPhase.Playing) { RemoveLobby(state.Id); return; }
         if (sessions.ContainsKey(state.Id)) return;
-        var holder = new Holder(new LockstepSession(state.HostId, state.Players.Select(p => (p.Id, p.Key)), NowMs, options));
+        var holder = new Holder(new LockstepSession(state.HostId, state.Players.Select(p => (p.Id, p.Key)), NowMs, options,
+            state.Mode.Mode == GameMode.Coop ? state.Mode.Decisions : CoopDecisions.Host));
         lock (holder.Gate)
         {
             if (!sessions.TryAdd(state.Id, holder)) return;
@@ -58,7 +59,7 @@ internal sealed class LockstepHost
         foreach (var (lobby, holder) in sessions)
             lock (holder.Gate)
             {
-                Deliver(holder.Session.RemoveParticipant(peer));
+                Deliver(holder.Session.RemoveParticipant(peer, NowMs));
                 if (holder.Session.Ended) sessions.TryRemove(lobby, out _);
             }
     }

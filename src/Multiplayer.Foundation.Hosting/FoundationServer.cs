@@ -334,6 +334,18 @@ public sealed class FoundationServer : IAsyncDisposable
                 var stateHash = LockstepPayloads.ReadHash(message.Payload);
                 lockstep.Run(LobbyOf(peer), session => session.ReportHash(peer.Id, stateHash.Tick, stateHash.Hash));
                 break;
+            case MessageType.VoteOpen:
+                var opened = LockstepPayloads.ReadVoteOpen(message.Payload);
+                lockstep.Run(LobbyOf(peer), session => session.OpenVote(peer.Id, opened.Options, opened.EventKey, LockstepHost.NowMs));
+                break;
+            case MessageType.VoteCast:
+                var cast = LockstepPayloads.ReadVoteCast(message.Payload);
+                lockstep.Run(LobbyOf(peer), session => session.CastVote(peer.Id, cast.VoteId, cast.Option, LockstepHost.NowMs));
+                break;
+            case MessageType.VoteClose:
+                uint closing = LockstepPayloads.ReadVoteClose(message.Payload);
+                lockstep.Run(LobbyOf(peer), session => session.CloseVote(peer.Id, closing, LockstepHost.NowMs));
+                break;
             case MessageType.SnapshotLoaded:
                 RequireEmpty(message.Payload);
                 lockstep.Run(LobbyOf(peer), session => session.SnapshotLoaded(peer.Id, LockstepHost.NowMs));
