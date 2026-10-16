@@ -161,6 +161,12 @@ namespace Multiplayer.Foundation.RimWorld
                 status = "Spielstand und Lobby haben unterschiedliche Spielmodi.";
                 return false;
             }
+            string? factionStorytellerError = session.FactionStorytellerError();
+            if (factionStorytellerError != null)
+            {
+                status = factionStorytellerError;
+                return false;
+            }
             JoinSnapshot? join = pendingJoinSnapshot;
             tickDriver = new SessionTickDriver(lobby.Id, client!.SessionId,
                 manager.TicksGame - (join?.Boundary ?? 0), SaveAtBoundary, ExecuteGameCommand, join);

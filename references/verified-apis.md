@@ -58,6 +58,8 @@ Wichtiger Unterschied: `Multiplayer.Client.Multiplayer` ist eine interne Clientk
 | `Verse.GenFilePaths.SaveDataFolderPath`; `Verse.GenCommandLine.TryGetCommandLineArg(string, ref string)` | public static | §9 | BESTÄTIGT (Metadaten) |
 | `Verse.LongEventHandler.QueueLongEvent` (drei Overloads) | public static | §6.3 | BESTÄTIGT (Metadaten) |
 | `RimWorld.Storyteller.difficulty`, `.difficultyDef`; `RimWorld.Difficulty.threatScale`; `StorytellerDef`, `DifficultyDef` | public | §6.3 | BESTÄTIGT (Metadaten) |
+| `Verse.Game.storyteller` (ein Feld je Spiel); `RimWorld.Storyteller` mit `storytellerComps`, `incidentQueue`, `StorytellerTick`, `MakeIncidentsForInterval`, `ExposeData`; `StorytellerDef.listVisible`, `.tutorialMode`, `.forcedDifficulty` | lokale `Assembly-CSharp.dll` 1.6.4871 rev598; Metadatenprobe 2026-10-16 und Mod-Build | ADR 0045 | BESTÄTIGT (Metadaten/Signatur); Mehrfachausführung und Fraktionsfilter UNGEKLÄRT |
+| `Storyteller.AllIncidentTargets: List<IIncidentTarget>`, `MakeIncidentsForInterval(StorytellerComp, List<IIncidentTarget>)`, `IncidentParms.target`, `.faction`, `Game.PlayerHomeMaps`, `Faction.OfPlayer` | lokale 1.6.4871-rev598-Assembly per Reflection, 2026-10-16 | ADR 0045 | BESTÄTIGT (Signaturen); tatsächliche Zuordnung/Mehrfach-Tick UNGEKLÄRT |
 | `Verse.Rand.PushState()`, `PushState(int replacementSeed)`, `PopState()`, `Seed` (set) | public static | §7.4 | BESTÄTIGT (Metadaten) |
 | `Verse.TickManager.TickManagerUpdate()`, `DoSingleTick()`, `TicksGame`, `CurTimeSpeed`, `Paused` | public | §7.1 | BESTÄTIGT (Metadaten) |
 | `Verse.AI.Pawn_JobTracker.TryTakeOrderedJob(Job, JobTag?, bool requestQueueing)` (**Namespace `Verse.AI`**) | public | §7.2 | BESTÄTIGT (Metadaten) |

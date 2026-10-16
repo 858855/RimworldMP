@@ -1,5 +1,9 @@
 # RimWorld-Client 0.1
 
+## Fraktions-Storyteller (ADR 0045, in Arbeit)
+
+Im künftigen Fraktionsmodus soll jeder Spieler einen Storyteller für seine Fraktion wählen; die Schwierigkeit samt Custom-Werten wird einmal vom Host für alle festgelegt. Auf `codex/faction-storytellers` kann der gemeinsame Spielstand eine vollständige, geprüfte Auswahl je `PlayerKey` speichern und bei fehlenden Defs oder abweichender Schwierigkeit den Tick-Start verhindern. Auswahlfenster, Netzwerkverteilung und fraktionsbezogene Ereignissteuerung fehlen noch. Der Server verweigert weiterhin den Fraktionsstart. Die bisherige Figurenwahl bleibt eine Figur je Spieler aus der Startgruppe des Hosts; getrennte Startgruppen folgen mit FACTION-001. Details: [ADR 0045](decisions/0045-faction-storyteller-boundary.md).
+
 ## Spielmodus und IP-Identität (X5, Arbeitsbranch `codex/mode-ui`)
 
 Vor dem Hosten oder Erstellen einer Lobby kann der Host zwischen Koop mit Hostentscheid, Koop mit Demokratie sowie drei Fraktionsbeziehungen wählen. Der gewählte Modus erscheint in Lobbyliste und Lobbyfenster und wird im `MultiplayerSession`-Spielstand hinterlegt. Der Fraktionsmodus ist in der Liste sichtbar; sein Spielstart bleibt serverseitig gesperrt. Ältere Spielstände ohne Modusfeld gelten als Koop mit Hostentscheid. Eine abweichende Modusangabe zwischen Spielstand und Lobby hält den Tick-Treiber an.

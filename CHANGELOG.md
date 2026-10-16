@@ -9,6 +9,10 @@
 - Im Coop ändert sich nichts. Der Fraktionsstart bleibt gesperrt, bis die Spielseite fertig ist; im Spiel ist davon noch nichts sichtbar.
 - Die beiden neuen Nachrichten (Optionen des Hosts, Erzählerwahl) haben die Nummern 96 und 97 und sind im Server angeschlossen. Ältere Mod-Versionen fallen schon in der Lobby bei der Mod-Prüfung auf und kommen nie in diese Einrichtung.
 
+### Fraktions-Storyteller-Grundlage (`codex/faction-storytellers`, FACTION-003)
+
+- Der gemeinsame Spielstand kann für jeden Spieler einen Storyteller und für alle denselben Schwierigkeitsgrad festhalten. Fehlt eine Auswahl, eine Storyteller-Definition oder passt die Schwierigkeit nicht, startet der Tick-Treiber im Fraktionsmodus nicht. Der Fraktionsstart bleibt gesperrt; Auswahlfenster, Ereignissteuerung und Spieltests folgen später.
+
 ### Gemeinsames Vorschaupaket für den späteren Spieltest (`codex/manual-test-candidate`, PKG-002)
 
 - X1, X4 und X5 liegen zusammen in einem installierbaren RimWorld-1.6-ZIP. Build, Archivinhalt und Prüfsumme wurden geprüft. Gameplay, Spiel-UI und Zwei-Rechner-Verbindung sind weiterhin ungetestet; X4 bleibt ein Zwischenstand.

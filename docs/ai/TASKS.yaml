@@ -1614,3 +1614,32 @@ tasks:
   branch: null
   evidence: []
   plan_ref: docs/decisions/0031-game-modes.md
+- id: FACTION-003
+  title: 'Storyteller je Fraktion bei gemeinsamer Schwierigkeit (Spielseite)'
+  goal: 'Jede Fraktion erhält eine eigene, synchronisierte Ereignisplanung; Schwierigkeit und globale Spielregeln bleiben gemeinsam.'
+  description: 'ADR 0045 ergänzt ADR 0031. Erste Spielseiten-Einheit: Auswahl je PlayerKey mit gemeinsamer Schwierigkeit im Spielstand sichern und ungültige Stände vor dem Tick-Start sperren.'
+  priority: high
+  owner: codex
+  components:
+  - rimworld_adapter
+  - session_core
+  depends_on:
+  - MODE-001
+  - FACTION-001
+  acceptance:
+  - 'Jeder Spieler wählt einen gültigen Storyteller für seine Fraktion; der Host bestimmt die gemeinsame Schwierigkeit'
+  - 'Auswahlen sind über Netzwerk, Spielstand und erneuten Beitritt identisch'
+  - 'Ereignisse werden pro Fraktion geplant und am selben Tick auf allen Clients gleich ausgeführt'
+  - 'Globale und fraktionsbezogene Incident-Arten haben dokumentierte, geprüfte Zielregeln'
+  - 'Zwei echte RimWorld-Clients laufen mit unterschiedlichen Storytellern und gleichen Zustands-Hashes'
+  implementation: in_progress
+  verification: build_passed
+  integration: not_submitted
+  branch: codex/faction-storytellers
+  base_branch: main
+  base_commit: d568766
+  evidence:
+  - docs/decisions/0045-faction-storyteller-boundary.md
+  - docs/verification/2026-10-16-faction-storyteller-foundation.md
+  blocker: 'Koordinator-Auswahl/Fraktionszuordnung aus Claude-Bahn, FACTION-001, Incident-Ziel-Audit und Zwei-Client-Test fehlen. Aktuell nur Save-Modell und Sicherheitsprüfung; Fraktionsstart bleibt gesperrt.'
+  plan_ref: docs/decisions/0045-faction-storyteller-boundary.md
