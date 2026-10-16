@@ -675,6 +675,40 @@ await using (var strict = await ListenHost.StartAsync("127.0.0.1", 0, "Host", "S
     Assert(steamPlayer.IsConnected, "Steam-verified players need no key proof");
 }
 Console.WriteLine("PASS: IP lobby security: password, key pinned on first contact, spoofed key refused (with or without proof), replay and stale proofs refused, pins carried over, required mode, Steam exempt");
+// ADR 0036 end to end: a player joins the running game but never confirms loading the snapshot. After the (short, for
+// the test) time limit the host's server tells everyone, removes the player from the session and the lobby.
+PlayerKey tHostKey = PlayerKey.Steam(76561198000000140UL), tGuestKey = PlayerKey.Steam(76561198000000141UL), tLateKey = PlayerKey.Steam(76561198000000142UL);
+await using (var timeoutHost = await ListenHost.StartAsync("127.0.0.1", 0, "Host", "Timeout Room", 4, tHostKey, snapshotLoadTimeoutSeconds: 5))
+{
+    LobbyView timeoutRoom = LobbyPayloads.ReadState((await ReceiveAsync(timeoutHost.Client, MessageType.LobbyStateUpdate)).Payload);
+    using LobbyClient tGuest = await LobbyClient.ConnectAsync("127.0.0.1", timeoutHost.Port, "Guest", TimeSpan.FromSeconds(4), CancellationToken.None, tGuestKey);
+    await StateAsync(tGuest, MessageType.JoinLobby, 1200, LobbyPayloads.GuidValue(timeoutRoom.Id));
+    await ReachPlayingAsync(timeoutHost.Client, tGuest, tHostKey, tGuestKey);
+    using var lateLink2 = new SteamLikeLink();
+    Assert(timeoutHost.AttachConnection(NetworkConnection.FromDuplexStream(lateLink2.A), tLateKey), "late joiner attached");
+    using LobbyClient tLate = await LobbyClient.ConnectOverStreamAsync(lateLink2.B, "Late", TimeSpan.FromSeconds(4), CancellationToken.None, tLateKey);
+    LobbyView withLate = await StateAsync(tLate, MessageType.JoinLobby, 1201, LobbyPayloads.GuidValue(timeoutRoom.Id));
+    Assert(withLate.Players.Count == 3, "late player joined the running game");
+    bool toldLate = false, leftLobby = false, hostSawLeave = false;
+    using (var wait = new CancellationTokenSource(TimeSpan.FromSeconds(12)))
+        while (!(toldLate && leftLobby && hostSawLeave))
+        {
+            while (tLate.TryDequeue(out WireMessage? m) && m != null)
+            {
+                if (m.Type == MessageType.ResyncGaveUp && LockstepPayloads.ReadDesync(m.Payload).Sessions.Contains(tLate.SessionId)) toldLate = true;
+                if (m.Type == MessageType.LeaveLobby) leftLobby = true;
+            }
+            while (timeoutHost.Client.TryDequeue(out WireMessage? m) && m != null)
+                if (m.Type == MessageType.LobbyStateUpdate && LobbyPayloads.ReadState(m.Payload) is { } s && s.Players.Count == 2 && s.Players.All(p => p.Key != tLateKey))
+                    hostSawLeave = true;
+            await Task.Delay(50, wait.Token);
+        }
+    Assert(tLate.IsConnected, "the player stays connected and can join again");
+    LobbyView rejoined = await StateAsync(tLate, MessageType.JoinLobby, 1202, LobbyPayloads.GuidValue(timeoutRoom.Id));
+    Assert(rejoined.Players.Count == 3, "joining again after the timeout works");
+}
+Console.WriteLine("PASS: snapshot load timeout over the network: player told, taken out of session and lobby, can join again");
+
 
 
 // SETUP-001: the host's page mirror reaches guests only while setup runs, and only from the host.

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Zeitgrenze beim Laden (Arbeitsbranch `claude/snapshot-timeout`)
+
+- Lädt ein beitretender oder zu reparierender Spieler den Spielstand des Hosts nicht binnen drei Minuten, wartet die Partie nicht mehr auf ihn. Er wird aus Spiel und Lobby genommen und kann sofort neu beitreten; die anderen spielen weiter.
+
 ### Sicherheit für IP-Lobbys (Arbeitsbranch `claude/ip-password`, SEC-001)
 
 - Lobbys können ein Passwort haben; die Lobbyliste zeigt ein Schloss.

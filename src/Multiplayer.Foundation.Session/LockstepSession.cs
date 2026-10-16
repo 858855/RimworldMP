@@ -25,6 +25,8 @@ namespace Multiplayer.Foundation.Session
         public int AutosaveIntervalTicks { get; set; } = 60000;
         /// <summary>After this many resyncs of one game without a matching comparison in between, give up (ADR 0033).</summary>
         public int MaximumResyncsInARow { get; set; } = 3;
+        /// <summary>A joining or resyncing game that has not confirmed SnapshotLoaded by then is removed (ADR 0036).</summary>
+        public int SnapshotLoadTimeoutSeconds { get; set; } = 180;
     }
 
     /// <summary>
@@ -46,6 +48,8 @@ namespace Multiplayer.Foundation.Session
         private int resyncTick = -1;
         private readonly SortedDictionary<uint, Vote> votes = new SortedDictionary<uint, Vote>();
         private uint nextVoteId = 1;
+        private long lastNowMs;
+        private readonly List<Guid> timedOut = new List<Guid>();
         private readonly CoopDecisions decisions;
 
         /// <param name="decisions">Coop decision rule from the lobby mode (ADR 0031); votes exist only with Democracy.</param>
@@ -123,7 +127,7 @@ namespace Multiplayer.Foundation.Session
         {
             Participant who = Require(session);
             if (who.Active) throw new LockstepRuleException(6, "No snapshot was expected.");
-            who.Loaded = true;
+            who.Loaded = true; who.LoadDeadlineMs = null;
             return TryActivate(who, nowMs);
         }
 
@@ -188,7 +192,37 @@ namespace Multiplayer.Foundation.Session
         /// <summary>Moves the horizon with the clock, limited by the slowest game. Call about every 50 ms.</summary>
         public IReadOnlyList<(Guid To, WireMessage Message)> Advance(long nowMs)
         {
-            if (Ended || Paused) return Array.Empty<(Guid, WireMessage)>();
+            lastNowMs = nowMs;
+            // Checked before the pause test: a resync pauses, and that is exactly when a reload may never come.
+            var expired = CheckLoadTimeouts(nowMs);
+            if (Ended || Paused) return expired;
+            if (expired.Count > 0) { var both = new List<(Guid, WireMessage)>(expired); both.AddRange(AdvanceClock(nowMs)); return both; }
+            return AdvanceClock(nowMs);
+        }
+
+        /// <summary>Games removed because they never confirmed loading their snapshot; the host takes them out of the lobby.</summary>
+        public IReadOnlyList<Guid> TakeTimedOut()
+        {
+            var list = timedOut.ToList(); timedOut.Clear();
+            return list;
+        }
+
+        // ADR 0036: a joiner or resync target that never confirms SnapshotLoaded would hold the others (a resync pause)
+        // forever. After the timeout it is told, removed, and the rest carry on.
+        private IReadOnlyList<(Guid To, WireMessage Message)> CheckLoadTimeouts(long nowMs)
+        {
+            if (Ended) return Array.Empty<(Guid, WireMessage)>();
+            List<Guid> expired = participants.Values.Where(p => !p.Loaded && p.LoadDeadlineMs != null && p.LoadDeadlineMs.Value <= nowMs)
+                .Select(p => p.Session).OrderBy(id => id).ToList();
+            if (expired.Count == 0) return Array.Empty<(Guid, WireMessage)>();
+            var notice = new WireMessage(MessageType.ResyncGaveUp, 0, LockstepPayloads.Desync(Horizon, expired));
+            var outgoing = new List<(Guid, WireMessage)>(participants.Keys.Select(to => (to, notice)));
+            foreach (Guid id in expired) { outgoing.AddRange(RemoveParticipant(id, nowMs)); timedOut.Add(id); }
+            return outgoing;
+        }
+
+        private IReadOnlyList<(Guid To, WireMessage Message)> AdvanceClock(long nowMs)
+        {
             int rate = options.TicksPerSecond[Speed - 1];
             long target = clockBaseTick + (nowMs - clockBaseMs) * rate / 1000;
             int lead = Math.Max(options.MinimumLeadTicks, (int)(options.MaximumLeadSeconds * rate));
@@ -222,7 +256,8 @@ namespace Multiplayer.Foundation.Session
             // Sent before the joiner is added, so it never receives its own snapshot command.
             var outgoing = new List<(Guid, WireMessage)>(Schedule(Guid.Empty, null, ScheduledKind.Save, session.ToByteArray()));
             var snapshot = new JoinSnapshot(Horizon, nextSequence - 1, Host, Horizon, Speed, Paused);
-            participants[session] = new Participant(session, key, options, nowMs) { Active = false, Loaded = false, Tick = Horizon };
+            participants[session] = new Participant(session, key, options, nowMs)
+                { Active = false, Loaded = false, Tick = Horizon, LoadDeadlineMs = nowMs + options.SnapshotLoadTimeoutSeconds * 1000L };
             outgoing.Add((session, new WireMessage(MessageType.JoinSnapshot, 0, LockstepPayloads.Join(snapshot))));
             outgoing.Add(BroadcastHorizon().First(o => o.To == session));
             return outgoing;
@@ -406,6 +441,7 @@ namespace Multiplayer.Foundation.Session
             {
                 p.ResyncsInARow++;
                 p.Active = false; p.Loaded = false; p.Resyncing = true; p.Tick = Horizon; p.ResyncFrom = Horizon;
+                p.LoadDeadlineMs = lastNowMs + options.SnapshotLoadTimeoutSeconds * 1000L;
                 foreach (var reports in pendingHashes.Values) reports.Remove(p.Session);
                 outgoing.Add((p.Session, new WireMessage(MessageType.JoinSnapshot, 0, LockstepPayloads.Join(snapshot))));
             }
@@ -442,6 +478,8 @@ namespace Multiplayer.Foundation.Session
             public int ResyncsInARow { get; set; }
             /// <summary>Reloading after a desync; until done the coordinator does not resume (ADR 0033).</summary>
             public bool Resyncing { get; set; }
+            /// <summary>Until when SnapshotLoaded must arrive; null when no snapshot is awaited.</summary>
+            public long? LoadDeadlineMs { get; set; }
             public TokenBucket Bucket { get; }
         }
 

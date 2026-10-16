@@ -1098,6 +1098,8 @@ tasks:
   base_commit: 2e6b77d
   evidence:
   - docs/verification/2026-10-16-resync.md
+  - docs/verification/2026-10-16-snapshot-timeout.md
+  - docs/decisions/0036-snapshot-load-timeout.md
   - docs/decisions/0033-desync-resync-coordinator.md
   blocker: 'Koordinator-Seite fertig und getestet. Fehlt Spielseite (Codex): bei JoinSnapshot als Teilnehmer neu laden, SnapshotLoaded senden, Anzeigen.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
@@ -1150,6 +1152,8 @@ tasks:
   base_commit: e4501df
   evidence:
   - docs/verification/2026-10-16-save-join.md
+  - docs/verification/2026-10-16-snapshot-timeout.md
+  - docs/decisions/0036-snapshot-load-timeout.md
   - docs/decisions/0032-save-and-join-coordinator.md
   blocker: 'Koordinator-Seite fertig und getestet. Fehlt Spielseite (Codex): speichern beim Speicherbefehl, Snapshot senden und laden, Aufholen mit LockstepClient.ForJoin, Besitz über PlayerKey.'
   plan_ref: docs/plans/rimworldmp-full-plan.md

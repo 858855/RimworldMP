@@ -157,3 +157,10 @@ Prüfung des Hosts bei TCP-Verbindungen:
 - `RequireKeyProof` verlangt den Nachweis von allen TCP-Spielern.
 
 Steam-Verbindungen sind ausgenommen. Kein TLS.
+
+## Zeitgrenze für Snapshots (ADR 0036)
+
+Wer einen Snapshot laden soll (Beitritt oder Resync), muss `SnapshotLoaded` binnen `SnapshotLoadTimeoutSeconds` (Standard 180 s) senden. Sonst:
+- Alle erhalten `ResyncGaveUp` (74) mit ihm.
+- Der Koordinator entfernt ihn aus der Sitzung; die anderen setzen nötigenfalls fort.
+- Der Server nimmt ihn aus der Lobby (`LeaveLobby`). Er bleibt verbunden und kann neu beitreten.

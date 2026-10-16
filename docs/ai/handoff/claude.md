@@ -11,7 +11,8 @@
 - **Nummernbereich 71–79 ist ausgeschöpft.** C4 (`SEC-001`, Lobby-Passwort) kommt ohne neue Codes aus (Erweiterung von `CreateLobby`/`JoinLobby`); sonst neuen Bereich mit dem Benutzer abstimmen.
 - **Gemergt nach `main` (2026-10-16, Freigabe des Benutzers):** C1, C2 und C3 per Fast-Forward. Die Branches `claude/save-join`, `claude/resync` und `claude/vote` sind danach entfernt.
 - **C4 erledigt (Protokoll und Server), Branch `claude/ip-password`, ADR 0035:** Lobby-Passwort; Schlüsselbindung per signiertem Hello (RSA-2048, Zeitstempel, Zufallswert) mit Bindung beim ersten Kontakt, Wiederholungsschutz und Pflicht-Modus; Steam ausgenommen. Keine neuen Codes.
-- **Alle Aufgaben C1–C4 der Claude-Bahn sind erledigt.** Neue Aufgaben verteilt der Benutzer.
+- **Alle Aufgaben C1–C4 der Claude-Bahn sind erledigt** und auf `main` (C4 seit `0af2bcc`). Codex' Spielseite ist seit `ff2f178` gemergt.
+- **C5, Branch `claude/snapshot-timeout`, ADR 0036:** Wer einen Snapshot nicht binnen 180 s bestätigt, wird aus Sitzung und Lobby genommen; die anderen setzen fort. Für Codex: bei `ResyncGaveUp` mit eigener Session und `LeaveLobby` „Laden fehlgeschlagen – erneut beitreten“ anzeigen.
 - **Wünsche an Codex:**
   - Tick-Treiber nach ADR 0030:
     - Tick c+1 nur, wenn `LockstepClient.MayRunTick(c)` wahr ist; vorher und in jedem Frame während der Pause `TakeCommandsAt(c)`.

@@ -437,6 +437,31 @@ static SimResult SimulateResync(int seed, bool corruptAgain)
     return new SimResult(logs, completed, gaveUpSeen, desyncs, repairTick);
 }
 
+// --- ADR 0036: snapshots never confirmed loaded ---
+var slow = new LockstepSession(host, members, 0);
+Guid neverLoads = Guid.NewGuid(), loadsInTime = Guid.NewGuid();
+slow.AddJoiner(neverLoads, PlayerKey.Steam(1007), 0);
+slow.AddJoiner(loadsInTime, PlayerKey.Steam(1008), 0);
+slow.SnapshotLoaded(loadsInTime, 1000);
+Assert(slow.Advance(179_000).All(o => o.Message.Type != MessageType.ResyncGaveUp) && slow.Participants.Contains(neverLoads), "within the time limit nothing happens");
+var expiredJoin = slow.Advance(180_000);
+Assert(expiredJoin.Count(o => o.Message.Type == MessageType.ResyncGaveUp && LockstepPayloads.ReadDesync(o.Message.Payload).Sessions.Single() == neverLoads) == 5,
+    "everyone, the late game included, is told it was given up");
+Assert(!slow.Participants.Contains(neverLoads) && slow.Participants.Contains(loadsInTime) && slow.TakeTimedOut().Single() == neverLoads && slow.TakeTimedOut().Count == 0,
+    "only the game that never loaded is removed, and reported once");
+
+var stuckRepair = new LockstepSession(host, members, 0);
+stuckRepair.Control(host, ScheduledKind.Pause, 0, 0); stuckRepair.Advance(2000);
+stuckRepair.ReportHash(host, 60, 1); stuckRepair.ReportHash(third, 60, 1); stuckRepair.ReportHash(guest, 60, 2);
+Assert(stuckRepair.Paused, "desync paused the session for the repair");
+var stillWaiting = stuckRepair.Advance(2000 + 179_000);
+Assert(stuckRepair.Paused && stillWaiting.All(o => o.Message.Type != MessageType.ResyncGaveUp), "the repair waits up to the limit");
+var givenUp = stuckRepair.Advance(2000 + 181_000);
+Assert(!stuckRepair.Participants.Contains(guest) && !stuckRepair.Paused &&
+    givenUp.Any(o => o.Message.Type == MessageType.ResyncGaveUp) && givenUp.Any(o => o.Message.Type == MessageType.DesyncResolved),
+    "a game that never reloads is removed and the others resume instead of waiting forever");
+Console.WriteLine("PASS: snapshot load timeout: joiner or repaired game that never confirms is told and removed; the others resume");
+
 // --- VOTE-001 (ADR 0034) ---
 var openBack = LockstepPayloads.ReadVoteOpen(LockstepPayloads.VoteOpen(3, new byte[] { 1, 2 }));
 Assert(openBack.Options == 3 && openBack.EventKey.SequenceEqual(new byte[] { 1, 2 }), "vote open round trip");

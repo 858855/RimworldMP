@@ -13,8 +13,11 @@ internal sealed class LockstepHost
     private readonly Action<Guid, WireMessage> enqueue;
     private readonly LockstepOptions options;
 
-    public LockstepHost(Action<Guid, WireMessage> enqueue, LockstepOptions? options = null)
-    { this.enqueue = enqueue; this.options = options ?? new LockstepOptions(); }
+    private readonly Action<Guid, Guid>? removedFromSession;
+
+    /// <param name="removedFromSession">Lobby and session of a game the coordinator removed (snapshot never loaded, ADR 0036).</param>
+    public LockstepHost(Action<Guid, WireMessage> enqueue, LockstepOptions? options = null, Action<Guid, Guid>? removedFromSession = null)
+    { this.enqueue = enqueue; this.options = options ?? new LockstepOptions(); this.removedFromSession = removedFromSession; }
 
     public int ActiveSessions => sessions.Count;
     public static long NowMs => Stopwatch.GetTimestamp() * 1000 / Stopwatch.Frequency;
@@ -51,6 +54,7 @@ internal sealed class LockstepHost
             {
                 if (holder.Session.Ended) { sessions.TryRemove(lobby, out _); continue; }
                 Deliver(holder.Session.Advance(now));
+                foreach (Guid removed in holder.Session.TakeTimedOut()) removedFromSession?.Invoke(lobby, removed);
             }
     }
 

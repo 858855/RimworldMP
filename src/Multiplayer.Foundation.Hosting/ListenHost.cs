@@ -35,7 +35,8 @@ namespace Multiplayer.Foundation.Hosting
 
         public static async Task<ListenHost> StartAsync(string bindAddress, int port, string playerName,
             string lobbyName, byte capacity, PlayerKey? playerKey = null, bool allowSoloStart = false, LobbyMode? mode = null,
-            string? password = null, PlayerIdentity? identity = null, PlayerKeyPinStore? pins = null, bool requireKeyProof = false)
+            string? password = null, PlayerIdentity? identity = null, PlayerKeyPinStore? pins = null, bool requireKeyProof = false,
+            int snapshotLoadTimeoutSeconds = 180)
         {
             if (string.IsNullOrWhiteSpace(playerName) || playerName.Length > 40 || playerName.Any(char.IsControl))
                 throw new ArgumentException("Player name must have 1-40 characters.", nameof(playerName));
@@ -44,7 +45,8 @@ namespace Multiplayer.Foundation.Hosting
             if (capacity < 2 || capacity > 64)
                 throw new ArgumentOutOfRangeException(nameof(capacity));
             var config = new HostConfig { BindAddress = bindAddress, Port = port,
-                MaxPlayersPerLobby = capacity, AllowSoloStart = allowSoloStart, RequireKeyProof = requireKeyProof };
+                MaxPlayersPerLobby = capacity, AllowSoloStart = allowSoloStart, RequireKeyProof = requireKeyProof,
+                SnapshotLoadTimeoutSeconds = snapshotLoadTimeoutSeconds };
             var server = new FoundationServer(config, pins);
             LobbyClient? client = null;
             try

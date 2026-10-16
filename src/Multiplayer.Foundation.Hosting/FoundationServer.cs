@@ -29,7 +29,9 @@ public sealed class FoundationServer : IAsyncDisposable
         this.config = config ?? throw new ArgumentNullException(nameof(config));
         Pins = pins ?? new PlayerKeyPinStore();
         lobbies = new LobbyRegistry(config.MaxPlayersPerLobby, config.AllowSoloStart ? (byte)1 : (byte)2);
-        lockstep = new LockstepHost((to, message) => { if (peers.TryGetValue(to, out Peer? target)) target.Outbox?.Enqueue(message); });
+        lockstep = new LockstepHost((to, message) => { if (peers.TryGetValue(to, out Peer? target)) target.Outbox?.Enqueue(message); },
+            new LockstepOptions { SnapshotLoadTimeoutSeconds = config.SnapshotLoadTimeoutSeconds },
+            (lobby, session) => _ = TakeOutOfLobbyAsync(session));
     }
     public int BoundPort => listener == null ? 0 : ((IPEndPoint)listener.LocalEndpoint).Port;
     public int ConnectedClients => peers.Count;
@@ -493,6 +495,23 @@ public sealed class FoundationServer : IAsyncDisposable
         using (var sha = System.Security.Cryptography.SHA256.Create()) id = HelloProof.FingerprintText(sha.ComputeHash(proof.Signature));
         if (!usedProofs.TryAdd(id, now + config.KeyProofMaxSkewSeconds)) return "Key proof was already used.";
         return Pins.BindOrMatch(key, proof.Fingerprint()) ? null : "Player key is bound to another identity.";
+    }
+
+    // ADR 0036: a game the coordinator removed leaves the lobby too, so it can join again with a fresh snapshot.
+    private async Task TakeOutOfLobbyAsync(Guid session)
+    {
+        try
+        {
+            LobbyChange change = lobbies.Leave(session);
+            await PublishAsync(change, MessageType.PlayerLeft, stopping.Token).ConfigureAwait(false);
+            await DeliverAsync(transfers.PeerGone(session), stopping.Token).ConfigureAwait(false);
+            if (peers.TryGetValue(session, out Peer? peer))
+                await peer.Connection.SendAsync(new WireMessage(MessageType.LeaveLobby, 0, Array.Empty<byte>()), stopping.Token).ConfigureAwait(false);
+        }
+        catch (LobbyRuleException) { }          // already left meanwhile
+        catch (OperationCanceledException) { }
+        catch (IOException) { }
+        catch (ObjectDisposedException) { }
     }
 
     private Guid LobbyOf(Peer peer) => lobbies.ChatRecipients(peer.Id).LobbyId;

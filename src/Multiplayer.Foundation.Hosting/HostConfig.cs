@@ -20,6 +20,8 @@ public class HostConfig
     public bool RequireKeyProof { get; set; }
     /// <summary>How far a key proof's timestamp may differ from this host's clock.</summary>
     public int KeyProofMaxSkewSeconds { get; set; } = 600;
+    /// <summary>ADR 0036: a joining or resyncing game must confirm its snapshot within this time.</summary>
+    public int SnapshotLoadTimeoutSeconds { get; set; } = 180;
 
     public IPAddress Validate(bool allowEphemeralPort)
     {
@@ -35,6 +37,8 @@ public class HostConfig
             throw new InvalidDataException("HeartbeatIntervalSeconds must be 1-300.");
         if (ClientTimeoutSeconds <= HeartbeatIntervalSeconds || ClientTimeoutSeconds > 900)
             throw new InvalidDataException("ClientTimeoutSeconds must exceed heartbeat interval and be <=900.");
+        if (SnapshotLoadTimeoutSeconds < 5 || SnapshotLoadTimeoutSeconds > 3600)
+            throw new InvalidDataException("SnapshotLoadTimeoutSeconds must be 5-3600.");
         if (KeyProofMaxSkewSeconds < 30 || KeyProofMaxSkewSeconds > 3600)
             throw new InvalidDataException("KeyProofMaxSkewSeconds must be 30-3600.");
         if (LogLevel is not ("Debug" or "Information" or "Warning" or "Error"))
