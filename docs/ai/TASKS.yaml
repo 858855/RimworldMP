@@ -1699,7 +1699,7 @@ tasks:
 - id: FACTION-005
   title: 'Fraktionsmodus: Spielseite für Standort, Ideologie und Fortsetzen'
   goal: 'Wahlen je Platz prüfen, Ideologien an den Host übergeben, Fraktions-Spielstände eindeutig zuordnen und die sichere Mehrfraktions-Generierung vorbereiten.'
-  description: 'Codex-Teil von FACTION-001 auf Claudes ADR-0038-Vertrag. Standort/Ideologie, Relaisprüfung, gespeicherter Standort und FactionRestore sind gebaut; echte Generierung und Laufzeitnachweise fehlen.'
+  description: 'Codex-Teil von FACTION-001 auf Claudes ADR-0038-Vertrag. Standort/Ideologie, Relaisprüfung, gespeicherter Standort und FactionRestore sind gebaut; die Generierung je Platz (Fraktion, Ideologie, Siedlung, Karte, Figuren) liegt auf feat/factions-generation (ADR 0028) hinter -mpFactionStart; Zwei-Client-Nachweis fehlt.'
   priority: high
   owner: codex
   components:
@@ -1718,10 +1718,10 @@ tasks:
   - 'Coop bleibt unverändert und Fraktionsstart gesperrt'
   implementation: in_progress
   verification: build_passed
-  integration: merged
-  branch: codex/faction-setup
-  base_branch: claude/faction-sites
-  base_commit: 428a065
+  integration: ready_for_human_review
+  branch: feat/factions-generation
+  base_branch: main
+  base_commit: 060d2be
   evidence:
   - docs/decisions/0046-faction-setup-preflight.md
   - docs/verification/2026-10-16-faction-setup-audit.md
@@ -1729,7 +1729,9 @@ tasks:
   - docs/verification/2026-10-16-faction-storyteller-runtime.md
   - docs/decisions/0047-faction-runtime-test-slice.md
   - docs/verification/2026-10-16-faction-runtime-and-pawns.md
-  blocker: 'Isolierter Zwei-Fraktionen-Save/Load bei Tick 0 bestanden, aber explizite Prüfung unterschiedlicher Ideologien fehlgeschlagen; spätere Korrektur nach Benutzerstopp nicht fertig im Spiel geprüft. Zwei echte Clients und laufende Ticks offen. Produktiver Fraktionsstart gesperrt.'
+  - docs/decisions/0028-faction-generation.md
+  - docs/verification/2026-10-17-faction-generation.md
+  blocker: 'Generierung je Platz im Selbsttest bestanden (zwei Fraktionen, getrennte Ideologien, zwei Karten, Save/Load Host und Gast). Offen: Zwei echte Clients über den Lobby-Startpfad, laufende Ticks (Anomaly sperrt den Fraktions-Tick), bearbeitete Ideologien. Produktiver Fraktionsstart bleibt gesperrt (-mpFactionStart und Server-Sperre).'
   plan_ref: docs/decisions/0031-game-modes.md
 - id: PAWN-001
   title: 'Gewählte Koop-Startfiguren zuverlässig übernehmen'

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fraktionskolonien je Spieler erzeugen (`feat/factions-generation`, FACTION-005 Spielseite, ADR 0028)
+
+- Der isolierte Testschnitt ist Produktionscode geworden (`FactionGeneration`): vor der Landung je Platz eine Spielerfraktion mit der gewählten Ideologie (Vorlage oder bearbeitet) und der Lobby-Beziehung; nach der Landung je Platz Siedlung am gewählten Startort, eigene Karte und die übernommene Figur dort. Der Host-Startpfad nutzt das hinter dem Debug-Schalter `-mpFactionStart`; die Server-Sperre bleibt.
+- Vanillas Ideologie-Neuberechnung zählt bei mehreren Spielerfraktionen nur noch die eigenen Figuren (vorher übernahm die zweite Fraktion die Ideologie des Hosts).
+- Selbsttest `-mpWorldSelfTest -mpFactionSelfTest` nutzt denselben Code und besteht: zwei Fraktionen, getrennte Ideologien, zwei Karten, Save/Load als Host und Gast mit gleichem Fingerabdruck. Mit aktivem Anomaly bleibt der Fraktions-Tick ausgespart. Kein Zwei-Client-Test.
 ### Spielstand aus der Lobby fortsetzen (`feat/continue-save`, SAVE-002 Coop, ADR 0027)
 
 - Der Host wählt im Lobby-Fenster „Spielstand fortsetzen …“ einen Multiplayer-Spielstand; die Lobby bleibt bestehen. Im geladenen Spiel meldet die Mod die Spieler des Spielstands (Coop: neuer Code 105 `SessionRestore`; Fraktionen wie bisher 101). Nur diese Spieler können vor dem Start beitreten; „Spiel fortsetzen“ führt direkt zur Spielstandübertragung, alle laden denselben Stand, Besitz bleibt aus dem Spielstand erhalten (Besitzer nicht mehr lebender Figuren werden entfernt).

@@ -111,6 +111,8 @@ namespace Multiplayer.Foundation.RimWorld
         // SETUP-005: the host starts vanilla, saves and sends it; X2 hands time to the lockstep driver after Playing.
         private bool startRequested, allowGameStart, resendGame;
         private Dictionary<int, PlayerKey>? startOwners;
+        // FACTION-005 (ADR 0028): the factions created before vanilla's landing, consumed after it.
+        private FactionGeneration.Prepared? factionPrepared;
         private bool startPawnTransferFailed;
         private List<(PlayerKey Key, string Name)>? startPlayers;
         private string? gameFileName;
@@ -1729,10 +1731,27 @@ namespace Multiplayer.Foundation.RimWorld
             }
             if (lobby.Mode.Mode == GameMode.Factions && !lobby.Restored)
             {
-                startRequested = false;
-                gameText = "Fraktionsstart gesperrt: getrennte Karten, Pawns und Ideologien sind noch nicht geprüft.";
-                SendBackground(new WireMessage(MessageType.SetupAbort, requestId++, Array.Empty<byte>()));
-                return;
+                if (!FactionGeneration.StartEnabled)
+                {
+                    startRequested = false;
+                    gameText = "Fraktionsstart gesperrt: getrennte Karten, Pawns und Ideologien sind noch nicht geprüft.";
+                    SendBackground(new WireMessage(MessageType.SetupAbort, requestId++, Array.Empty<byte>()));
+                    return;
+                }
+                // ADR 0028: one player faction per slot with its ideology, before vanilla generates the host's map.
+                try
+                {
+                    PlayerView me = lobby.Players.First(p => p.Id == client!.SessionId);
+                    factionPrepared = FactionGeneration.PrepareBeforeLanding(FactionPlansFromLobby(), me.Key, lobby.Mode.Relation);
+                }
+                catch (Exception error)
+                {
+                    startRequested = false; factionPrepared = null;
+                    Log.Error("Multiplayer Foundation: Fraktionen konnten nicht erzeugt werden: " + error);
+                    gameText = "Fraktionsstart abgebrochen: " + error.Message;
+                    SendBackground(new WireMessage(MessageType.SetupAbort, requestId++, Array.Empty<byte>()));
+                    return;
+                }
             }
             startOwners = characterHost.SnapshotOwners();
             startPlayers = lobby.Players.Select(p => (p.Key, p.Name)).ToList();
@@ -1748,6 +1767,25 @@ namespace Multiplayer.Foundation.RimWorld
                 Log.Error("Multiplayer game start failed: " + error);
                 gameText = "Spielstart fehlgeschlagen: " + error.Message;
             }
+        }
+
+        // ADR 0028: the lobby's faction choices (ADR 0037/0038) as the generation plan, in slot order.
+        private IReadOnlyList<FactionSlotPlan> FactionPlansFromLobby()
+        {
+            if (lobby == null) throw new InvalidOperationException("Keine Lobby.");
+            var plans = new List<FactionSlotPlan>();
+            foreach (PlayerView player in lobby.Players.OrderBy(p => p.FactionSlot ?? byte.MaxValue))
+            {
+                if (player.FactionSlot == null) throw new InvalidOperationException("Fraktionsplatz fehlt: " + player.Name);
+                if (player.FactionSite == null) throw new InvalidOperationException("Startort fehlt: " + player.Name);
+                StorytellerDef storyteller = DefDatabase<StorytellerDef>.GetNamedSilentFail(player.Storyteller ?? "")
+                    ?? throw new InvalidOperationException("Erzähler fehlt: " + player.Name);
+                if (!factionIdeologies.TryGetValue(player.FactionSlot.Value, out var ideology) || ideology.Player != player.Key ||
+                    !IdeologySummary.Of(ideology.Label, ideology.Data).SameAs(player.Ideology))
+                    throw new InvalidOperationException("Ideologie-Daten fehlen beim Host: " + player.Name);
+                plans.Add(new FactionSlotPlan(player.FactionSlot.Value, player.Key, player.Name, storyteller, player.FactionSite.Value, ideology.Label, ideology.Data));
+            }
+            return plans;
         }
 
         // The server refused the start (someone took back "done" in the meantime): back to the character page.
@@ -2130,6 +2168,26 @@ namespace Multiplayer.Foundation.RimWorld
                     }
                     catch (InvalidOperationException error) { gameText = error.Message; return; }
                 }
+                else if (lobby.Mode.Mode == GameMode.Factions && factionPrepared != null)
+                {
+                    // ADR 0028: settlements, maps and pawns for the other slots, then the faction session.
+                    try
+                    {
+                        List<Pawn> landed = GameFingerprint.Colonists();
+                        var assignments = FactionGeneration.AfterLanding(factionPrepared, startOwners ?? new Dictionary<int, PlayerKey>(), landed);
+                        session.Begin(lobby.Id, lobby.Mode, startPlayers ?? lobby.Players.Select(p => (p.Key, p.Name)).ToList(),
+                            startOwners ?? new Dictionary<int, PlayerKey>(), GameFingerprint.PlayerFactionPawns().Select(p => p.thingIDNumber).ToList(), assignments);
+                        factionPrepared = null;
+                    }
+                    catch (Exception error)
+                    {
+                        startPawnTransferFailed = true; factionPrepared = null;
+                        Log.Error("Multiplayer Foundation: Fraktionskolonien konnten nicht angelegt werden: " + error);
+                        gameText = "Fraktionsstart abgebrochen: " + error.Message;
+                        SendBackground(new WireMessage(MessageType.SetupAbort, requestId++, Array.Empty<byte>()));
+                        return;
+                    }
+                }
                 else if (lobby.Mode.Mode == GameMode.Factions)
                 { gameText = "Fraktionsstart gesperrt: kein geprüfter Mehrfraktions-Spielstand vorhanden."; return; }
                 else session.Begin(lobby.Id, lobby.Mode, startPlayers ?? lobby.Players.Select(p => (p.Key, p.Name)).ToList(),
@@ -2270,6 +2328,7 @@ namespace Multiplayer.Foundation.RimWorld
             pendingJoinSnapshot = null; joinSnapshotLoading = false; joinSnapshotReady = false;
             scheduledSaveFile = null; snapshotRecipients.Clear(); snapshotQueue.Clear(); snapshotUpload = null; snapshotDownload = null;
             startRequested = false; allowGameStart = false; resendGame = false; startOwners = null; startPlayers = null;
+            factionPrepared = null;
             pace = null;
             startPawnTransferFailed = false;
             gameFileName = null; sentGame = null; gameFingerprint = null; hostSaveFile = null; reloadFrom = null; gameUpload = null; gameDownload = null;

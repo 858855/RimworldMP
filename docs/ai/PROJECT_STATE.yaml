@@ -144,7 +144,7 @@ known_issues:
 - 'Zusammengeführtes Verbindungsfenster (Steam, IP mit UPnP-Option, Erreichbarkeitsanzeige neben Chat) nur gebaut, nicht im Spiel geprüft.'
 - 'X4 ist trotz Merge nur eine Teilimplementierung: Ordered Jobs/Designatoren, weitere Referenztypen und der Gameplay-Gleichlauf mit zwei RimWorld-Clients sind ungeprüft; parallele Pfadsuche kann Desync verursachen.'
 - 'FACTION-003 ist trotz Merge nur ein Teilstand: getrennte Spielerfraktionen, isolierte Storyteller-Ereignisse, Save/Load und Zwei-Client-Spieltest fehlen; Fraktionsstart gesperrt.'
-- 'Fraktionsstart bleibt gesperrt: isolierter Lauf mit expliziter Prüfung getrennter Ideologien schlug fehl; Korrekturlauf wurde auf Benutzerwunsch gestoppt. Zwei-Client-Spieltest und Incident-Folgen fehlen.'
+- 'Fraktionsstart bleibt gesperrt: Die Generierung je Platz (feat/factions-generation, ADR 0028) besteht den Selbsttest mit getrennten Ideologien, zwei Karten und Save/Load, ist aber nicht gemerged, nur hinter -mpFactionStart erreichbar und ohne Zwei-Client-Spieltest; der Fraktions-Tick ist mit Anomaly ausgespart, Incident-Folgen fehlen.'
 - 'PAWN-001: Gast-Übernahme und Host-Guards gebaut, aber die vom Benutzer beobachtete zufällige Figurenwahl wurde noch nicht erneut mit zwei Clients geprüft.'
 blockers:
 - Vollständiger RimWorld-UI-Laufzeittest in dieser Umgebung offen.
@@ -232,4 +232,6 @@ documentation_refs:
   faction_ui_merge_gate: docs/verification/2026-10-16-faction-ui-merge-gate.md
   faction_setup_merge_review: docs/reviews/2026-10-16-faction-setup-integration.md
   faction_runtime_and_pawns: docs/verification/2026-10-16-faction-runtime-and-pawns.md
+  faction_generation_decision: docs/decisions/0028-faction-generation.md
+  faction_generation_verification: docs/verification/2026-10-17-faction-generation.md
 last_updated: '2026-10-17'

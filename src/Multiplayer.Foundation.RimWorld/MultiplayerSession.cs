@@ -248,10 +248,11 @@ namespace Multiplayer.Foundation.RimWorld
         }
 
         /// <summary>Fail closed until every faction choice and the shared difficulty can be restored.</summary>
-        internal string? FactionStorytellerError()
+        /// <param name="ignoreAnomaly">Only the self-test's generation check: the Anomaly rule still holds for every tick.</param>
+        internal string? FactionStorytellerError(bool ignoreAnomaly = false)
         {
             if (Mode?.Mode != GameMode.Factions) return null;
-            if (ModsConfig.AnomalyActive)
+            if (ModsConfig.AnomalyActive && !ignoreAnomaly)
                 return "Anomaly-Ereignisse sind für getrennte Fraktions-Erzähler noch nicht zugeordnet.";
             Game? game = Current.Game;
             if (sharedDifficultyDef.Length == 0 || sharedDifficultyFingerprint.Length == 0 ||
