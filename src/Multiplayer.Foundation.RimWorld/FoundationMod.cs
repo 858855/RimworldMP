@@ -520,7 +520,7 @@ namespace Multiplayer.Foundation.RimWorld
             float x = inRect.x + 8f, y = inRect.y + 6f, width = inRect.width - 16f;
             Widgets.Label(new Rect(x, y, width, 30f), "Multiplayer Foundation 0.2 (Vorschau)");
             y += 32f;
-            Widgets.Label(new Rect(x, y, width, 28f), "Verbinden und gemeinsam eine Lobby nutzen · gemeinsames Spiel folgt später");
+            Widgets.Label(new Rect(x, y, width, 28f), "Lobby, gemeinsame Einrichtung, Spielstart und Gleichlauf (Vorschau)");
             y += 34f;
             float statusY = inRect.yMax - 48f;
             if (client == null)
@@ -1143,13 +1143,15 @@ namespace Multiplayer.Foundation.RimWorld
         private void DrawSetupDetails(float x, ref float y, float width)
         {
             if (lobby == null || client == null) return;
-            SetupSettings? shown = lobby.HostId == client.SessionId ? lastMirror : hostSettings;
-            if (shown == null)
+            // The host's setup pages only matter until the game starts; afterwards their last page would look current.
+            bool started = lobby.Phase >= SetupPhase.Generating;
+            SetupSettings? shown = started ? null : lobby.HostId == client.SessionId ? lastMirror : hostSettings;
+            if (!started && shown == null)
             {
                 Widgets.Label(new Rect(x, y, width, 25f), "Warte auf die Einstellungen des Hosts …");
                 y += 29f;
             }
-            else
+            else if (shown != null)
             {
                 Widgets.Label(new Rect(x, y, width, 25f), "Seite des Hosts: " + shown.Page);
                 y += 27f;

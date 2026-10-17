@@ -122,7 +122,6 @@ namespace Multiplayer.Foundation.RimWorld
                         if (init != null)
                             Add("Figuren (" + init.startingPawnCount + ")", string.Join(", ", init.startingAndOptionalPawns
                                 .Take(init.startingPawnCount).Select(p => p.Name?.ToStringShort ?? "?")));
-                        Add("Hinweis", "Eigene Figurenwahl je Spieler folgt mit SETUP-004.");
                         return new SetupSettings("Figuren", entries);
                 }
             }
