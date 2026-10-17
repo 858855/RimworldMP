@@ -349,6 +349,10 @@ public sealed class FoundationServer : IAsyncDisposable
                 await PublishAsync(lobbies.RestoreFactions(peer.Id, FactionRestore.FromPayload(message.Payload)), null, token,
                     message.RequestId).ConfigureAwait(false);
                 break;
+            case MessageType.SessionRestore:
+                await PublishAsync(lobbies.RestoreSession(peer.Id, SessionRestore.FromPayload(message.Payload)), null, token,
+                    message.RequestId).ConfigureAwait(false);
+                break;
             case MessageType.PawnRoster:
                 var (rosterChange, rosterViewers) = lobbies.SetRoster(peer.Id, PawnRoster.Read(message.Payload));
                 foreach (Guid viewer in rosterViewers)

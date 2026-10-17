@@ -99,7 +99,7 @@ namespace Multiplayer.Foundation.RimWorld
         // ADR 0038: full ideology bytes are relayed only to the host; the lobby exposes their label and hash.
         private readonly Dictionary<byte, (PlayerKey Player, string Label, byte[] Data)> factionIdeologies =
             new Dictionary<byte, (PlayerKey, string, byte[])>();
-        private Guid? factionRestoreSentTo;
+        private Guid? restoreSentTo;
         // SETUP-004: the host owns the pawns (CharacterHost); guests see the latest roster.
         private readonly CharacterHost characterHost = new CharacterHost();
         private byte[] lastRosterPayload = System.Array.Empty<byte>();
@@ -1020,10 +1020,10 @@ namespace Multiplayer.Foundation.RimWorld
                 return;
             }
             bool solo = hosted?.AllowSoloStart == true;
-            bool restoring = lobby.Mode.Mode == GameMode.Factions && lobby.FactionsRestored;
+            bool restoring = lobby.Restored;
             string? reason = LobbyRegistry.StartBlockReason(lobby, client.SessionId, solo) ??
                 ((restoring ? Current.ProgramState != ProgramState.Playing : Current.ProgramState != ProgramState.Entry)
-                    ? restoring ? "Zuerst den Fraktions-Spielstand laden." : "Nur im Hauptmenü möglich." : null);
+                    ? restoring ? "Zuerst den Spielstand laden." : "Nur im Hauptmenü möglich." : null);
             if (Widgets.ButtonText(new Rect(x, y, 180f, 32f), restoring ? "Spiel fortsetzen" : "Spiel starten", true, true, reason == null))
             {
                 int players = lobby.Players.Count;
@@ -1034,6 +1034,13 @@ namespace Multiplayer.Foundation.RimWorld
             }
             if (reason != null) Widgets.Label(new Rect(x + 190f, y + 4f, width - 190f, 28f), reason);
             y += 38f;
+            if (!restoring && Current.ProgramState == ProgramState.Entry)
+            {
+                // SAVE-002: the host loads a multiplayer save; the lobby stays, its players come from the save (ADR 0027).
+                if (Widgets.ButtonText(new Rect(x, y, 220f, 28f), "Spielstand fortsetzen …")) ShowSavePicker();
+                Widgets.Label(new Rect(x + 230f, y + 2f, width - 230f, 26f), "Lädt einen Multiplayer-Spielstand; nur dessen Spieler können beitreten.");
+                y += 32f;
+            }
             if (solo)
             {
                 GUI.color = new Color(1f, 0.85f, 0.45f);
@@ -1043,27 +1050,67 @@ namespace Multiplayer.Foundation.RimWorld
             }
         }
 
-        /// <summary>Restore the saved slot table when a loaded Factions game hosts a new lobby or resumes after abort.</summary>
-        private void TryRestoreFactionLobby()
+        // SAVE-002: the multiplayer saves on this machine, newest first; the host picks one to continue.
+        private void ShowSavePicker()
         {
-            if (lobby?.Mode.Mode != GameMode.Factions || lobby.Phase != SetupPhase.Lobby || lobby.FactionsRestored ||
-                client == null || lobby.HostId != client.SessionId || Current.ProgramState != ProgramState.Playing ||
-                factionRestoreSentTo == lobby.Id) return;
+            var options = new List<FloatMenuOption>();
+            foreach (System.IO.FileInfo file in GenFilePaths.AllSavedGameFiles.OrderByDescending(f => f.LastWriteTimeUtc))
+            {
+                string name = System.IO.Path.GetFileNameWithoutExtension(file.Name);
+                if (!name.StartsWith("Multiplayer - ", StringComparison.Ordinal)) continue;
+                options.Add(new FloatMenuOption(name, () => LoadSavedMultiplayerGame(name)));
+            }
+            if (options.Count == 0) options.Add(new FloatMenuOption("Kein Multiplayer-Spielstand gefunden", null));
+            Find.WindowStack.Add(new FloatMenu(options));
+        }
+
+        // The lobby connection lives in the mod and survives the scene change; TryRestoreSessionLobby continues in the game.
+        private void LoadSavedMultiplayerGame(string name)
+        {
+            status = "Spielstand „" + name + "“ wird geladen …";
+            restoreSentTo = null;
+            GameDataSaveLoader.LoadGame(name);
+        }
+
+        /// <summary>
+        /// SAVE-002: a loaded multiplayer game hosts a lobby in its mode: tell the server who belongs to the save (Factions:
+        /// the slot table, 101; Coop: the player list, 105). Runs again after an abort returned the lobby to its start.
+        /// </summary>
+        private void TryRestoreSessionLobby()
+        {
+            if (lobby == null || lobby.Phase != SetupPhase.Lobby || lobby.Restored || client == null || lobby.HostId != client.SessionId ||
+                Current.ProgramState != ProgramState.Playing || restoreSentTo == lobby.Id) return;
             MultiplayerSession? session = MultiplayerSession.ForCurrentGame;
-            if (session?.Active != true || session.Mode != lobby.Mode) return;
-            string? invalid = session.FactionStorytellerError();
-            if (invalid != null) { status = "Fraktions-Spielstand ungültig: " + invalid; return; }
+            if (session?.Active != true) return;
+            if (session.Mode != lobby.Mode)
+            {
+                status = "Der Spielstand ist eine " + (session.Mode?.Mode == GameMode.Factions ? "Fraktionen" : "Koop") +
+                    "-Partie; die Lobby muss in diesem Modus erstellt werden.";
+                return;
+            }
+            PlayerView? me = lobby.Players.FirstOrDefault(player => player.Id == client.SessionId);
+            if (me == null) return;
             try
             {
-                IReadOnlyList<FactionRestoreEntry> entries = session.FactionRestoreEntries();
-                PlayerView? me = lobby.Players.FirstOrDefault(player => player.Id == client.SessionId);
-                if (me == null || !entries.Any(entry => entry.Player == me.Key))
-                { status = "Host hat keinen Platz in diesem Fraktions-Spielstand."; return; }
-                if (SendBackground(new WireMessage(MessageType.FactionRestore, requestId++, new FactionRestore(entries).ToPayload())))
-                    factionRestoreSentTo = lobby.Id;
+                WireMessage message;
+                if (lobby.Mode.Mode == GameMode.Factions)
+                {
+                    string? invalid = session.FactionStorytellerError();
+                    if (invalid != null) { status = "Fraktions-Spielstand ungültig: " + invalid; return; }
+                    IReadOnlyList<FactionRestoreEntry> entries = session.FactionRestoreEntries();
+                    if (!entries.Any(entry => entry.Player == me.Key)) { status = "Host hat keinen Platz in diesem Fraktions-Spielstand."; return; }
+                    message = new WireMessage(MessageType.FactionRestore, requestId++, new FactionRestore(entries).ToPayload());
+                }
+                else
+                {
+                    IReadOnlyList<PlayerKey> keys = session.PlayerKeys();
+                    if (!keys.Contains(me.Key)) { status = "Der Host war kein Spieler dieses Spielstands."; return; }
+                    message = new WireMessage(MessageType.SessionRestore, requestId++, new SessionRestore(keys).ToPayload());
+                }
+                if (SendBackground(message)) { restoreSentTo = lobby.Id; OpenWindow(); }
             }
             catch (Exception error) when (error is InvalidOperationException || error is ProtocolException)
-            { status = "Fraktions-Spielstand kann nicht fortgesetzt werden: " + error.Message; }
+            { status = "Spielstand kann nicht fortgesetzt werden: " + error.Message; }
         }
 
         // Shown while the lobby is in setup. Until the shared setup pages exist nothing here may look like
@@ -1633,7 +1680,7 @@ namespace Multiplayer.Foundation.RimWorld
                 SendBackground(new WireMessage(MessageType.SetupAbort, requestId++, Array.Empty<byte>()));
                 return;
             }
-            if (lobby.Mode.Mode == GameMode.Factions && !lobby.FactionsRestored)
+            if (lobby.Mode.Mode == GameMode.Factions && !lobby.Restored)
             {
                 startRequested = false;
                 gameText = "Fraktionsstart gesperrt: getrennte Karten, Pawns und Ideologien sind noch nicht geprüft.";
@@ -1838,9 +1885,10 @@ namespace Multiplayer.Foundation.RimWorld
             if (lobby == null || client == null) return;
             if (before == SetupPhase.Lobby && now != SetupPhase.Lobby && lobby.HostId == client.SessionId)
             {
-                if (lobby.Mode.Mode == GameMode.Factions && now == SetupPhase.Generating &&
-                    Current.ProgramState == ProgramState.Playing && MultiplayerSession.ForCurrentGame?.Mode == lobby.Mode)
-                { hostSetupActive = true; nextMirrorAt = 0f; gameText = "Geladener Fraktions-Spielstand wird übertragen …"; }
+                // SAVE-002: a continued game goes from Lobby straight to Generating inside the loaded game; no setup pages.
+                MultiplayerSession? loaded = MultiplayerSession.ForCurrentGame;
+                if (now == SetupPhase.Generating && Current.ProgramState == ProgramState.Playing && loaded?.Active == true && loaded.Mode == lobby.Mode)
+                { hostSetupActive = true; nextMirrorAt = 0f; gameText = "Geladener Spielstand wird übertragen …"; }
                 else BeginHostSetup();
             }
             bool guest = lobby.HostId != client.SessionId;
@@ -1870,7 +1918,7 @@ namespace Multiplayer.Foundation.RimWorld
             if (now == SetupPhase.Lobby && before != SetupPhase.Lobby)
             {
                 factionIdeologies.Clear();
-                factionRestoreSentTo = null;
+                restoreSentTo = null;
                 hostSettings = null; lastMirror = null;
                 ResetWorld();
                 ResetGame();
@@ -2025,9 +2073,14 @@ namespace Multiplayer.Foundation.RimWorld
                         return;
                     }
                 }
-                if (lobby.Mode.Mode == GameMode.Factions && session.Active)
+                if (session.Active)
                 {
-                    try { session.RebindLobby(lobby.Id); }
+                    // SAVE-002: a continued game keeps its session and owners; only the lobby id changes and dead pawns leave the table.
+                    try
+                    {
+                        session.RebindLobby(lobby.Id);
+                        session.PruneOwners(GameFingerprint.Colonists().Select(p => p.thingIDNumber).ToList());
+                    }
                     catch (InvalidOperationException error) { gameText = error.Message; return; }
                 }
                 else if (lobby.Mode.Mode == GameMode.Factions)
@@ -2174,7 +2227,7 @@ namespace Multiplayer.Foundation.RimWorld
             startPawnTransferFailed = false;
             gameFileName = null; sentGame = null; gameFingerprint = null; hostSaveFile = null; reloadFrom = null; gameUpload = null; gameDownload = null;
             guestGameFile = null; guestGameLoading = false; gameText = "";
-            factionRestoreSentTo = null;
+            restoreSentTo = null;
             if (Current.ProgramState == ProgramState.Playing) Find.WindowStack.TryRemove(typeof(SetupOverlayWindow), false);
         }
 
@@ -2711,7 +2764,7 @@ namespace Multiplayer.Foundation.RimWorld
                                 lobby = received;
                                 advancePending = false;
                                 OnPhaseChanged(before, received.Phase);
-                                TryRestoreFactionLobby();
+                                TryRestoreSessionLobby();
                             }
                             break;
                         case MessageType.PawnRoster:
@@ -2740,7 +2793,7 @@ namespace Multiplayer.Foundation.RimWorld
                             break;
                         case MessageType.LeaveLobby:
                             lobby = null; chatMessages.Clear(); status = "Lobby verlassen";
-                            factionRestoreSentTo = null; factionIdeologies.Clear();
+                            restoreSentTo = null; factionIdeologies.Clear();
                             hostSettings = null; lastMirror = null;
                             ResetGame();
                             if (hostSetupActive) EndHostSetup(true);
@@ -2791,7 +2844,7 @@ namespace Multiplayer.Foundation.RimWorld
                             var reader = new PayloadReader(message.Payload);
                             byte code = reader.ReadByte(); string reason = reader.ReadString(); reader.EnsureComplete();
                             advancePending = false;
-                            factionRestoreSentTo = null;
+                            restoreSentTo = null;
                             requestedPause = null; requestedSpeed = null; saveRequested = false;
                             if (startRequested)
                             {

@@ -214,11 +214,37 @@ namespace Multiplayer.Foundation.RimWorld
             return entries;
         }
 
+        /// <summary>SAVE-002: a continued game joins a new lobby; players and owners stay as saved.</summary>
         internal void RebindLobby(Guid newLobbyId)
         {
-            if (Mode?.Mode != GameMode.Factions || FactionStorytellerError() != null)
+            if (!Active || Mode == null) throw new InvalidOperationException("Dieser Spielstand enthält keine Multiplayer-Sitzung.");
+            if (Mode.Value.Mode == GameMode.Factions && FactionStorytellerError() != null)
                 throw new InvalidOperationException("Fraktions-Spielstand kann nicht fortgesetzt werden.");
             sessionId = newLobbyId.ToString("N");
+        }
+
+        /// <summary>The saved players as keys (SAVE-002, code 105).</summary>
+        internal IReadOnlyList<PlayerKey> PlayerKeys()
+        {
+            var keys = new List<PlayerKey>(playerKeys.Count);
+            foreach (string text in playerKeys)
+            {
+                if (!PlayerKey.TryParse(text, out PlayerKey key)) throw new InvalidOperationException("Ungültiger PlayerKey im Spielstand.");
+                keys.Add(key);
+            }
+            return keys;
+        }
+
+        /// <summary>Owners of pawns that no longer live (died, left) are dropped before a continued game is sent.</summary>
+        internal void PruneOwners(ICollection<int> livingPawns)
+        {
+            var keptPawns = new List<int>(); var keptOwners = new List<string>();
+            for (int index = 0; index < ownedPawns.Count && index < pawnOwners.Count; index++)
+            {
+                if (!livingPawns.Contains(ownedPawns[index])) continue;
+                keptPawns.Add(ownedPawns[index]); keptOwners.Add(pawnOwners[index]);
+            }
+            ownedPawns = keptPawns; pawnOwners = keptOwners;
         }
 
         /// <summary>Fail closed until every faction choice and the shared difficulty can be restored.</summary>

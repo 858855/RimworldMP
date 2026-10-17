@@ -73,6 +73,8 @@ namespace Multiplayer.Foundation.Protocol
         FactionRestore = 101,
         // 102 and 103 are reserved for the owner's local claude/continuous-sync work (peer quality), not on origin yet.
         // Pace control (ADR 0049 addendum): the coordinator runs below the host's chosen speed while the slowest game holds the horizon.
-        PaceNotice = 104
+        PaceNotice = 104,
+        // SAVE-002 (ADR 0027): the host's game names the players of a loaded Coop save; the lobby admits them and continues.
+        SessionRestore = 105
     }
 }

@@ -128,7 +128,7 @@ namespace Multiplayer.Foundation.Lobby
             switch (lobby.Phase)
             {
                 case SetupPhase.Lobby:
-                    if (!lobby.FactionsRestored) return null;
+                    if (!lobby.Restored) return null;
                     string[] strangers = lobby.Players.Where(p => p.FactionSlot == null).Select(p => p.Name).ToArray();
                     return strangers.Length > 0 ? "Kein Platz im Spielstand: " + string.Join(", ", strangers) : null;
                 case SetupPhase.Storyteller: return StorytellerBlockReason(lobby);
@@ -178,9 +178,9 @@ namespace Multiplayer.Foundation.Lobby
                 // ADR 0037: a running Factions game has exactly the factions it started with; a player returns to theirs.
                 if (room.Phase == SetupPhase.Playing && room.Mode.Mode == GameMode.Factions && !room.FactionSlots.ContainsKey(member.Key))
                     throw new LobbyRuleException(6, "This game has no faction for this player.");
-                // ADR 0038: a lobby that continues a saved Factions game admits exactly the players of that save.
-                if (room.Phase == SetupPhase.Lobby && room.FactionsRestored && !room.FactionSlots.ContainsKey(member.Key))
-                    throw new LobbyRuleException(6, "This saved game has no faction for this player.");
+                // ADR 0038/0027 (SAVE-002): a lobby that continues a saved game admits exactly the players of that save.
+                if (room.Phase == SetupPhase.Lobby && room.Restored && !Admits(room, member.Key))
+                    throw new LobbyRuleException(6, "This saved game has no seat for this player.");
                 room.Members.Add(actor); member.Room = room.Id; room.Revision++;
                 return Change(room, actor);
             }
@@ -226,7 +226,7 @@ namespace Multiplayer.Foundation.Lobby
                 member.Room = null; member.Ready = false; member.Flag = null; room.Members.Remove(actor); room.Revision++;
                 // ADR 0037/0038: before a new game exists a departed player cannot come back, so no faction is made for them.
                 // From Generating on, and in a lobby that continues a saved game, the faction exists and waits for its player.
-                if (room.Phase < SetupPhase.Generating && !room.FactionsRestored) ForgetFaction(room, member.Key);
+                if (room.Phase < SetupPhase.Generating && !room.Restored) ForgetFaction(room, member.Key);
                 if (room.Members.Count == 0) { rooms.Remove(room.Id); return new LobbyChange(null, Array.Empty<Guid>(), actor); }
                 // Only the host holds the generated setup state, so it ends before the host role moves (plan §6.2).
                 if (room.Host == actor) { ResetSetup(room); room.Host = room.Members[0]; ClearReadyWithoutMatch(room); }
@@ -254,13 +254,13 @@ namespace Multiplayer.Foundation.Lobby
             {
                 Room room = GetHostedRoom(actor);
                 if (room.Phase == SetupPhase.Playing) throw new LobbyRuleException(6, "Setup is complete; time runs with lockstep (SYNC-001).");
-                // ADR 0038 (SAVE-002, Factions part): a continued game skips the new-game setup and goes to the game transfer.
-                if (room.Phase == SetupPhase.Lobby && room.FactionsRestored)
+                // ADR 0038/0027 (SAVE-002): a continued game skips the new-game setup and goes to the game transfer.
+                if (room.Phase == SetupPhase.Lobby && room.Restored)
                 {
                     if (target != SetupPhase.Generating) throw new LobbyRuleException(6, "This lobby continues a saved game; start it with the game transfer.");
                     RequireStartConditions(room);
-                    if (room.Members.Any(id => !room.FactionSlots.ContainsKey(members[id].Key)))
-                        throw new LobbyRuleException(6, "A player has no faction in the saved game.");
+                    if (room.Members.Any(id => !Admits(room, members[id].Key)))
+                        throw new LobbyRuleException(6, "A player is not part of the saved game.");
                     EnterPhase(room, SetupPhase.Generating);
                     return Change(room, actor);
                 }
@@ -441,19 +441,46 @@ namespace Multiplayer.Foundation.Lobby
                 ClearFactions(room);
                 foreach (FactionRestoreEntry entry in restore.Entries)
                 { room.FactionSlots[entry.Player] = entry.Slot; room.Storytellers[entry.Player] = entry.Storyteller; }
-                room.FactionsRestored = true;
+                room.Restored = true;
                 foreach (Guid id in room.Members) members[id].Ready = false;
                 room.Revision++;
                 return Change(room, actor);
             }
         }
 
+        /// <summary>
+        /// ADR 0027 (SAVE-002, Coop part): the host's game names the players of the Coop save it loaded. The lobby then
+        /// admits only those players before the start and goes straight into the game transfer; ownership stays in the save.
+        /// </summary>
+        public LobbyChange RestoreSession(Guid actor, SessionRestore restore)
+        {
+            if (restore == null) throw new ArgumentNullException(nameof(restore));
+            lock (gate)
+            {
+                Room room = GetHostedRoom(actor);
+                if (room.Mode.Mode != GameMode.Coop) throw new LobbyRuleException(6, "A Factions game restores its faction table instead.");
+                if (room.Phase != SetupPhase.Lobby) throw new LobbyRuleException(6, "A saved game is restored before the start.");
+                if (!restore.Players.Contains(members[actor].Key)) throw new LobbyRuleException(6, "The host is not a player of this saved game.");
+                ClearFactions(room);
+                room.RestoredPlayers.UnionWith(restore.Players);
+                room.Restored = true;
+                foreach (Guid id in room.Members) members[id].Ready = false;
+                room.Revision++;
+                return Change(room, actor);
+            }
+        }
+
+        // SAVE-002: who belongs to the saved game a lobby continues (Factions: the slot table; Coop: the restored player list).
+        private static bool Admits(Room room, PlayerKey key) =>
+            room.Mode.Mode == GameMode.Factions ? room.FactionSlots.ContainsKey(key) : room.RestoredPlayers.Contains(key);
+
         public LobbyChange AbortSetup(Guid actor)
         {
             lock (gate)
             {
                 Room room = GetHostedRoom(actor);
-                if (room.Phase == SetupPhase.Lobby) throw new LobbyRuleException(6, "No setup is running.");
+                // SAVE-002: in a lobby that continues a saved game, abort forgets the save and opens the lobby again.
+                if (room.Phase == SetupPhase.Lobby && !room.Restored) throw new LobbyRuleException(6, "No setup is running.");
                 ResetSetup(room); room.Revision++;
                 return Change(room, actor);
             }
@@ -673,7 +700,7 @@ namespace Multiplayer.Foundation.Lobby
         private static void ClearFactions(Room room)
         {
             room.FactionSlots.Clear(); room.Storytellers.Clear(); room.FactionOptions = null; room.FactionSites.Clear();
-            room.Ideologies.Clear(); room.Notes.Clear(); room.FactionsRestored = false;
+            room.Ideologies.Clear(); room.Notes.Clear(); room.Restored = false; room.RestoredPlayers.Clear();
         }
         private static string? StorytellerOf(Room room, Member member) =>
             room.Storytellers.TryGetValue(member.Key, out string? storyteller) ? storyteller : null;
@@ -728,7 +755,7 @@ namespace Multiplayer.Foundation.Lobby
                 members[id].Flag, StatusOf(room, members[id]), WorldStatusOf(room, members[id]), SlotOf(room, members[id]),
                 StorytellerOf(room, members[id]), SiteOf(room, members[id]), IdeologyOf(room, members[id]), NoteOf(room, members[id]))).ToArray();
             return new LobbyChange(new LobbyView(room.Id, room.Name, room.Host, room.Revision, room.Capacity, players,
-                room.Phase, room.Site, room.Mode, room.FactionOptions, room.FactionsRestored && room.Phase == SetupPhase.Lobby),
+                room.Phase, room.Site, room.Mode, room.FactionOptions, room.Restored && room.Phase == SetupPhase.Lobby),
                 room.Members.ToArray(), actor);
         }
         private static SiteTile? SiteOf(Room room, Member member) =>
@@ -777,7 +804,9 @@ namespace Multiplayer.Foundation.Lobby
             public Dictionary<PlayerKey, SiteTile> FactionSites { get; } = new Dictionary<PlayerKey, SiteTile>();
             public Dictionary<PlayerKey, IdeologySummary> Ideologies { get; } = new Dictionary<PlayerKey, IdeologySummary>();
             public Dictionary<PlayerKey, string> Notes { get; } = new Dictionary<PlayerKey, string>();
-            public bool FactionsRestored { get; set; }
+            /// <summary>SAVE-002: the lobby continues a saved game (Factions via the slot table, Coop via RestoredPlayers).</summary>
+            public bool Restored { get; set; }
+            public HashSet<PlayerKey> RestoredPlayers { get; } = new HashSet<PlayerKey>();
         }
     }
 }

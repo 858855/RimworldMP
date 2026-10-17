@@ -42,10 +42,10 @@ namespace Multiplayer.Foundation.Protocol
     {
         public LobbyView(Guid id, string name, Guid hostId, ulong revision, byte capacity, IReadOnlyList<PlayerView> players,
             SetupPhase phase = SetupPhase.Lobby, SiteTile? site = null, LobbyMode? mode = null, FactionOptions? factionOptions = null,
-            bool factionsRestored = false)
+            bool restored = false)
         {
             Id = id; Name = name; HostId = hostId; Revision = revision; Capacity = capacity; Players = players; Phase = phase; Site = site;
-            Mode = mode ?? LobbyMode.CoopHost; FactionOptions = factionOptions; FactionsRestored = factionsRestored;
+            Mode = mode ?? LobbyMode.CoopHost; FactionOptions = factionOptions; Restored = restored;
         }
         public Guid Id { get; }
         public string Name { get; }
@@ -61,10 +61,11 @@ namespace Multiplayer.Foundation.Protocol
         /// <summary>Factions mode (ADR 0037): shared difficulty and selectable storytellers, once the host sent them.</summary>
         public FactionOptions? FactionOptions { get; }
         /// <summary>
-        /// ADR 0038: a Factions lobby that continues a saved game; its slots and storytellers come from the host's save.
-        /// Only meaningful in the Lobby phase; such a lobby starts straight into Generating.
+        /// SAVE-002: this lobby continues a saved game. Factions (ADR 0038): slots and storytellers come from the host's save
+        /// (code 101). Coop (ADR 0027): the save's players come from code 105. Only meaningful in the Lobby phase; such a
+        /// lobby admits only the save's players and starts straight into Generating.
         /// </summary>
-        public bool FactionsRestored { get; }
+        public bool Restored { get; }
     }
 
     public sealed class LobbySummary
@@ -219,12 +220,14 @@ namespace Multiplayer.Foundation.Protocol
                 writer.WriteByte((byte)player.WorldStatus);
             }
             state.Mode.Write(writer);
-            // ADR 0037/0038: only a Factions lobby whose setup has started, or that continues a saved game, carries the
-            // faction block. Every other state keeps the bytes it had before, and faction data there is an error rather than
-            // something to drop silently.
-            if (state.FactionsRestored && (state.Mode.Mode != GameMode.Factions || state.Phase != SetupPhase.Lobby))
-                throw new ProtocolException("Only a Factions lobby before its start continues a saved game.");
-            if (HasFactionBlock(state.Mode, state.Phase) || state.FactionsRestored)
+            // SAVE-002: whether the lobby continues a saved game; only before its start.
+            if (state.Restored && state.Phase != SetupPhase.Lobby)
+                throw new ProtocolException("Only a lobby before its start continues a saved game.");
+            writer.WriteBool(state.Restored);
+            // ADR 0037/0038: only a Factions lobby whose setup has started, or that continues a saved Factions game, carries
+            // the faction block. Every other state ends here, and faction data there is an error rather than something to
+            // drop silently.
+            if (HasFactionBlock(state.Mode, state.Phase) || (state.Mode.Mode == GameMode.Factions && state.Restored))
             {
                 writer.WriteBool(state.FactionOptions != null); state.FactionOptions?.Write(writer);
                 foreach (PlayerView player in state.Players)
@@ -253,7 +256,7 @@ namespace Multiplayer.Foundation.Protocol
         /// <summary>
         /// ADR 0037: the faction block follows the mode exactly when the lobby is in the Factions mode and its setup has started
         /// (faction slots exist from then on). It is then required; in any other state extra bytes are refused. The one addition
-        /// (ADR 0038): a Factions lobby that continues a saved game carries it in the Lobby phase too (<see cref="LobbyView.FactionsRestored"/>).
+        /// (ADR 0038): a Factions lobby that continues a saved game carries it in the Lobby phase too (<see cref="LobbyView.Restored"/>).
         /// </summary>
         public static bool HasFactionBlock(LobbyMode mode, SetupPhase phase) => mode.Mode == GameMode.Factions && phase != SetupPhase.Lobby;
 
@@ -277,10 +280,11 @@ namespace Multiplayer.Foundation.Protocol
                 players.Add(new PlayerView(playerId, playerName, ready, key, flag, modStatus, worldStatus));
             }
             LobbyMode mode = LobbyMode.Read(reader);
+            bool restored = reader.ReadBool();
+            if (restored && phase != SetupPhase.Lobby) throw new ProtocolException("Only a lobby before its start continues a saved game.");
             FactionOptions? options = null;
             // ADR 0038: in the Lobby phase a Factions state carries the block only when it continues a saved game.
-            bool restored = mode.Mode == GameMode.Factions && phase == SetupPhase.Lobby && reader.Remaining > 0;
-            if (HasFactionBlock(mode, phase) || restored)
+            if (HasFactionBlock(mode, phase) || (mode.Mode == GameMode.Factions && restored))
             {
                 options = reader.ReadBool() ? FactionOptions.Read(reader) : null;
                 for (int i = 0; i < players.Count; i++)
