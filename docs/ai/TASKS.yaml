@@ -941,8 +941,8 @@ tasks:
   - 'Jede Abweichung ist ursächlich geklärt und behebbar, sonst wird der Plan überarbeitet'
   implementation: in_progress
   verification: build_passed
-  integration: ready_for_human_review
-  branch: integration/sync-2026-10-17
+  integration: merged
+  branch: main
   evidence:
   - docs/verification/2026-10-17-integration-sync.md
   blocker: 'Drei Abweichungsursachen in RimWorld 1.6 (sicht-/tonabhängige Rand-Ziehungen, sichtabhängige Pawn-Tickrate, Hintergrund-Pfadsuche) wurden auf feat/sync-lockstep im Selbsttest gefunden und behoben (5 × 6 000 Ticks gleich; eine seltene Abweichung nach 20 000 Ticks offen). Die Patches sind auf main portiert, aber auf diesem Treiber nur gebaut; der 60 000-Tick-Nachweis mit zwei Instanzen fehlt.'
@@ -1760,8 +1760,8 @@ tasks:
   - 'Mod-Build und Zwei-Client-Spieltest mit Unterbrechung, Resync und Tempoänderung dokumentiert'
   implementation: implemented
   verification: build_passed
-  integration: ready_for_human_review
-  branch: integration/sync-2026-10-17
+  integration: merged
+  branch: main
   base_branch: main
   base_commit: 85e02f9
   evidence:
@@ -1769,7 +1769,7 @@ tasks:
   - docs/verification/2026-10-16-continuous-sync.md
   - docs/verification/2026-10-17-integration-sync.md
   - docs/reviews/2026-10-17-integration-sync.md
-  blocker: 'Zwei-Client-RimWorld-Test auf Benutzerwunsch aktuell ausgesetzt; Host-Hot-Rejoin benötigt einen separaten Koordinator-Vertrag. Integration 2026-10-17 per Fast-Forward; Merge nach main wartet auf die Freigabe des Besitzers.'
+  blocker: 'Zwei-Client-RimWorld-Test auf Benutzerwunsch aktuell ausgesetzt; Host-Hot-Rejoin benötigt einen separaten Koordinator-Vertrag. Am 2026-10-17 mit Freigabe des Besitzers per Fast-Forward auf main.'
 - id: SYNC-010
   title: 'Gemeinsame Tempoanpassung durch den Koordinator'
   goal: 'Bei hohem Ping oder Datenverlust wird die Verbindung langsamer: Das gemeinsame Tempo sinkt für alle Spiele am selben Tick, kehrt automatisch zurück und ist nie schneller als die Wahl des Hosts; der Grund ist sichtbar.'
@@ -1791,8 +1791,8 @@ tasks:
   - 'Zwei-Client-Spieltest mit künstlich langsamem Gast: Absenkung, Anzeige und Rückkehr'
   implementation: implemented
   verification: tests_passed
-  integration: ready_for_human_review
-  branch: integration/sync-2026-10-17
+  integration: merged
+  branch: main
   base_branch: main
   base_commit: 85e02f9
   evidence:

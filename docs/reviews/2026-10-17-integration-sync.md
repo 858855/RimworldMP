@@ -2,7 +2,7 @@
 
 - **Auftrag:** Besitzer (Fabio), 2026-10-17: „RimworldMP vollständig integrieren und aufräumen“. Ausgeführt von Sven mit Claude auf Svens Windows-Rechner, nicht auf dem Linux-Rechner des Besitzers. Dadurch weichen Pfade, SDK und die erreichbaren Branches vom Auftragstext ab (siehe Abweichungen).
 - **Integrationsbranch:** `integration/sync-2026-10-17` im Worktree `E:\RimworldMP-integration`, abgezweigt von `origin/main` @ `85e02f9` (unverändert seit Auftragserteilung, am Ende erneut geprüft).
-- **Freigabe:** Keine. Dieser Bericht ist die Vorlage für den Freigabe-Stopp. Kein Merge nach `main`, kein Push, keine Tags, keine Löschung (AGENTS.md Regel 32).
+- **Freigabe:** Am 2026-10-17 nach dem Freigabe-Stopp vom Besitzer erteilt (von Sven übermittelt: „Der Owner hat Phase 2 freigegeben: main per Fast-Forward auf ffa46c9, Push, Archiv-Tags und Loeschungen laut Loeschliste. feat/sync-lockstep und feat/sync-commands behalten.“). Ablauf und Ergebnis unter „Phase 2“ am Ende.
 - **Prüfung:** `docs/verification/2026-10-17-integration-sync.md`.
 
 ## Abweichungen von der Ausgangslage des Auftrags
