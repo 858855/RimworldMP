@@ -48,7 +48,8 @@ namespace Multiplayer.Foundation.RimWorld
         private static long generateMs, saveMs;
         private static bool saveSynchronous, pawnsPassed;
         private static bool factionTest;
-        private static Faction? secondTestFaction;
+        private static FactionGeneration.Prepared? factionPrepared;
+        private static Protocol.PlayerKey testHostKey, testGuestKey;
         private static string[] factionSetupBefore = Array.Empty<string>();
         private static readonly System.Collections.Generic.List<string> gameResults = new System.Collections.Generic.List<string>();
         private const string HostSave = "Multiplayer - Selbsttest Host", GuestSave = "Multiplayer - Selbsttest Gast";
@@ -192,7 +193,12 @@ namespace Multiplayer.Foundation.RimWorld
                                 .Select(p => p.thingIDNumber).OrderBy(id => id).SequenceEqual(chosenPawns);
                         Check("startKept", kept);
                         if (!kept) { Finish(); return; }
-                        if (factionTest) secondTestFaction = FactionRuntimeTestSlice.CreateFactionBeforeLanding();
+                        if (factionTest)
+                        {
+                            // ADR 0028: the production generation step with a two-slot plan (host here, a second player elsewhere).
+                            testHostKey = Protocol.PlayerKey.Local(Guid.NewGuid()); testGuestKey = Protocol.PlayerKey.Local(Guid.NewGuid());
+                            factionPrepared = FactionGeneration.PrepareBeforeLanding(FactionTestPlans(), testHostKey, Protocol.FactionRelation.Neutral);
+                        }
                         gameStage = 2; gameWatch.Restart(); hostGame = null;
                         PageUtility.InitGameStart();
                         return;
@@ -205,7 +211,8 @@ namespace Multiplayer.Foundation.RimWorld
                         // The game must land the chosen pawns on the chosen site, not a quick-test game (2026-10-16).
                         Check("landedChosen", chosenPawns.Length > 0 && chosenPawns.All(id => colonists.Any(p => p.thingIDNumber == id)));
                         Check("site", Find.Maps[0].Tile == startTile);
-                        Protocol.PlayerKey a = Protocol.PlayerKey.Local(Guid.NewGuid()), b = Protocol.PlayerKey.Local(Guid.NewGuid());
+                        Protocol.PlayerKey a = factionTest ? testHostKey : Protocol.PlayerKey.Local(Guid.NewGuid());
+                        Protocol.PlayerKey b = factionTest ? testGuestKey : Protocol.PlayerKey.Local(Guid.NewGuid());
                         var owners = new System.Collections.Generic.Dictionary<int, Protocol.PlayerKey>();
                         if (colonists.Count >= 2) { owners[colonists[0].thingIDNumber] = a; owners[colonists[1].thingIDNumber] = b; }
                         owners[-1] = b; // a pawn that did not land must not be saved
@@ -213,22 +220,30 @@ namespace Multiplayer.Foundation.RimWorld
                         Check("component", session != null);
                         if (factionTest)
                         {
-                            var assignments = FactionRuntimeTestSlice.Create(a, b, colonists,
-                                secondTestFaction ?? throw new InvalidOperationException("Zweite Testfraktion fehlt."));
+                            // The owners dictionary carries a pawn that did not land (-1); the generation must ignore it.
+                            var assignments = FactionGeneration.AfterLanding(
+                                factionPrepared ?? throw new InvalidOperationException("Fraktionen wurden nicht vor der Landung erzeugt."), owners, colonists);
                             session?.Begin(Guid.NewGuid(), Protocol.LobbyMode.Factions(Protocol.FactionRelation.Neutral),
                                 new[] { (a, "Test-Host"), (b, "Test-Gast") }, owners,
                                 GameFingerprint.PlayerFactionPawns().Select(p => p.thingIDNumber).ToList(), assignments);
+                            // With Anomaly active the storyteller rule refuses every faction tick (ADR 0046); the generation
+                            // is still checked, and the tick check is reported as skipped rather than passed.
+                            bool anomaly = ModsConfig.AnomalyActive;
                             Log.Message("Multiplayer Foundation faction self-test: before save error=" +
-                                (session == null ? "session missing" : FactionRuntimeTestSlice.Diagnostic(session) ?? "none") +
-                                " playerPawns=" + GameFingerprint.PlayerFactionPawns().Count);
-                            Check("factionSetup", session != null && session.FactionStorytellerError() == null &&
-                                FactionRuntimeTestSlice.CheckCurrentGame(session));
+                                (session == null ? "session missing" : FactionRuntimeTestSlice.Diagnostic(session, anomaly) ?? "none") +
+                                " playerPawns=" + GameFingerprint.PlayerFactionPawns().Count + (anomaly ? " (Anomaly active: storyteller rule not checked)" : ""));
+                            Check("factionSetup", session != null && session.FactionStorytellerError(anomaly) == null &&
+                                FactionRuntimeTestSlice.CheckCurrentGame(session, anomaly));
                             factionSetupBefore = session?.FactionSetupInSlotOrder.Select(x =>
                                 x.PlayerKey + "/" + x.Slot + "/" + x.FactionId + "/" + x.Storyteller + "/" + x.Site).ToArray()
                                 ?? Array.Empty<string>();
-                            // Exercises the installed Harmony replacement once while the generated game is paused.
-                            Current.Game.storyteller.StorytellerTick();
-                            Check("factionTick", session?.FactionStorytellerError() == null);
+                            if (anomaly) gameResults.Add("factionTick=skipped(Anomaly)");
+                            else
+                            {
+                                // Exercises the installed Harmony replacement once while the generated game is paused.
+                                Current.Game.storyteller.StorytellerTick();
+                                Check("factionTick", session?.FactionStorytellerError() == null);
+                            }
                         }
                         else session?.Begin(Guid.NewGuid(), Protocol.LobbyMode.CoopHost,
                             new[] { (a, "Test-Host"), (b, "Test-Gast") }, owners,
@@ -267,11 +282,11 @@ namespace Multiplayer.Foundation.RimWorld
                         if (!Loaded()) { TimeOut("hostReloaded"); return; }
                         reloadMs = gameWatch.ElapsedMilliseconds;
                         (hostFingerprint, hostLines) = GameFingerprint.Compute(hostFile!, MultiplayerSession.ForCurrentGame!);
-                        if (factionTest) Check("hostFactions", FactionRuntimeTestSlice.CheckCurrentGame(MultiplayerSession.ForCurrentGame!) &&
+                        if (factionTest) Check("hostFactions", FactionRuntimeTestSlice.CheckCurrentGame(MultiplayerSession.ForCurrentGame!, ModsConfig.AnomalyActive) &&
                             factionSetupBefore.SequenceEqual(MultiplayerSession.ForCurrentGame!.FactionSetupInSlotOrder.Select(x =>
                                 x.PlayerKey + "/" + x.Slot + "/" + x.FactionId + "/" + x.Storyteller + "/" + x.Site)));
                         if (factionTest) Log.Message("Multiplayer Foundation faction self-test: host load error=" +
-                            (MultiplayerSession.ForCurrentGame is MultiplayerSession hostSession ? FactionRuntimeTestSlice.Diagnostic(hostSession) ?? "none" : "session missing") +
+                            (MultiplayerSession.ForCurrentGame is MultiplayerSession hostSession ? FactionRuntimeTestSlice.Diagnostic(hostSession, ModsConfig.AnomalyActive) ?? "none" : "session missing") +
                             " playerPawns=" + GameFingerprint.PlayerFactionPawns().Count);
                         hostTick = Find.TickManager.TicksGame;
                         StartPauseProbe();
@@ -291,11 +306,11 @@ namespace Multiplayer.Foundation.RimWorld
                         long loadMs = gameWatch.ElapsedMilliseconds;
                         MultiplayerSession? loaded = MultiplayerSession.ForCurrentGame;
                         Check("sessionLoaded", loaded?.Active == true && loaded.Owners.Count() == 2);
-                        if (factionTest) Check("guestFactions", loaded != null && FactionRuntimeTestSlice.CheckCurrentGame(loaded) &&
+                        if (factionTest) Check("guestFactions", loaded != null && FactionRuntimeTestSlice.CheckCurrentGame(loaded, ModsConfig.AnomalyActive) &&
                             factionSetupBefore.SequenceEqual(loaded.FactionSetupInSlotOrder.Select(x =>
                                 x.PlayerKey + "/" + x.Slot + "/" + x.FactionId + "/" + x.Storyteller + "/" + x.Site)));
                         if (factionTest) Log.Message("Multiplayer Foundation faction self-test: guest load error=" +
-                            (loaded == null ? "session missing" : FactionRuntimeTestSlice.Diagnostic(loaded) ?? "none") +
+                            (loaded == null ? "session missing" : FactionRuntimeTestSlice.Diagnostic(loaded, ModsConfig.AnomalyActive) ?? "none") +
                             " playerPawns=" + GameFingerprint.PlayerFactionPawns().Count);
                         var (guestFingerprint, guestLines) = GameFingerprint.Compute(guestFile!, loaded!);
                         bool same = guestFingerprint.SequenceEqual(hostFingerprint!);
@@ -353,6 +368,28 @@ namespace Multiplayer.Foundation.RimWorld
             " checks=" + (SessionPauseUpdatePatch.Calls - probeCalls) + " resets=" + (SessionPauseUpdatePatch.Resets - probeResets) +
             " runningAfter=" + (SessionPauseUpdatePatch.RunningAfter - probeRunning) + " ticksBlocked=" + (SessionPauseTickPatch.Blocked - probeBlocked) + ")";
 
+        // ADR 0028 self-test plan: the host at the chosen start tile with vanilla's storyteller; a second player at least 20 tiles
+        // away with another storyteller and, with Ideology, the first installed preset (else the fixed choice).
+        private static System.Collections.Generic.IReadOnlyList<FactionSlotPlan> FactionTestPlans()
+        {
+            PlanetLayer surface = Find.World.grid.Surface;
+            PlanetTile secondTile = Enumerable.Range(0, surface.TilesCount).Select(surface.PlanetTileForID)
+                .FirstOrDefault(tile => tile != startTile && Find.WorldGrid.ApproxDistanceInTiles(startTile, tile) >= 20f &&
+                    TileFinder.IsValidTileForNewSettlement(tile, new System.Text.StringBuilder(), false));
+            if (!secondTile.Valid) throw new InvalidOperationException("Kein zweiter gültiger Startort gefunden.");
+            StorytellerDef first = Current.Game.storyteller.def;
+            StorytellerDef second = FactionStorytellerCatalog.AvailableFor(Current.Game.storyteller.difficultyDef).FirstOrDefault(def => def != first)
+                ?? throw new InvalidOperationException("Kein zweiter kompatibler Erzähler installiert.");
+            (string label, byte[] data) ideology = ModsConfig.IdeologyActive
+                ? FactionIdeologyCodec.PresetChoice(DefDatabase<IdeoPresetDef>.AllDefsListForReading.First())
+                : FactionIdeologyCodec.FixedChoice();
+            return new[]
+            {
+                new FactionSlotPlan(0, testHostKey, "Test-Host", first, SiteFlags.ToSiteTile(startTile), "Host", new byte[] { 1, 0 }),
+                new FactionSlotPlan(1, testGuestKey, "Test-Gast", second, SiteFlags.ToSiteTile(secondTile), ideology.label, ideology.data)
+            };
+        }
+
         // Host side of the game test: a fresh game with a generated world and the scenario's starting pawns.
         private static void PrepareHostGame()
         {
@@ -384,7 +421,7 @@ namespace Multiplayer.Foundation.RimWorld
                 catch (Exception error) { Log.Warning("Multiplayer Foundation game self-test: could not remove " + name + ": " + error.Message); }
             }
             if (startPage != null) Find.WindowStack.TryRemove(startPage, false);
-            gameStage = 0; hostGame = null; guestFile = null; hostFile = null; secondTestFaction = null; startPage = null;
+            gameStage = 0; hostGame = null; guestFile = null; hostFile = null; factionPrepared = null; startPage = null;
             if (!quitWhenIdle && Current.ProgramState == ProgramState.Playing) GenScene.GoToMainMenu();
         }
 
