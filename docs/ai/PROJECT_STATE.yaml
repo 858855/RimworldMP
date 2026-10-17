@@ -20,7 +20,7 @@ git:
   base_branch: feat/sync-lockstep
   base_commit: 2a52807
   current_commit_ref: HEAD
-  pushed: false
+  pushed: true
   merged: false
   dependent_branches:
   - feat/sync-lockstep
