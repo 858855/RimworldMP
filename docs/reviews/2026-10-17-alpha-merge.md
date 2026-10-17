@@ -28,6 +28,10 @@
 
 Siehe `docs/verification/2026-10-17-alpha-release.md`: Mod-Build 0 Warnungen, neun Testläufe und Server-Build im .NET-8-Harness, Validator, `git diff --check`, drei Selbsttests im Spiel (Welt + Rechte + API; Fortsetzen; Fraktionen), Paket mit `package-mod.py`.
 
+## Aufräumen nach dem Push (2026-10-17, Benutzerwunsch)
+
+Die vier gemergten Branches wurden mit Archiv-Tags gesichert und gelöscht (Regel: kein Löschen ohne Archiv-Tag): `archive/feat/permissions` → `886e096`, `archive/feat/continue-save` → `9c8fbea`, `archive/feat/factions-generation` → `b31033e`, `archive/feat/mod-api` → `3685df2`; Tags gepusht, danach `git push origin --delete` und lokal `git branch -d` samt Worktrees `E:\RimworldMP-permissions`, `-continue`, `-factions`, `-api`. Verbleibende Remote-Branches: `main`, `feat/sync-lockstep`, `feat/sync-commands` (Besitzer-Entscheidung offen). Archiv-Tags insgesamt: 13.
+
 ## Offen für den Besitzer
 
 1. GitHub-Release zum Tag `v0.3.0-alpha.1` mit dem ZIP anlegen (kein `gh` auf Svens Rechner); `main` und Tag sind gepusht.
