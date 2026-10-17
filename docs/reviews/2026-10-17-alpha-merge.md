@@ -2,7 +2,7 @@
 
 - **Datum:** 2026-10-17 (Sven, auf Wunsch des Benutzers: „merge all to main and test, make an alpha release“)
 - **Ausgang:** `main` @ `060d2be` (Integration 2026-10-17, Phase 2 abgeschlossen). Alle vier Branches zweigen genau dort ab.
-- **Ergebnis:** vier Merge-Commits auf dem lokalen `main` (`2ab54e1`, `6077751`, `8212fc4`, `c28718c`), danach der Release-Commit (Version, Paket, Doku). **Nicht gepusht**, bis der Besitzer zustimmt (AGENTS.md Regel 32).
+- **Ergebnis:** vier Merge-Commits auf `main` (`2ab54e1`, `6077751`, `8212fc4`, `c28718c`), danach der Release-Commit `98ab63f` (Version, Hash-Fix, Paket, Doku). Am 2026-10-17 auf Freigabe des Benutzers (Sven) nach `origin/main` gepusht, Tag `v0.3.0-alpha.1` ebenfalls; das GitHub-Release mit dem ZIP legt der Besitzer an.
 
 ## Branch-Matrix
 
@@ -30,7 +30,7 @@ Siehe `docs/verification/2026-10-17-alpha-release.md`: Mod-Build 0 Warnungen, ne
 
 ## Offen für den Besitzer
 
-1. Push von `main` (vier Merges + Release-Commit) und Tag `v0.3.0-alpha.1`; GitHub-Release mit dem ZIP (kein `gh` auf Svens Rechner).
+1. GitHub-Release zum Tag `v0.3.0-alpha.1` mit dem ZIP anlegen (kein `gh` auf Svens Rechner); `main` und Tag sind gepusht.
 2. Entscheidung zu `feat/sync-lockstep`/`feat/sync-commands`.
 3. Neue ADR-Nummernbereiche: Svens 0024–0029 sind aufgebraucht; Claude 0032–0039 und Codex 0040–0049 ebenso.
 4. Zwei-Client-Spieltest der Alpha mit beiden PCs auf demselben RimWorld-Build.

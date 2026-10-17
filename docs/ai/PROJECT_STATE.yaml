@@ -176,7 +176,7 @@ active_tasks:
 - SETUP-003
 - SETUP-004
 - SETUP-005
-next_action: 'Besitzer: Push von main (vier Feature-Merges + Release 0.3.0-alpha.1) und Tag v0.3.0-alpha.1 freigeben, GitHub-Release mit dem ZIP anlegen, neue ADR-Bereiche vergeben; Zwei-Client-Spieltest der Alpha mit identischem RimWorld-Build. Besitzer: Entscheidung zu den zwei Gleichlauf-Linien (main vs. feat/sync-lockstep/feat/sync-commands) und zur Gast-Figurenseite; danach a779f21/da2e4b7 (claude/continuous-sync, lokal) mit SYNC-010 zusammenführen (PeerQuality als weiterer Eingang, ADR 0039). Codex: Ideologie-Instanz im Fraktions-Selbsttest statisch untersuchen; keine neuen Spieltests, solange der Benutzer sie ausgesetzt hat. Fraktionsstart gesperrt lassen; Regel für weltweite Ereignisse (ADR 0037 R4) offen.'
+next_action: 'Besitzer: GitHub-Release zum gepushten Tag v0.3.0-alpha.1 mit dem ZIP anlegen, neue ADR-Bereiche vergeben; Zwei-Client-Spieltest der Alpha mit identischem RimWorld-Build. Besitzer: Entscheidung zu den zwei Gleichlauf-Linien (main vs. feat/sync-lockstep/feat/sync-commands) und zur Gast-Figurenseite; danach a779f21/da2e4b7 (claude/continuous-sync, lokal) mit SYNC-010 zusammenführen (PeerQuality als weiterer Eingang, ADR 0039). Codex: Ideologie-Instanz im Fraktions-Selbsttest statisch untersuchen; keine neuen Spieltests, solange der Benutzer sie ausgesetzt hat. Fraktionsstart gesperrt lassen; Regel für weltweite Ereignisse (ADR 0037 R4) offen.'
 documentation_refs:
   tasks: docs/ai/TASKS.yaml
   handoff: docs/ai/SESSION_HANDOFF.md
