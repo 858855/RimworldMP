@@ -28,7 +28,7 @@ DOTNET_BIN=/home/fabiok/.local/share/dotnet-rimworldmp/dotnet bash scripts/build
 python3 scripts/package-mod.py
 ```
 
-Das zweite Kommando prüft `About.xml`, die fünf eigenen Assemblies, `0Harmony.dll`, Lizenz und Archivinhalt und erzeugt `releases/RimWorldMultiplayerFoundation-0.1.0-dev-menu-chat-preview-rw1.6.zip` mit neun Einträgen. Die [Installationsanleitung](../mod/INSTALLATION.md) liegt auch im ZIP. Entpacken direkt in `RimWorld/Mods/`; der Archivordner ist bereits `RimWorldMultiplayerFoundation/`. Das ZIP enthält keinen Server. Menüposition und Fensteröffnung wurden vom Benutzer im Spiel bestätigt; Steam-/IP-Bedienung und Chat bleiben zu prüfen.
+Das zweite Kommando prüft `About.xml`, die sieben eigenen Assemblies (seit ADR 0029 auch `Multiplayer.Foundation.Api.dll`), `0Harmony.dll`, Lizenz und Archivinhalt und erzeugt `releases/RimWorldMultiplayerFoundation-0.1.0-dev-menu-chat-preview-rw1.6.zip` mit elf Einträgen. Die [Installationsanleitung](../mod/INSTALLATION.md) liegt auch im ZIP. Entpacken direkt in `RimWorld/Mods/`; der Archivordner ist bereits `RimWorldMultiplayerFoundation/`. Das ZIP enthält keinen Server. Menüposition und Fensteröffnung wurden vom Benutzer im Spiel bestätigt; Steam-/IP-Bedienung und Chat bleiben zu prüfen.
 
 Für einen anders benannten Teststand kann der ZIP-Name als Argument übergeben werden. Beide Spieler und ein optionaler Dedicated Server müssen aus demselben Branch/Wire-Version 2 stammen; das ältere Steam-Vorschau-ZIP verwendet Wire-Version 1.
 

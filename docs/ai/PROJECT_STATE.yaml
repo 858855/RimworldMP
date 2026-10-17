@@ -143,6 +143,7 @@ known_issues:
 - 'NET-002: echte Internetverbindung, UPnP-Freigabe am echten Router und Mono-Laufzeit im Spiel nicht geprüft.'
 - 'Zusammengeführtes Verbindungsfenster (Steam, IP mit UPnP-Option, Erreichbarkeitsanzeige neben Chat) nur gebaut, nicht im Spiel geprüft.'
 - 'X4 ist trotz Merge nur eine Teilimplementierung: Ordered Jobs/Designatoren, weitere Referenztypen und der Gameplay-Gleichlauf mit zwei RimWorld-Clients sind ungeprüft; parallele Pfadsuche kann Desync verursachen.'
+- 'API-001 (feat/mod-api, ADR 0029) ist nur im Selbsttest geprüft: kein Fremd-Mod gebaut, kein Zwei-Client-Test; SyncField/Watch und SyncDelegate fehlen; Registrierungen fremder Mods müssen auf allen Clients gleich sein (Mod-Prüfung).'
 - 'FACTION-003 ist trotz Merge nur ein Teilstand: getrennte Spielerfraktionen, isolierte Storyteller-Ereignisse, Save/Load und Zwei-Client-Spieltest fehlen; Fraktionsstart gesperrt.'
 - 'Fraktionsstart bleibt gesperrt: isolierter Lauf mit expliziter Prüfung getrennter Ideologien schlug fehl; Korrekturlauf wurde auf Benutzerwunsch gestoppt. Zwei-Client-Spieltest und Incident-Folgen fehlen.'
 - 'PAWN-001: Gast-Übernahme und Host-Guards gebaut, aber die vom Benutzer beobachtete zufällige Figurenwahl wurde noch nicht erneut mit zwei Clients geprüft.'
@@ -232,4 +233,6 @@ documentation_refs:
   faction_ui_merge_gate: docs/verification/2026-10-16-faction-ui-merge-gate.md
   faction_setup_merge_review: docs/reviews/2026-10-16-faction-setup-integration.md
   faction_runtime_and_pawns: docs/verification/2026-10-16-faction-runtime-and-pawns.md
+  public_sync_api_decision: docs/decisions/0029-public-sync-api.md
+  public_sync_api_verification: docs/verification/2026-10-17-public-sync-api.md
 last_updated: '2026-10-17'
