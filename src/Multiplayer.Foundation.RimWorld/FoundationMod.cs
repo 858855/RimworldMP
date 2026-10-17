@@ -154,6 +154,9 @@ namespace Multiplayer.Foundation.RimWorld
         private bool SharedGame => client != null && lobby != null && lobby.Phase >= SetupPhase.Generating &&
             Current.ProgramState == ProgramState.Playing;
 
+        /// <summary>For the determinism patches: the current game is a shared one (from Generating on, in Playing).</summary>
+        internal bool InSharedGame => SharedGame;
+
         internal bool SuppressLocalAutosave => holdForSnapshot || ConnectionLost ||
             (SharedGame && lobby?.Phase == SetupPhase.Playing);
 

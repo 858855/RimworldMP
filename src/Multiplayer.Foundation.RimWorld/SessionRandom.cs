@@ -8,6 +8,9 @@ namespace Multiplayer.Foundation.RimWorld
     internal sealed class SessionRandom
     {
         [ThreadStatic] private static SessionRandom? active;
+
+        /// <summary>True inside a lockstep tick or a scheduled command on this thread (see the Session*Patch classes).</summary>
+        internal static bool Active => active != null;
         private readonly Guid sessionId;
         private ulong draws, valueSum, windowDraws, windowValueSum;
 
@@ -40,7 +43,8 @@ namespace Multiplayer.Foundation.RimWorld
 
         internal static void RecordInt(int value)
         {
-            if (active == null) return;
+            // Draws inside an isolated visual/sound method run on their own Rand state and must not enter the hash window.
+            if (active == null || SessionVisualRandPatch.Depth > 0) return;
             unchecked { active.draws++; active.valueSum += (uint)value; }
         }
 
