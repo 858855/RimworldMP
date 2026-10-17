@@ -6,7 +6,7 @@
 
 - Ein Spieler steuert nur die Figuren, die er in der Einrichtung übernommen hat (Coop); gemeinsame Figuren ohne Besitzer darf jeder, im Fraktionsmodus nur die eigene Fraktion. Zeichnen- und Spielauftrags-Befehle für fremde Figuren sind in jedem Spiel ein No-op; der Auslöser sieht „Keine Berechtigung: <Figur> gehört <Spieler>“ sofort beim Klick und nach der Ausführung. Verbieten bleibt Kolonie-Aktion für alle.
 - Das Inspektionsfenster einer Spielerfigur zeigt „Multiplayer: Figur von <Spieler>“ bzw. „gemeinsame Figur“.
-- Selbsttest prüft `controlDenied`/`controlAllowed`. Mod-Build ohne Warnungen; kein Spieltest. Leihen, Besitzer-offline-Regel, Übernahme im Spiel und weitere Befehle folgen.
+- Selbsttest `-mpWorldSelfTest` PASS mit `controlDenied=ok controlAllowed=ok` (2026-10-17, ein Prozess); Mod-Build ohne Warnungen; kein Zwei-Client-Test. Leihen, Besitzer-offline-Regel, Übernahme im Spiel und weitere Befehle folgen.
 
 ### Integration 2026-10-17 (`integration/sync-2026-10-17`, Sven)
 

@@ -12,6 +12,8 @@
 | `RIMWORLD_MANAGED=/e/SteamLibrary/steamapps/common/RimWorld/RimWorldWin64_Data/Managed DOTNET_BIN=dotnet bash scripts/build-mod.sh` | Exit 0; `0 Warnung(en)`, `0 Fehler`; `Installable mod: /e/RimworldMP-permissions/dist/RimWorldMultiplayerFoundation` |
 | `C:/Users/svenp/AppData/Local/Programs/Python/Python311/python.exe -I scripts/validate_project_state.py` | siehe Ergebniszeile im Commit-Text des Doku-Commits (PASS erwartet: 22 Pflichtdateien, 69 Aufgaben) |
 | `git diff --check main...HEAD` | leer |
+| Installation: Sicherung nach `RimWorld/ModBackups/RimWorldMultiplayerFoundation-2026-10-17-before-permissions`, Mod-Ordner komplett durch `dist/RimWorldMultiplayerFoundation` ersetzt (RimWorld.dll byte-gleich mit dist) | sieben DLLs, About, Lizenz |
+| `RimWorldWin64.exe -mpWorldSelfTest -mpWorldSelfTestCoverage=0.3 -mpQuitAfterSelfTest -screen-fullscreen 0 -screen-width 1280 -screen-height 720` (2026-10-17 04:18, Prozess rev591, Core + 5 DLCs + Foundation) | Prozess nach 42 s beendet. `Player.log`: `world self-test: PASS … fingerprint 9ab6ad -> 9ab6ad`, `site page PASS`, `pawns PASS`, `world discard PASS`; **`game self-test: PASS startKept=ok colonists=ok landedChosen=ok site=ok component=ok ownersLanded=ok controlDenied=ok controlAllowed=ok … sessionLoaded=ok fingerprint=ok tick=ok … ticksHeldAfterLoad=ok`** (players 2, owners 2). Dazu die erwartete Zeile `Zeichnen-Befehl von local:… für Mikey abgelehnt: Mikey gehört Test-Host.` Keine Exception, keine `Root level exception`, kein Steam-Fehler beim Beenden, keine `TypeLoadException` (Ordner komplett ersetzt). |
 
 Die acht .NET-Testprojekte wurden nicht erneut ausgeführt: Geändert ist nur `src/Multiplayer.Foundation.RimWorld` (kein Testprojekt bindet es ein); `Protocol`, `Session`, `Hosting` sind unverändert gegenüber `main` @ `060d2be`, wo sie am 2026-10-17 im .NET-8-Harness bestanden (`2026-10-17-integration-sync.md`).
 
@@ -25,10 +27,9 @@ Die acht .NET-Testprojekte wurden nicht erneut ausgeführt: Geändert ist nur `s
 
 ## Nicht geprüft
 
-- Selbsttest im Spiel (`RimWorldWin64.exe -mpWorldSelfTest -mpWorldSelfTestCoverage=0.3 -mpQuitAfterSelfTest`): nicht gestartet, Spieltests sind vom Benutzer ausgesetzt. Erwartung: `controlDenied=ok controlAllowed=ok` in der Zeile `game self-test`.
 - Zwei Clients: Gast zeichnet die Figur des Hosts (Hinweis, keine Wirkung bei beiden), eigene Figur (Wirkung bei beiden, gleiche Hashes), Fraktionsmodus (fremde Fraktion abgelehnt).
 - Inspektionszeile im Spiel.
 
 ## Einordnung nach AGENTS.md Regel 25
 
-`BUILD_ERFOLGREICH` (0 Warnungen); `IN_GAME_GETESTET`: nein; `MP_ZWEI_CLIENTS_GETESTET`: nein. `LAUFZEIT NICHT VERIFIZIERT`.
+`BUILD_ERFOLGREICH` (0 Warnungen); `IN_GAME_GETESTET` (Selbsttest, ein Prozess, ohne Netz: fremder Schlüssel abgelehnt, eigener angewandt); `MP_ZWEI_CLIENTS_GETESTET`: nein.

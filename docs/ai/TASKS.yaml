@@ -903,7 +903,7 @@ tasks:
   - 'Besitzerlabels und -farben sichtbar'
   - 'Besitz übersteht Speichern und Laden'
   implementation: in_progress
-  verification: build_passed
+  verification: tests_passed
   integration: not_submitted
   branch: feat/permissions
   base_branch: main
@@ -911,7 +911,7 @@ tasks:
   evidence:
   - docs/decisions/0026-pawn-control-rights.md
   - docs/verification/2026-10-17-pawn-control.md
-  blocker: 'Erster Schritt (Sven, feat/permissions): Besitzzeile im Inspektionsfenster, Lookups in MultiplayerSession. Offen: Farben in der Kolonistenleiste, Namensschilder, Übernahme/Freigabe im Spiel; Besitz im Spielstand ist seit SETUP-005 vorhanden (Selbsttest), Save/Load mit zwei Clients ungeprüft. Aufgabe ist in ASSIGNMENTS Codex zugeordnet; Abstimmung mit dem Besitzer.'
+  blocker: 'Erster Schritt (Sven, feat/permissions; Selbsttest PASS, Inspektionszeile im Spiel ungeprüft): Besitzzeile im Inspektionsfenster, Lookups in MultiplayerSession. Offen: Farben in der Kolonistenleiste, Namensschilder, Übernahme/Freigabe im Spiel; Besitz im Spielstand ist seit SETUP-005 vorhanden (Selbsttest), Save/Load mit zwei Clients ungeprüft. Aufgabe ist in ASSIGNMENTS Codex zugeordnet; Abstimmung mit dem Besitzer.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: TOOL-001
   title: 'Zwei-Instanzen-Testaufbau und Determinismus-Harness'
@@ -1069,7 +1069,7 @@ tasks:
   - 'Rückmeldung an den Auslöser'
   - 'Kontrolle leihen funktioniert'
   implementation: in_progress
-  verification: build_passed
+  verification: tests_passed
   integration: not_submitted
   branch: feat/permissions
   base_branch: main
@@ -1077,7 +1077,7 @@ tasks:
   evidence:
   - docs/decisions/0026-pawn-control-rights.md
   - docs/verification/2026-10-17-pawn-control.md
-  blocker: 'Erster Schnitt (Sven, feat/permissions, ADR 0026): eigene/gemeinsame Figur, Fraktionsregel, deterministische Prüfung bei Draft und Goto, lokale Rückmeldung, Selbsttest-Schritt (nicht gelaufen). Offen: Leihen, Besitzer-offline-Regel (braucht Anwesenheitssignal des Koordinators), weitere Befehle (SYNC-004), Coop-Host-Ereignisentscheidungen, Zwei-Client-Test.'
+  blocker: 'Erster Schnitt (Sven, feat/permissions, ADR 0026): eigene/gemeinsame Figur, Fraktionsregel, deterministische Prüfung bei Draft und Goto, lokale Rückmeldung; Selbsttest 2026-10-17 PASS (controlDenied/controlAllowed). Offen: Leihen, Besitzer-offline-Regel (braucht Anwesenheitssignal des Koordinators), weitere Befehle (SYNC-004), Coop-Host-Ereignisentscheidungen, Zwei-Client-Test.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: DESYNC-001
   title: 'Zustands-Hash und Vergleich'
