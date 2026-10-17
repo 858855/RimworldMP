@@ -733,8 +733,110 @@ static SimResult Simulate(int seed, int corruptAt)
     return new SimResult(logs, completed, pausedAt, desyncs, maxSpread);
 }
 
+// --- pace control (ADR 0049 addendum): the coordinator steps the speed down for everyone while the slowest game holds the horizon ---
+Guid[] everyone = { host, guest, third };
+var paceBack = LockstepPayloads.ReadPace(LockstepPayloads.Pace(new PaceNotice(1, 3, PaceReason.SlowestGame, guest, 480)));
+Assert(paceBack.Speed == 1 && paceBack.ChosenSpeed == 3 && paceBack.Reason == PaceReason.SlowestGame && paceBack.SlowestSession == guest && paceBack.SlowestTick == 480,
+    "pace notice round trip");
+Expect<ProtocolException>(() => LockstepPayloads.Pace(new PaceNotice(3, 2, PaceReason.None, guest, 0)));            // faster than chosen
+Expect<ProtocolException>(() => LockstepPayloads.Pace(new PaceNotice(2, 2, PaceReason.SlowestGame, guest, 0)));     // a reason without a cap
+Expect<ProtocolException>(() => LockstepPayloads.Pace(new PaceNotice(1, 3, PaceReason.None, guest, 0)));            // a cap without a reason
+Expect<ProtocolException>(() => LockstepPayloads.Pace(new PaceNotice(0, 3, PaceReason.SlowestGame, guest, 0)));
+Expect<ProtocolException>(() => LockstepPayloads.ReadPace(LockstepPayloads.Pace(new PaceNotice(1, 3, PaceReason.SlowestGame, guest, 0)).Take(5).ToArray()));
+Console.WriteLine("PASS: pace notice payload and limits");
+
+var pacing = new LockstepSession(host, members, 0);
+pacing.Control(host, ScheduledKind.Pause, 0, 0);
+var chose = pacing.Control(host, ScheduledKind.Speed, 3, 0);
+Assert(Scheduled(chose).IssuerSession == host && Scheduled(chose).Data[0] == 3 && pacing.Speed == 3 && pacing.ChosenSpeed == 3 &&
+    Paces(chose, host).Single().Reason == PaceReason.None, "the host's speed runs as the host's own command, announced without a reason");
+var quiet = Drive(pacing, 50, 3000, _ => int.MaxValue, everyone);
+Assert(!quiet.Any(o => o.Message.Type == MessageType.PaceNotice || o.Message.Type == MessageType.ScheduledCommand) && pacing.Speed == 3,
+    "games that keep up: speed 3 stays");
+// The guest stops making progress: the horizon is held 2 s ahead of it, and 1.5 s of that steps the speed down to 2.
+int paceStuck = pacing.Horizon;
+long heldSince = -1, steppedAt = -1;
+ScheduledCommand? step = null; PaceNotice? stepNotice = null;
+for (long now = 3050; now <= 12_000 && step == null; now += 50)
+{
+    var outgoing = Step(pacing, now, id => id == guest ? paceStuck : int.MaxValue, everyone);
+    if (heldSince < 0 && !outgoing.Any(o => o.Message.Type == MessageType.TickHorizon)) heldSince = now;
+    var commands = outgoing.Where(o => o.Message.Type == MessageType.ScheduledCommand).ToList();
+    if (commands.Count == 0) continue;
+    step = LockstepPayloads.ReadScheduled(commands[0].Message.Payload); steppedAt = now;
+    Assert(commands.Count == 3 && commands.Select(c => c.To).Distinct().Count() == 3 && commands.All(c => c.Message.Payload.SequenceEqual(commands[0].Message.Payload)),
+        "every game receives the same speed command");
+    stepNotice = Paces(outgoing, host).Single();
+}
+Assert(heldSince > 0 && step != null && stepNotice != null, "a held horizon leads to a speed step: held=" + heldSince + " step=" + steppedAt);
+Assert(step!.IssuerSession == Guid.Empty && step.IssuerKey == null && step.Kind == ScheduledKind.Speed && step.Data[0] == 2 && step.Boundary == pacing.Horizon,
+    "the coordinator issues speed 2 at the current horizon");
+Assert(steppedAt - heldSince >= 1400 && steppedAt - heldSince <= 1600, "step after 1.5 s of held horizon: " + (steppedAt - heldSince) + " ms");
+Assert(stepNotice!.Speed == 2 && stepNotice.ChosenSpeed == 3 && stepNotice.Reason == PaceReason.SlowestGame && stepNotice.SlowestSession == guest && stepNotice.SlowestTick == paceStuck,
+    "the notice names the slowest game and the chosen speed");
+Assert(pacing.Speed == 2 && pacing.ChosenSpeed == 3, "effective 2, chosen 3");
+// Still held at speed 2: one more step to 1 within the next 2 s, then nothing (1 is the floor).
+var more = Drive(pacing, steppedAt + 50, steppedAt + 2000, id => id == guest ? paceStuck : int.MaxValue, everyone);
+var moreSteps = more.Where(o => o.To == host && o.Message.Type == MessageType.ScheduledCommand).Select(o => LockstepPayloads.ReadScheduled(o.Message.Payload)).ToList();
+Assert(moreSteps.Count == 1 && moreSteps[0].Data[0] == 1 && moreSteps[0].IssuerSession == Guid.Empty && pacing.Speed == 1, "second step down to 1 within 2 s");
+long floorFrom = steppedAt + 2050;
+var atFloor = Drive(pacing, floorFrom, floorFrom + 3000, id => id == guest ? paceStuck : int.MaxValue, everyone);
+Assert(!atFloor.Any(o => o.Message.Type == MessageType.ScheduledCommand || o.Message.Type == MessageType.PaceNotice) && pacing.Speed == 1,
+    "speed 1 is the floor: nothing more while still held");
+long lastHeld = floorFrom + 3000;
+// The host lowers its choice to 2 while capped: remembered and announced, nothing scheduled (1 stays the pace).
+var lowered = pacing.Control(host, ScheduledKind.Speed, 2, lastHeld);
+Assert(!lowered.Any(o => o.Message.Type == MessageType.ScheduledCommand) && Paces(lowered, host).Single().ChosenSpeed == 2 && Paces(lowered, host).Single().Speed == 1 &&
+    pacing.ChosenSpeed == 2 && pacing.Speed == 1, "a choice above the cap is only remembered and announced");
+// The guest keeps up again: 10 s without a held horizon (and 10 s since the last step) raise the pace one level; never above the choice.
+long raisedAt = -1; ScheduledCommand? raise = null; PaceNotice? raiseNotice = null;
+for (long now = lastHeld + 50; now <= lastHeld + 25_000 && raise == null; now += 50)
+{
+    var outgoing = Step(pacing, now, _ => int.MaxValue, everyone);
+    var commands = outgoing.Where(o => o.To == host && o.Message.Type == MessageType.ScheduledCommand).ToList();
+    if (commands.Count == 0) { Assert(!outgoing.Any(o => o.Message.Type == MessageType.PaceNotice), "no notice without a change"); continue; }
+    raise = LockstepPayloads.ReadScheduled(commands.Single().Message.Payload); raisedAt = now; raiseNotice = Paces(outgoing, host).Single();
+}
+Assert(raise != null && raise.IssuerSession == Guid.Empty && raise.Data[0] == 2 && raisedAt - lastHeld >= 10_000 && raisedAt - lastHeld <= 10_100,
+    "back up to 2 after 10 s without stalls: " + (raisedAt - lastHeld) + " ms");
+Assert(raiseNotice!.Speed == 2 && raiseNotice.ChosenSpeed == 2 && raiseNotice.Reason == PaceReason.None && pacing.Speed == 2, "the chosen speed is back, the reason is gone");
+var bounded = Drive(pacing, raisedAt + 50, raisedAt + 25_000, _ => int.MaxValue, everyone);
+Assert(!bounded.Any(o => o.Message.Type == MessageType.ScheduledCommand || o.Message.Type == MessageType.PaceNotice) && pacing.Speed == 2,
+    "never faster than the host's choice: no step to 3");
+// Quiet for 10 s, the host's new choice applies at once as the host's own command.
+var raisedChoice = pacing.Control(host, ScheduledKind.Speed, 3, raisedAt + 25_050);
+Assert(Scheduled(raisedChoice).IssuerSession == host && Scheduled(raisedChoice).Data[0] == 3 && pacing.Speed == 3 &&
+    Paces(raisedChoice, host).Single().Reason == PaceReason.None, "free of stalls, the host's 3 applies at once");
+var off = new LockstepSession(host, members, 0, new LockstepOptions { AutoPace = false });
+off.Control(host, ScheduledKind.Pause, 0, 0); off.Control(host, ScheduledKind.Speed, 3, 0);
+int offStuck = off.Horizon;
+var offRun = Drive(off, 50, 8000, id => id == guest ? offStuck : int.MaxValue, everyone);
+Assert(!offRun.Any(o => o.Message.Type == MessageType.ScheduledCommand) && off.Speed == 3 && off.Horizon == offStuck + 720, "AutoPace off: the horizon is held, the speed stays");
+// Every game switches after the same completed tick: the command takes effect in TakeCommandsAt(boundary), not before.
+var switching = new[] { new LockstepClient(), new LockstepClient(), new LockstepClient() };
+foreach (LockstepClient game in switching) { game.Receive(H(step.Boundary + 120)); game.Receive(S(step.Boundary, 1, ScheduledKind.Speed, 2)); }
+Assert(switching.All(g => { g.TakeCommandsAt(step.Boundary - 1); return g.Speed == 1; }), "before the boundary every game still runs the old speed");
+Assert(switching.All(g => { g.TakeCommandsAt(step.Boundary); return g.Speed == 2; }), "after the boundary every game runs the new speed");
+Console.WriteLine("PASS: pace control: down after 1.5 s of held horizon, floor 1, choice remembered, up after 10 s, never above the choice, off switch, same switch tick");
+
 static ScheduledCommand Scheduled(IReadOnlyList<(Guid To, WireMessage Message)> outgoing) =>
     LockstepPayloads.ReadScheduled(outgoing.First(o => o.Message.Type == MessageType.ScheduledCommand).Message.Payload);
+static IEnumerable<PaceNotice> Paces(IReadOnlyList<(Guid To, WireMessage Message)> outgoing, Guid to) =>
+    outgoing.Where(o => o.To == to && o.Message.Type == MessageType.PaceNotice).Select(o => LockstepPayloads.ReadPace(o.Message.Payload));
+// One 50 ms step of the host's clock: every game reports its tick (capped at the horizon), then the coordinator advances.
+static List<(Guid To, WireMessage Message)> Step(LockstepSession session, long now, Func<Guid, int> tickOf, IReadOnlyList<Guid> games)
+{
+    var all = new List<(Guid To, WireMessage Message)>();
+    foreach (Guid id in games) all.AddRange(session.ReportTick(id, Math.Min(session.Horizon, tickOf(id)), now));
+    all.AddRange(session.Advance(now));
+    return all;
+}
+static List<(Guid To, WireMessage Message)> Drive(LockstepSession session, long fromMs, long toMs, Func<Guid, int> tickOf, IReadOnlyList<Guid> games)
+{
+    var all = new List<(Guid To, WireMessage Message)>();
+    for (long now = fromMs; now <= toMs; now += 50) all.AddRange(Step(session, now, tickOf, games));
+    return all;
+}
 static IEnumerable<TickHorizon> Horizons(IReadOnlyList<(Guid To, WireMessage Message)> outgoing) =>
     outgoing.Where(o => o.Message.Type == MessageType.TickHorizon).Select(o => LockstepPayloads.ReadHorizon(o.Message.Payload));
 static WireMessage H(int horizon, bool paused = false) =>

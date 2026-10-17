@@ -27,6 +27,18 @@ namespace Multiplayer.Foundation.Session
         public int MaximumResyncsInARow { get; set; } = 3;
         /// <summary>A joining or resyncing game that has not confirmed SnapshotLoaded by then is removed (ADR 0036).</summary>
         public int SnapshotLoadTimeoutSeconds { get; set; } = 180;
+        /// <summary>
+        /// Pace control (ADR 0049 addendum): when the slowest game holds the horizon, the coordinator steps the speed
+        /// down for everyone at one shared tick, and back up once the games keep up again. False keeps the host's speed.
+        /// </summary>
+        public bool AutoPace { get; set; } = true;
+        /// <summary>Step down once the horizon was held for this long in total within <see cref="PaceWindowMs"/>.</summary>
+        public int PaceStallSlowdownMs { get; set; } = 1500;
+        public int PaceWindowMs { get; set; } = 5000;
+        /// <summary>After a step, no step up for this long.</summary>
+        public int PaceHoldMs { get; set; } = 10000;
+        /// <summary>Step up one level only after this long without a held horizon; never above the host's choice.</summary>
+        public int PaceRecoverMs { get; set; } = 10000;
     }
 
     /// <summary>
@@ -51,6 +63,13 @@ namespace Multiplayer.Foundation.Session
         private long lastNowMs;
         private readonly List<Guid> timedOut = new List<Guid>();
         private readonly CoopDecisions decisions;
+        // Pace control (ADR 0049 addendum): Speed is what runs, ChosenSpeed what the host asked for, paceCap what the stalls
+        // allow. A stall is a stretch of time in which the slowest game held the horizon (AdvanceClock hit its limit).
+        private byte paceCap = LockstepPayloads.MaximumSpeed;
+        private readonly List<(long Start, long End)> stalls = new List<(long Start, long End)>();
+        private long stallSinceMs = -1;
+        private long lastStallMs = long.MinValue / 4;
+        private long lastPaceChangeMs = long.MinValue / 4;
 
         /// <param name="decisions">Coop decision rule from the lobby mode (ADR 0031); votes exist only with Democracy.</param>
         public LockstepSession(Guid host, IEnumerable<(Guid Session, PlayerKey Key)> members, long nowMs, LockstepOptions? options = null,
@@ -68,7 +87,10 @@ namespace Multiplayer.Foundation.Session
 
         public Guid Host { get; }
         public int Horizon { get; private set; }
+        /// <summary>The speed every game runs: the host's choice, or less while pace control holds it down.</summary>
         public byte Speed { get; private set; } = 1;
+        /// <summary>The speed the host asked for (pace control may keep <see cref="Speed"/> below it).</summary>
+        public byte ChosenSpeed { get; private set; } = 1;
         public bool Paused { get; private set; } = true;
         public bool Ended { get; private set; }
         public IReadOnlyCollection<Guid> Participants => participants.Keys;
@@ -99,16 +121,74 @@ namespace Multiplayer.Foundation.Session
             if (kind == ScheduledKind.Save && issuer != Host) throw new LockstepRuleException(3, "Only the host saves.");
             if (!who.Bucket.TryTake(nowMs)) throw new LockstepRuleException(7, "Too many commands.");
             if (kind == ScheduledKind.Save) return Schedule(issuer, who.Key, ScheduledKind.Save, Array.Empty<byte>());
-            if (kind == ScheduledKind.Pause)
-            {
-                // Resuming would undo the shared pause of a running vote; pausing is always allowed (ADR 0034).
-                if (value == 0 && votes.Count > 0) throw new LockstepRuleException(6, "A vote is running.");
-                systemPaused = false;   // a player's own pause or resume takes over from the coordinator's
-            }
+            if (kind == ScheduledKind.Speed) return ChooseSpeed(who, value, nowMs);
+            // Resuming would undo the shared pause of a running vote; pausing is always allowed (ADR 0034).
+            if (value == 0 && votes.Count > 0) throw new LockstepRuleException(6, "A vote is running.");
+            systemPaused = false;   // a player's own pause or resume takes over from the coordinator's
             var outgoing = new List<(Guid, WireMessage)>(Schedule(issuer, who.Key, kind, new[] { value }));
             Apply(kind, value, nowMs);
             outgoing.AddRange(BroadcastHorizon());
             return outgoing;
+        }
+
+        // The host picks the level (plan §7.1). A choice above the pace cap is remembered and announced; the games switch
+        // to it when the cap is lifted. A quiet connection (no stall for PaceRecoverMs) lifts the cap at once.
+        private IReadOnlyList<(Guid To, WireMessage Message)> ChooseSpeed(Participant host, byte value, long nowMs)
+        {
+            ChosenSpeed = value;
+            if (nowMs - lastStallMs >= options.PaceRecoverMs) paceCap = LockstepPayloads.MaximumSpeed;
+            byte effective = Math.Min(value, paceCap);
+            var outgoing = new List<(Guid, WireMessage)>();
+            if (effective != Speed)
+            {
+                bool own = effective == value;
+                outgoing.AddRange(Schedule(own ? host.Session : Guid.Empty, own ? host.Key : (PlayerKey?)null, ScheduledKind.Speed, new[] { effective }));
+                Apply(ScheduledKind.Speed, effective, nowMs);
+            }
+            outgoing.AddRange(BroadcastPace());
+            outgoing.AddRange(BroadcastHorizon());
+            return outgoing;
+        }
+
+        // Pace control (ADR 0049 addendum), called from the clock with held = the slowest game limits the horizon right now.
+        // Down: PaceStallSlowdownMs of held horizon within PaceWindowMs. Up: PaceRecoverMs without a stall and PaceHoldMs
+        // since the last step, one level at a time, never above the host's choice. A slower pace stops the stuttering at
+        // the horizon; it does not make the connection itself any better.
+        private IReadOnlyList<(Guid To, WireMessage Message)> TrackPace(bool held, long nowMs)
+        {
+            if (!options.AutoPace) return Array.Empty<(Guid, WireMessage)>();
+            if (held) { if (stallSinceMs < 0) stallSinceMs = nowMs; lastStallMs = nowMs; }
+            else if (stallSinceMs >= 0) { stalls.Add((stallSinceMs, lastStallMs)); stallSinceMs = -1; }
+            long windowStart = nowMs - options.PaceWindowMs;
+            stalls.RemoveAll(s => s.End < windowStart);
+            long stalled = stalls.Sum(s => s.End - Math.Max(s.Start, windowStart));
+            if (stallSinceMs >= 0) stalled += nowMs - Math.Max(stallSinceMs, windowStart);
+            if (Speed > 1 && stalled >= options.PaceStallSlowdownMs) return SetPaceCap((byte)(Speed - 1), nowMs);
+            if (paceCap < ChosenSpeed && nowMs - lastStallMs >= options.PaceRecoverMs && nowMs - lastPaceChangeMs >= options.PaceHoldMs)
+                return SetPaceCap((byte)(paceCap + 1), nowMs);
+            return Array.Empty<(Guid, WireMessage)>();
+        }
+
+        // Every game switches after the same tick (the current horizon), issued by the coordinator (Guid.Empty).
+        private IReadOnlyList<(Guid To, WireMessage Message)> SetPaceCap(byte cap, long nowMs)
+        {
+            paceCap = cap; lastPaceChangeMs = nowMs;
+            stalls.Clear(); stallSinceMs = -1;
+            byte effective = Math.Min(ChosenSpeed, paceCap);
+            if (effective == Speed) return Array.Empty<(Guid, WireMessage)>();
+            var outgoing = new List<(Guid, WireMessage)>(Schedule(Guid.Empty, null, ScheduledKind.Speed, new[] { effective }));
+            Apply(ScheduledKind.Speed, effective, nowMs);
+            outgoing.AddRange(BroadcastPace());
+            outgoing.AddRange(BroadcastHorizon());
+            return outgoing;
+        }
+
+        private IReadOnlyList<(Guid To, WireMessage Message)> BroadcastPace()
+        {
+            Participant slowest = Slowest();
+            var notice = new PaceNotice(Speed, ChosenSpeed, Speed < ChosenSpeed ? PaceReason.SlowestGame : PaceReason.None, slowest.Session, slowest.Tick);
+            var message = new WireMessage(MessageType.PaceNotice, 0, LockstepPayloads.Pace(notice));
+            return participants.Keys.Select(to => (to, message)).ToList();
         }
 
         public IReadOnlyList<(Guid To, WireMessage Message)> ReportTick(Guid session, int tick, long nowMs)
@@ -158,6 +238,7 @@ namespace Multiplayer.Foundation.Session
             if (Paused) return Array.Empty<(Guid, WireMessage)>();
             var outgoing = new List<(Guid, WireMessage)>(Schedule(Guid.Empty, null, ScheduledKind.Pause, new byte[] { 1 }));
             Paused = true; clockBaseTick = Horizon; systemPaused = true;
+            stalls.Clear(); stallSinceMs = -1;
             outgoing.AddRange(BroadcastHorizon());
             return outgoing;
         }
@@ -227,11 +308,16 @@ namespace Multiplayer.Foundation.Session
             long target = clockBaseTick + (nowMs - clockBaseMs) * rate / 1000;
             int lead = Math.Max(options.MinimumLeadTicks, (int)(options.MaximumLeadSeconds * rate));
             long limit = (long)participants.Values.Where(p => p.Active).Min(p => p.Tick) + lead;
-            if (target > limit)
+            // Held: the clock sits at the limit (after a rebase, target equals it until the slowest game moves on).
+            bool held = target >= limit;
+            if (held)
             {
-                // The slowest game sets the pace; rebase the clock so no backlog builds up and bursts later.
-                target = limit; clockBaseTick = (int)limit; clockBaseMs = nowMs;
+                // The slowest game sets the pace; rebase the clock so no backlog builds up and bursts later. Never below
+                // the horizon: a limit under it (lead shrunk by a speed step) would otherwise freeze time after catching up.
+                target = limit; clockBaseTick = (int)Math.Max(limit, Horizon); clockBaseMs = nowMs;
             }
+            var paced = TrackPace(held, nowMs);
+            if (paced.Count > 0) return paced;   // the clock was rebased at the new speed; the horizon moves on from the next call
             if (target <= Horizon) return Array.Empty<(Guid, WireMessage)>();
             Horizon = (int)Math.Min(target, int.MaxValue);
             var outgoing = new List<(Guid, WireMessage)>();
@@ -260,6 +346,7 @@ namespace Multiplayer.Foundation.Session
                 { Active = false, Loaded = false, Tick = Horizon, LoadDeadlineMs = nowMs + options.SnapshotLoadTimeoutSeconds * 1000L };
             outgoing.Add((session, new WireMessage(MessageType.JoinSnapshot, 0, LockstepPayloads.Join(snapshot))));
             outgoing.Add(BroadcastHorizon().First(o => o.To == session));
+            if (Speed < ChosenSpeed) outgoing.Add(BroadcastPace().First(o => o.To == session));
             return outgoing;
         }
 
@@ -383,7 +470,12 @@ namespace Multiplayer.Foundation.Session
         {
             // The clock changes from the current horizon on, where every game applies the same command.
             clockBaseTick = Horizon; clockBaseMs = nowMs;
-            if (kind == ScheduledKind.Pause) Paused = value == 1;
+            if (kind == ScheduledKind.Pause)
+            {
+                Paused = value == 1;
+                // Stalls do not carry over a pause; recovery counts from the resume.
+                stalls.Clear(); stallSinceMs = -1; lastStallMs = nowMs;
+            }
             else Speed = value;
         }
 
@@ -448,9 +540,11 @@ namespace Multiplayer.Foundation.Session
             return outgoing;
         }
 
+        private Participant Slowest() => participants.Values.Where(p => p.Active).OrderBy(p => p.Tick).ThenBy(p => p.Session).First();
+
         private IReadOnlyList<(Guid To, WireMessage Message)> BroadcastHorizon()
         {
-            Participant slowest = participants.Values.Where(p => p.Active).OrderBy(p => p.Tick).ThenBy(p => p.Session).First();
+            Participant slowest = Slowest();
             var message = new WireMessage(MessageType.TickHorizon, 0, LockstepPayloads.Horizon(
                 new TickHorizon(Horizon, Speed, Paused, slowest.Session, slowest.Tick)));
             return participants.Keys.Select(to => (to, message)).ToList();

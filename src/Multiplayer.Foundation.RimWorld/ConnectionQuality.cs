@@ -5,7 +5,11 @@ using Multiplayer.Foundation.Protocol;
 
 namespace Multiplayer.Foundation.RimWorld
 {
-    /// <summary>Local connection telemetry. It never changes replicated game state.</summary>
+    /// <summary>
+    /// Local connection telemetry: round trips of application pings and probes without an answer. It never changes
+    /// replicated game state. The pace is not decided here: the coordinator lowers the shared speed for everyone when a
+    /// game holds the horizon (ADR 0049 addendum, PaceNotice), a local cap would only make this player the slowest.
+    /// </summary>
     internal sealed class ConnectionQuality
     {
         private const long IntervalMs = 3000;
@@ -16,17 +20,13 @@ namespace Multiplayer.Foundation.RimWorld
         private ulong pendingNonce;
         private long sentAt;
         private long nextAt;
-        private byte speedCap = 3;
-        private int recoverySamples;
 
-        internal byte SpeedCap => speedCap;
         internal int? PingMs => roundTrips.Count == 0 ? (int?)null : (int)Math.Round(roundTrips.Average());
         internal int? MissingPercent => replies.Count == 0 ? (int?)null :
             100 * replies.Count(reply => !reply) / replies.Count;
 
         internal string Display => "Ping: " + (PingMs?.ToString() ?? "…") + " ms · Ausfälle: " +
-            (MissingPercent?.ToString() ?? "…") + " %" +
-            (speedCap < 3 ? " · max. " + speedCap + "×" : "");
+            (MissingPercent?.ToString() ?? "…") + " %";
 
         internal void Update(long nowMs)
         {
@@ -74,14 +74,6 @@ namespace Multiplayer.Foundation.RimWorld
                 roundTrips.Enqueue(roundTrip.Value);
                 while (roundTrips.Count > 8) roundTrips.Dequeue();
             }
-            int missed = replies.Count(reply => !reply);
-            int? ping = PingMs;
-            byte desired = missed >= 2 || ping >= 350 ? (byte)1 :
-                missed >= 1 || ping >= 180 ? (byte)2 : (byte)3;
-            if (desired < speedCap) { speedCap = desired; recoverySamples = 0; }
-            else if (desired > speedCap && replied && ++recoverySamples >= 3)
-            { speedCap++; recoverySamples = 0; }
-            else if (desired == speedCap) recoverySamples = 0;
         }
     }
 }

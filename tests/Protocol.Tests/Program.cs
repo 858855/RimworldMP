@@ -411,6 +411,7 @@ await Run("faction storytellers and shared difficulty (ADR 0037)", () =>
 await Run("faction message codes 96/97 in the frame (ADR 0037)", async () =>
 {
     Equal((byte)96, (byte)MessageType.FactionOptions); Equal((byte)97, (byte)MessageType.StorytellerChoice);
+    Equal((byte)104, (byte)MessageType.PaceNotice);   // pace control (ADR 0049 addendum); 102/103 stay reserved for the owner's local work
     using var stream = new FragmentingStream();
     byte[] choice = FactionPayloads.StorytellerChoice("Randy");
     await FrameCodec.WriteAsync(stream, new WireMessage(MessageType.StorytellerChoice, 7, choice));
@@ -419,7 +420,15 @@ await Run("faction message codes 96/97 in the frame (ADR 0037)", async () =>
     WireMessage first = (await FrameCodec.ReadAsync(stream))!, second = (await FrameCodec.ReadAsync(stream))!;
     Equal(MessageType.StorytellerChoice, first.Type); Equal("Randy", FactionPayloads.ReadStorytellerChoice(first.Payload));
     Equal(MessageType.FactionOptions, second.Type); Equal("Rough", FactionOptions.FromPayload(second.Payload).Difficulty);
-    await Reject<ProtocolException>(new byte[] { 0, 0, 0, 6, 3, 102, 0, 0, 0, 0 });  // rest of 96-111 is reserved, not valid
+    await Reject<ProtocolException>(new byte[] { 0, 0, 0, 6, 3, 102, 0, 0, 0, 0 });  // 102/103 and 105-111 are reserved, not valid
+    await Reject<ProtocolException>(new byte[] { 0, 0, 0, 6, 3, 105, 0, 0, 0, 0 });
+    byte[] pace = LockstepPayloads.Pace(new PaceNotice(1, 3, PaceReason.SlowestGame, Guid.NewGuid(), 600));
+    using var paceStream = new FragmentingStream();
+    await FrameCodec.WriteAsync(paceStream, new WireMessage(MessageType.PaceNotice, 0, pace));
+    paceStream.Position = 0;
+    WireMessage paceFrame = (await FrameCodec.ReadAsync(paceStream))!;
+    Equal(MessageType.PaceNotice, paceFrame.Type); Equal((byte)1, LockstepPayloads.ReadPace(paceFrame.Payload).Speed);
+    Equal((byte)3, LockstepPayloads.ReadPace(paceFrame.Payload).ChosenSpeed);
 });
 await Run("faction sites, ideologies, host rejection and restore (ADR 0038)", () =>
 {

@@ -82,6 +82,32 @@ namespace Multiplayer.Foundation.Protocol
         public int SlowestTick { get; }
     }
 
+    /// <summary>Why the games run below the host's chosen speed (pace control, ADR 0049 addendum).</summary>
+    public enum PaceReason : byte
+    {
+        /// <summary>The speed is the host's choice.</summary>
+        None = 0,
+        /// <summary>The slowest game held the horizon; the coordinator stepped the speed down and steps it back up on its own.</summary>
+        SlowestGame = 1
+    }
+
+    /// <summary>
+    /// Code 104: the coordinator's pace. <see cref="Speed"/> is what every game runs now, <see cref="ChosenSpeed"/> what
+    /// the host asked for; they differ only with a <see cref="Reason"/>. Sent whenever one of them changes, so the UI can
+    /// say why the game is slower than chosen. Never changes simulation state: the speed itself travels as a scheduled command.
+    /// </summary>
+    public sealed class PaceNotice
+    {
+        public PaceNotice(byte speed, byte chosenSpeed, PaceReason reason, Guid slowestSession, int slowestTick)
+        { Speed = speed; ChosenSpeed = chosenSpeed; Reason = reason; SlowestSession = slowestSession; SlowestTick = slowestTick; }
+        public byte Speed { get; }
+        public byte ChosenSpeed { get; }
+        public PaceReason Reason { get; }
+        /// <summary>The game whose progress limited the pace when the notice was sent.</summary>
+        public Guid SlowestSession { get; }
+        public int SlowestTick { get; }
+    }
+
     public static class LockstepPayloads
     {
         public const int MaximumCommandBytes = 32 * 1024;
@@ -134,6 +160,32 @@ namespace Multiplayer.Foundation.Protocol
             reader.EnsureComplete();
             if (horizon.Speed < 1 || horizon.Speed > MaximumSpeed) throw new ProtocolException("Invalid speed.");
             return horizon;
+        }
+
+        public static byte[] Pace(PaceNotice pace)
+        {
+            ValidatePace(pace);
+            var writer = new PayloadWriter();
+            writer.WriteByte(pace.Speed); writer.WriteByte(pace.ChosenSpeed); writer.WriteByte((byte)pace.Reason);
+            writer.WriteGuid(pace.SlowestSession); WriteTick(writer, pace.SlowestTick);
+            return writer.ToArray();
+        }
+        public static PaceNotice ReadPace(byte[] payload)
+        {
+            var reader = new PayloadReader(payload);
+            var pace = new PaceNotice(reader.ReadByte(), reader.ReadByte(), (PaceReason)reader.ReadByte(), reader.ReadGuid(), ReadTick(reader));
+            reader.EnsureComplete();
+            ValidatePace(pace);
+            return pace;
+        }
+        private static void ValidatePace(PaceNotice pace)
+        {
+            if (pace.Speed < 1 || pace.Speed > MaximumSpeed || pace.ChosenSpeed < 1 || pace.ChosenSpeed > MaximumSpeed)
+                throw new ProtocolException("Invalid speed.");
+            if (pace.Speed > pace.ChosenSpeed) throw new ProtocolException("The pace never exceeds the chosen speed.");
+            if (!Enum.IsDefined(typeof(PaceReason), pace.Reason)) throw new ProtocolException("Unknown pace reason.");
+            if ((pace.Reason == PaceReason.None) != (pace.Speed == pace.ChosenSpeed))
+                throw new ProtocolException("A pace below the chosen speed needs a reason; the chosen speed has none.");
         }
 
         public static byte[] Join(JoinSnapshot join)

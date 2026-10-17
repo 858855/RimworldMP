@@ -42,6 +42,8 @@ namespace Multiplayer.Foundation.RimWorld
         private bool reconnectRejected;
         private bool holdForSnapshot;
         private ConnectionQuality quality = new ConnectionQuality();
+        // Pace control (ADR 0049 addendum): the coordinator's last word on the speed and why it is below the host's choice.
+        private PaceNotice? pace;
         private Task<UpnpPortMapping>? mapping;
         private UpnpPortMapping? mapped;
         private IPAddress? externalAddress;
@@ -336,8 +338,8 @@ namespace Multiplayer.Foundation.RimWorld
         {
             if (SessionPaused || tickDriver == null) return TimeSpeed.Paused;
             if (tickDriver.CatchingUp) return TimeSpeed.Ultrafast;
-            byte capped = (byte)Math.Min((int)tickDriver.Speed, (int)quality.SpeedCap);
-            return capped == 1 ? TimeSpeed.Normal : capped == 2 ? TimeSpeed.Fast : TimeSpeed.Superfast;
+            // The speed is the coordinator's scheduled command for everyone (incl. its pace control); no local cap.
+            return tickDriver.Speed == 1 ? TimeSpeed.Normal : tickDriver.Speed == 2 ? TimeSpeed.Fast : TimeSpeed.Superfast;
         }
 
         private bool SetSessionSpeed(TickManager manager)
@@ -1502,11 +1504,21 @@ namespace Multiplayer.Foundation.RimWorld
             if (tickDriver.SavePending) return "Speichere gemeinsam · Sitzungstick " + completed;
             if (tickDriver.CatchingUp) return "Hole auf · Sitzungstick " + completed + " / " + tickDriver.Horizon;
             if (tickDriver.Paused) return "Pausiert · Sitzungstick " + completed;
-            if (completed < tickDriver.Horizon) return "Läuft · Sitzungstick " + completed + " / " + tickDriver.Horizon;
+            if (completed < tickDriver.Horizon) return PacePrefix() + "Läuft · Sitzungstick " + completed + " / " + tickDriver.Horizon;
             string? name = lobby.Players.FirstOrDefault(p => p.Id == tickDriver.SlowestSession)?.Name;
             if (tickDriver.SlowestSession == client?.SessionId || name == null)
-                return "Warte auf Tick-Freigabe · Sitzungstick " + completed;
-            return "Warte auf " + name + " (Tick " + tickDriver.SlowestTick + ")";
+                return PacePrefix() + "Warte auf Tick-Freigabe · Sitzungstick " + completed;
+            return PacePrefix() + "Warte auf " + name + " (Tick " + tickDriver.SlowestTick + ")";
+        }
+
+        // ADR 0049 addendum: while the slowest game holds the horizon, the coordinator runs below the host's choice.
+        private string PacePrefix() => pace == null || pace.Reason == PaceReason.None ? "" : PaceText(pace) + " · ";
+
+        private string PaceText(PaceNotice notice)
+        {
+            string? name = lobby?.Players.FirstOrDefault(p => p.Id == notice.SlowestSession)?.Name;
+            return "Tempo " + notice.Speed + "× statt " + notice.ChosenSpeed + "× (Koordinator): " +
+                (name == null ? "ein Spiel" : name) + " hinkt hinterher, Rückkehr automatisch";
         }
 
         // SETUP-004, host: claim the pawn shown on the vanilla page, mark yourself done, see who owns what.
@@ -2158,6 +2170,7 @@ namespace Multiplayer.Foundation.RimWorld
             pendingJoinSnapshot = null; joinSnapshotLoading = false; joinSnapshotReady = false;
             scheduledSaveFile = null; snapshotRecipients.Clear(); snapshotQueue.Clear(); snapshotUpload = null; snapshotDownload = null;
             startRequested = false; allowGameStart = false; resendGame = false; startOwners = null; startPlayers = null;
+            pace = null;
             startPawnTransferFailed = false;
             gameFileName = null; sentGame = null; gameFingerprint = null; hostSaveFile = null; reloadFrom = null; gameUpload = null; gameDownload = null;
             guestGameFile = null; guestGameLoading = false; gameText = "";
@@ -2669,6 +2682,12 @@ namespace Multiplayer.Foundation.RimWorld
                         case MessageType.Pong:
                             quality.Receive(message, NowMs());
                             break;
+                        case MessageType.PaceNotice:
+                            pace = LockstepPayloads.ReadPace(message.Payload);
+                            // The coordinator took the host's choice even when it keeps the pace lower for now.
+                            if (requestedSpeed == pace.ChosenSpeed) requestedSpeed = null;
+                            if (pace.Reason != PaceReason.None) status = PaceText(pace);
+                            break;
                         case MessageType.LobbyListResponse:
                             available = LobbyPayloads.ReadList(message.Payload); listPage = 0;
                             if (autoJoinSteamLobby)
@@ -2685,7 +2704,7 @@ namespace Multiplayer.Foundation.RimWorld
                                 if (lobby == null || lobby.Id != received.Id)
                                 {
                                     chatMessages.Clear(); tickDriver = null; pendingTickMessages.Clear();
-                                    requestedPause = null; requestedSpeed = null;
+                                    requestedPause = null; requestedSpeed = null; pace = null;
                                     factionIdeologies.Clear();
                                 }
                                 SetupPhase before = lobby?.Id == received.Id ? lobby.Phase : SetupPhase.Lobby;

@@ -70,6 +70,9 @@ namespace Multiplayer.Foundation.Protocol
         FactionSiteChoice = 98,
         FactionIdeologyChoice = 99,
         FactionChoiceClear = 100,
-        FactionRestore = 101
+        FactionRestore = 101,
+        // 102 and 103 are reserved for the owner's local claude/continuous-sync work (peer quality), not on origin yet.
+        // Pace control (ADR 0049 addendum): the coordinator runs below the host's chosen speed while the slowest game holds the horizon.
+        PaceNotice = 104
     }
 }
