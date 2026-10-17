@@ -234,6 +234,20 @@ namespace Multiplayer.Foundation.RimWorld
                             new[] { (a, "Test-Host"), (b, "Test-Gast") }, owners,
                             colonists.Select(p => p.thingIDNumber).ToList());
                         Check("ownersLanded", session != null && session.Owners.Count() == Math.Min(2, colonists.Count));
+                        if (!factionTest && session != null && colonists.Count >= 2)
+                        {
+                            // SYNC-005: a draft command from another player's key is a no-op; the owner's applies (plan §7.7).
+                            Pawn owned = colonists[0];
+                            bool before = owned.Drafted;
+                            Protocol.ScheduledCommand Command(ulong sequence, Protocol.PlayerKey issuer, bool draft) =>
+                                new Protocol.ScheduledCommand(0, sequence, Guid.NewGuid(), issuer, Protocol.ScheduledKind.Game,
+                                    GameCommandCodec.Draft(owned.Map.uniqueID, owned.thingIDNumber, draft));
+                            GameCommandCodec.Execute(Command(1, b, !before), Guid.Empty);
+                            Check("controlDenied", owned.Drafted == before);
+                            GameCommandCodec.Execute(Command(2, a, !before), Guid.Empty);
+                            Check("controlAllowed", owned.Drafted == !before);
+                            GameCommandCodec.Execute(Command(3, a, before), Guid.Empty);   // back to the state that gets saved
+                        }
                         Map map = Find.Maps[0];
                         gameResults.Add("generated(tick=" + Find.TickManager.TicksGame + " tile=" + map.Tile.tileId + " parent=" +
                             (map.Parent?.Tile.tileId.ToString() ?? "-") + " start=" + startTile.tileId + ")");

@@ -95,7 +95,8 @@ namespace Multiplayer.Foundation.RimWorld
             return (mapId, pawnId, cell, tag, queued);
         }
 
-        internal static void Execute(ScheduledCommand command)
+        /// <param name="localSession">This game's session; only the issuer's own game shows why a command was refused.</param>
+        internal static void Execute(ScheduledCommand command, Guid localSession)
         {
             if (command.Data.Length < 2 || command.Data[0] != Version)
                 throw new ProtocolException("Unbekannter Spielbefehl oder Codec-Version.");
@@ -122,6 +123,7 @@ namespace Multiplayer.Foundation.RimWorld
                     Log.Warning("Multiplayer Foundation: Goto-Befehl ohne gültigen Pawn, Map oder Ziel als No-op ausgeführt.");
                     return;
                 }
+                if (Refused(command, localSession, orderedPawn, "Spielauftrag")) return;
                 Job job = JobMaker.MakeJob(JobDefOf.Goto, new LocalTargetInfo(cell));
                 executing = true;
                 try { orderedPawn.jobs.TryTakeOrderedJob(job, tag, queued); }
@@ -135,9 +137,23 @@ namespace Multiplayer.Foundation.RimWorld
                 Log.Warning("Multiplayer Foundation: Draft-Befehl ohne vorhandenen Pawn/Map als No-op ausgeführt.");
                 return;
             }
+            if (Refused(command, localSession, pawn, "Zeichnen-Befehl")) return;
             executing = true;
             try { pawn.drafter.Drafted = drafted; }
             finally { executing = false; }
+        }
+
+        // SYNC-005 (plan §7.7): a command for a pawn the issuer may not control is a no-op in every game; the issuer's own
+        // game says why. Forbid is a colony action and stays open to everyone. Uses the key the coordinator stamped.
+        private static bool Refused(ScheduledCommand command, Guid localSession, Pawn pawn, string action)
+        {
+            string? denial = PawnControl.Denial(pawn, command.IssuerKey, MultiplayerSession.ForCurrentGame);
+            if (denial == null) return false;
+            Log.Message("Multiplayer Foundation: " + action + " von " + (command.IssuerKey?.ToString() ?? "?") + " für " +
+                pawn.LabelShort + " abgelehnt: " + denial);
+            if (command.IssuerSession == localSession)
+                Messages.Message("Keine Berechtigung: " + denial, MessageTypeDefOf.RejectInput, false);
+            return true;
         }
     }
 }
