@@ -383,7 +383,8 @@ await Run("faction storytellers and shared difficulty (ADR 0037)", () =>
     {
         byte[] bytes = LobbyPayloads.State(unchanged);
         var modeOnly = new PayloadWriter(); unchanged.Mode.Write(modeOnly);
-        Equal(true, bytes.Skip(bytes.Length - 3).SequenceEqual(modeOnly.ToArray()));                     // nothing after the mode
+        Equal(true, bytes.Skip(bytes.Length - 4).Take(3).SequenceEqual(modeOnly.ToArray()));            // after the mode only the Restored flag (SAVE-002)
+        Equal((byte)0, bytes[bytes.Length - 1]);
         Equal(false, LobbyPayloads.HasFactionBlock(unchanged.Mode, unchanged.Phase));
         Throws<ProtocolException>(() => LobbyPayloads.ReadState(bytes.Concat(new byte[] { 0, 0, 0 }).ToArray()));  // extra bytes refused
     }
@@ -399,7 +400,7 @@ await Run("faction storytellers and shared difficulty (ADR 0037)", () =>
     byte[] withBlock = LobbyPayloads.State(factions);
     byte[] sameAsCoop = LobbyPayloads.State(new LobbyView(factions.Id, "F", players[0].Id, 7, 4, plain, SetupPhase.Storyteller,
         null, LobbyMode.CoopHost));
-    Equal(true, withBlock.Length > sameAsCoop.Length && withBlock.Take(sameAsCoop.Length - 3).SequenceEqual(sameAsCoop.Take(sameAsCoop.Length - 3)));
+    Equal(true, withBlock.Length > sameAsCoop.Length && withBlock.Take(sameAsCoop.Length - 4).SequenceEqual(sameAsCoop.Take(sameAsCoop.Length - 4)));  // same up to the mode; then Restored flag
     Throws<ProtocolException>(() => LobbyPayloads.ReadState(withBlock.Take(sameAsCoop.Length).ToArray()));
     var twice = new[] { new PlayerView(Guid.NewGuid(), "A", false, hostKey, factionSlot: 2), new PlayerView(Guid.NewGuid(), "B", false, guestKey, factionSlot: 2) };
     Throws<ProtocolException>(() => LobbyPayloads.ReadState(LobbyPayloads.State(new LobbyView(factions.Id, "F", twice[0].Id, 7, 4, twice,
@@ -420,8 +421,8 @@ await Run("faction message codes 96/97 in the frame (ADR 0037)", async () =>
     WireMessage first = (await FrameCodec.ReadAsync(stream))!, second = (await FrameCodec.ReadAsync(stream))!;
     Equal(MessageType.StorytellerChoice, first.Type); Equal("Randy", FactionPayloads.ReadStorytellerChoice(first.Payload));
     Equal(MessageType.FactionOptions, second.Type); Equal("Rough", FactionOptions.FromPayload(second.Payload).Difficulty);
-    await Reject<ProtocolException>(new byte[] { 0, 0, 0, 6, 3, 102, 0, 0, 0, 0 });  // 102/103 and 105-111 are reserved, not valid
-    await Reject<ProtocolException>(new byte[] { 0, 0, 0, 6, 3, 105, 0, 0, 0, 0 });
+    await Reject<ProtocolException>(new byte[] { 0, 0, 0, 6, 3, 102, 0, 0, 0, 0 });  // 102/103 and 106-111 are reserved, not valid
+    await Reject<ProtocolException>(new byte[] { 0, 0, 0, 6, 3, 106, 0, 0, 0, 0 });
     byte[] pace = LockstepPayloads.Pace(new PaceNotice(1, 3, PaceReason.SlowestGame, Guid.NewGuid(), 600));
     using var paceStream = new FragmentingStream();
     await FrameCodec.WriteAsync(paceStream, new WireMessage(MessageType.PaceNotice, 0, pace));
@@ -491,19 +492,34 @@ await Run("faction sites, ideologies, host rejection and restore (ADR 0038)", ()
     LobbyView read = LobbyPayloads.ReadState(LobbyPayloads.State(state));
     Equal((SiteTile?)new SiteTile(10, 0), read.Players[0].FactionSite); Equal("Ahnen", read.Players[0].Ideology!.Label);
     Equal(true, read.Players[0].Ideology!.SameAs(players[0].Ideology)); Equal("Zu nah an Platz 0", read.Players[1].FactionNote);
-    Equal((SiteTile?)null, read.Players[1].FactionSite); Equal(false, read.FactionsRestored);
+    Equal((SiteTile?)null, read.Players[1].FactionSite); Equal(false, read.Restored);
     var twice = new[] { players[0], new PlayerView(players[1].Id, "Gast", false, b, factionSlot: 1, factionSite: new SiteTile(10, 0)) };
     Throws<ProtocolException>(() => LobbyPayloads.ReadState(LobbyPayloads.State(new LobbyView(state.Id, "F", players[0].Id, 9, 4, twice,
         SetupPhase.SiteSelection, null, factionsMode))));                                                            // one site per faction
     var restoredView = new LobbyView(state.Id, "F", players[0].Id, 9, 4,
         new[] { new PlayerView(players[0].Id, "Host", false, a, factionSlot: 0, storyteller: "Randy") }, SetupPhase.Lobby, null, factionsMode,
-        factionsRestored: true);
+        restored: true);
     LobbyView restoredRead = LobbyPayloads.ReadState(LobbyPayloads.State(restoredView));
-    Equal(true, restoredRead.FactionsRestored); Equal((byte?)0, restoredRead.Players[0].FactionSlot); Equal("Randy", restoredRead.Players[0].Storyteller);
+    Equal(true, restoredRead.Restored); Equal((byte?)0, restoredRead.Players[0].FactionSlot); Equal("Randy", restoredRead.Players[0].Storyteller);
+    // SAVE-002 (ADR 0027): a Coop lobby continues a saved game too; the flag travels without a faction block.
+    LobbyView coopRestored = LobbyPayloads.ReadState(LobbyPayloads.State(new LobbyView(state.Id, "C", players[0].Id, 9, 4,
+        new[] { new PlayerView(players[0].Id, "Host", false, a) }, SetupPhase.Lobby, null, LobbyMode.CoopHost, restored: true)));
+    Equal(true, coopRestored.Restored); Equal((byte?)null, coopRestored.Players[0].FactionSlot); Equal(null, coopRestored.FactionOptions);
+    Equal(false, LobbyPayloads.ReadState(LobbyPayloads.State(new LobbyView(state.Id, "C", players[0].Id, 9, 4,
+        new[] { new PlayerView(players[0].Id, "Host", false, a) }, SetupPhase.Lobby, null, LobbyMode.CoopHost))).Restored);
     Throws<ProtocolException>(() => LobbyPayloads.State(new LobbyView(state.Id, "C", players[0].Id, 9, 4, Array.Empty<PlayerView>(),
-        SetupPhase.Lobby, null, LobbyMode.CoopHost, factionsRestored: true)));                                     // Coop never continues factions
+        SetupPhase.Generating, null, LobbyMode.CoopHost, restored: true)));                                // only before the start
     Throws<ProtocolException>(() => LobbyPayloads.State(new LobbyView(state.Id, "F", players[0].Id, 9, 4, Array.Empty<PlayerView>(),
-        SetupPhase.Storyteller, null, factionsMode, factionsRestored: true)));                                     // only before the start
+        SetupPhase.Storyteller, null, factionsMode, restored: true)));                                     // only before the start
+    Equal((byte)105, (byte)MessageType.SessionRestore);
+    var saved = new SessionRestore(new[] { a, b });
+    SessionRestore savedBack = SessionRestore.FromPayload(saved.ToPayload());
+    Equal(2, savedBack.Players.Count); Equal(a, savedBack.Players[0]); Equal(b, savedBack.Players[1]);
+    Throws<ProtocolException>(() => new SessionRestore(Array.Empty<PlayerKey>()));
+    Throws<ProtocolException>(() => new SessionRestore(new[] { a, a }));                                       // key twice
+    Throws<ProtocolException>(() => new SessionRestore(Enumerable.Range(0, 65).Select(_ => PlayerKey.Local(Guid.NewGuid())).ToArray()));
+    Throws<ProtocolException>(() => SessionRestore.FromPayload(new byte[] { 0 }));
+    Throws<ProtocolException>(() => SessionRestore.FromPayload(saved.ToPayload().Take(5).ToArray()));          // truncated
     Throws<ProtocolException>(() => LobbyPayloads.State(new LobbyView(state.Id, "C", players[0].Id, 9, 4,
         new[] { new PlayerView(players[0].Id, "Host", false, a, factionSite: new SiteTile(1, 0)) }, SetupPhase.SiteSelection, null, LobbyMode.CoopHost)));
     Throws<ProtocolException>(() => LobbyPayloads.State(new LobbyView(state.Id, "C", players[0].Id, 9, 4,

@@ -1038,10 +1038,10 @@ await using (var contServer = new FoundationServer(new HostConfig { BindAddress 
     uint k = 4000;
     LobbyView kRoom = await StateAsync(kHost, MessageType.CreateLobby, ++k, LobbyPayloads.Create("Fortsetzen", 4, LobbyMode.Factions(FactionRelation.Allied)));
     LobbyView kRestored = await StateAsync(kHost, MessageType.FactionRestore, ++k, savedTable.ToPayload());
-    Assert(kRestored.FactionsRestored && kRestored.Players.Single().FactionSlot == 0 && kRestored.Players.Single().Storyteller == "Randy", "the save's table is in the lobby");
+    Assert(kRestored.Restored && kRestored.Players.Single().FactionSlot == 0 && kRestored.Players.Single().Storyteller == "Randy", "the save's table is in the lobby");
     Assert(await ErrorCodeAsync(kStranger, MessageType.JoinLobby, ++k, LobbyPayloads.GuidValue(kRoom.Id)) == 6, "a player outside the save cannot join");
     LobbyView kJoined = await StateAsync(kGuest, MessageType.JoinLobby, ++k, LobbyPayloads.GuidValue(kRoom.Id));
-    Assert(kJoined.FactionsRestored && kJoined.Players.Single(p => p.Key == kGuestKey).FactionSlot == 2 &&
+    Assert(kJoined.Restored && kJoined.Players.Single(p => p.Key == kGuestKey).FactionSlot == 2 &&
         kJoined.Players.Single(p => p.Key == kGuestKey).Storyteller == "Phoebe", "the guest sees its saved faction");
     Assert(await ErrorCodeAsync(kGuest, MessageType.FactionRestore, ++k, savedTable.ToPayload()) == 3, "only the host restores");
     await StateAsync(kHost, MessageType.PlayerReadyChanged, ++k, LobbyPayloads.Bool(true));
@@ -1077,6 +1077,53 @@ await using (var prodContinue = await ListenHost.StartAsync("127.0.0.1", 0, "Hos
         "continuing a Factions game is refused on the real hosting path");
 }
 Console.WriteLine("PASS: continue a saved Factions game end to end: host-only restore, only the save's players join, start to the game transfer, late join with the saved faction, Coop refuses all faction messages, locked via ListenHost (ADR 0038)");
+
+// SAVE-002, Coop part (ADR 0027): the host restores the save's player list over code 105; only its players join; the start
+// goes straight to the game transfer; through ListenHost (the real hosting path) continuing is allowed.
+PlayerKey sHostKey = PlayerKey.Local(Guid.NewGuid()), sGuestKey = PlayerKey.Local(Guid.NewGuid()), sAbsentKey = PlayerKey.Local(Guid.NewGuid());
+var savedPlayers = new SessionRestore(new[] { sHostKey, sGuestKey, sAbsentKey });
+await using (var coopContinue = new FoundationServer(new HostConfig { BindAddress = "127.0.0.1", Port = 0 }))
+{
+    await coopContinue.StartAsync();
+    int sPort = coopContinue.BoundPort;
+    using LobbyClient sHost = await LobbyClient.ConnectAsync("127.0.0.1", sPort, "Host", TimeSpan.FromSeconds(4), CancellationToken.None, sHostKey);
+    using LobbyClient sGuest = await LobbyClient.ConnectAsync("127.0.0.1", sPort, "Guest", TimeSpan.FromSeconds(4), CancellationToken.None, sGuestKey);
+    using LobbyClient sStranger = await LobbyClient.ConnectAsync("127.0.0.1", sPort, "Stranger", TimeSpan.FromSeconds(4), CancellationToken.None, PlayerKey.Local(Guid.NewGuid()));
+    using LobbyClient sAbsent = await LobbyClient.ConnectAsync("127.0.0.1", sPort, "Absent", TimeSpan.FromSeconds(4), CancellationToken.None, sAbsentKey);
+    uint s = 4600;
+    LobbyView sRoom = await StateAsync(sHost, MessageType.CreateLobby, ++s, LobbyPayloads.Create("Koop fortsetzen", 4));
+    Assert(await ErrorCodeAsync(sGuest, MessageType.SessionRestore, ++s, savedPlayers.ToPayload()) != 0, "a player outside a lobby cannot restore");
+    LobbyView sRestored = await StateAsync(sHost, MessageType.SessionRestore, ++s, savedPlayers.ToPayload());
+    Assert(sRestored.Restored && sRestored.Mode.Mode == GameMode.Coop && sRestored.Players.Single().FactionSlot == null, "the lobby continues the Coop save");
+    Assert(await ErrorCodeAsync(sStranger, MessageType.JoinLobby, ++s, LobbyPayloads.GuidValue(sRoom.Id)) == 6, "a player outside the save cannot join");
+    LobbyView sJoined = await StateAsync(sGuest, MessageType.JoinLobby, ++s, LobbyPayloads.GuidValue(sRoom.Id));
+    Assert(sJoined.Restored && sJoined.Players.Count == 2, "a player of the save joins");
+    Assert(await ErrorCodeAsync(sGuest, MessageType.SessionRestore, ++s, savedPlayers.ToPayload()) == 3, "only the host restores");
+    await StateAsync(sHost, MessageType.PlayerReadyChanged, ++s, LobbyPayloads.Bool(true));
+    await StateAsync(sGuest, MessageType.PlayerReadyChanged, ++s, LobbyPayloads.Bool(true));
+    Assert(await ErrorCodeAsync(sHost, MessageType.SetupAdvance, ++s, SetupPayloads.Advance(SetupPhase.Scenario)) == 6, "a continued game skips the new-game setup");
+    LobbyView sGenerating = await StateAsync(sHost, MessageType.SetupAdvance, ++s, SetupPayloads.Advance(SetupPhase.Generating));
+    Assert(sGenerating.Phase == SetupPhase.Generating && !sGenerating.Restored, "start goes to the game transfer");
+    await TransferGameAsync(sHost, sGuest, s += 100);
+    LobbyView sLate = await StateAsync(sAbsent, MessageType.JoinLobby, ++s, LobbyPayloads.GuidValue(sRoom.Id));
+    Assert(sLate.Phase == SetupPhase.Playing && sLate.Players.Any(p => p.Key == sAbsentKey), "an absent player of the save joins the running game later");
+    using LobbyClient fHost = await LobbyClient.ConnectAsync("127.0.0.1", sPort, "FactionHost", TimeSpan.FromSeconds(4), CancellationToken.None, PlayerKey.Local(Guid.NewGuid()));
+    await StateAsync(fHost, MessageType.CreateLobby, ++s, LobbyPayloads.Create("Fraktionen", 4, LobbyMode.Factions(FactionRelation.Allied)));
+    Assert(await ErrorCodeAsync(fHost, MessageType.SessionRestore, ++s, savedPlayers.ToPayload()) == 6, "Factions: no Coop player list");
+}
+PlayerKey lHostKey = PlayerKey.Local(Guid.NewGuid()), lGuestKey = PlayerKey.Local(Guid.NewGuid());
+await using (var listenContinue = await ListenHost.StartAsync("127.0.0.1", 0, "Host", "Koop fortsetzen", 4, lHostKey))
+{
+    LobbyView lRoom = LobbyPayloads.ReadState((await ReceiveAsync(listenContinue.Client, MessageType.LobbyStateUpdate)).Payload);
+    await StateAsync(listenContinue.Client, MessageType.SessionRestore, 4700, new SessionRestore(new[] { lHostKey, lGuestKey }).ToPayload());
+    using LobbyClient lGuest = await LobbyClient.ConnectAsync("127.0.0.1", listenContinue.Port, "Guest", TimeSpan.FromSeconds(4), CancellationToken.None, lGuestKey);
+    await StateAsync(lGuest, MessageType.JoinLobby, 4701, LobbyPayloads.GuidValue(lRoom.Id));
+    await StateAsync(listenContinue.Client, MessageType.PlayerReadyChanged, 4702, LobbyPayloads.Bool(true));
+    await StateAsync(lGuest, MessageType.PlayerReadyChanged, 4703, LobbyPayloads.Bool(true));
+    LobbyView lGenerating = await StateAsync(listenContinue.Client, MessageType.SetupAdvance, 4704, SetupPayloads.Advance(SetupPhase.Generating));
+    Assert(lGenerating.Phase == SetupPhase.Generating, "continuing a Coop game works on the real hosting path");
+}
+Console.WriteLine("PASS: continue a saved Coop game end to end: host-only restore over 105, only the save's players join, start to the game transfer, late join, Factions refuse the list, allowed via ListenHost (ADR 0027)");
 
 // Sends a request and returns the error code the server answers with.
 static async Task<byte> ErrorCodeAsync(LobbyClient client, MessageType type, uint requestId, byte[] payload)

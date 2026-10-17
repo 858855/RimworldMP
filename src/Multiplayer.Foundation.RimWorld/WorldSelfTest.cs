@@ -205,7 +205,10 @@ namespace Multiplayer.Foundation.RimWorld
                         // The game must land the chosen pawns on the chosen site, not a quick-test game (2026-10-16).
                         Check("landedChosen", chosenPawns.Length > 0 && chosenPawns.All(id => colonists.Any(p => p.thingIDNumber == id)));
                         Check("site", Find.Maps[0].Tile == startTile);
-                        Protocol.PlayerKey a = Protocol.PlayerKey.Local(Guid.NewGuid()), b = Protocol.PlayerKey.Local(Guid.NewGuid());
+                        // With -mpContinueSelfTest the host of the continue test must be a player of this save (ADR 0027).
+                        Protocol.PlayerKey a = ContinueSelfTest.Requested && FoundationMod.Instance != null
+                            ? FoundationMod.Instance.SelfTestHostKey() : Protocol.PlayerKey.Local(Guid.NewGuid());
+                        Protocol.PlayerKey b = Protocol.PlayerKey.Local(Guid.NewGuid());
                         var owners = new System.Collections.Generic.Dictionary<int, Protocol.PlayerKey>();
                         if (colonists.Count >= 2) { owners[colonists[0].thingIDNumber] = a; owners[colonists[1].thingIDNumber] = b; }
                         owners[-1] = b; // a pawn that did not land must not be saved
@@ -331,7 +334,17 @@ namespace Multiplayer.Foundation.RimWorld
                         if (UnityEngine.Time.realtimeSinceStartup - gameStageAt < 2f) return;
                         Check("ticksHeldAfterLoad", Find.TickManager.TicksGame == pausedTick && Find.TickManager.Paused);
                         gameResults.Add(ProbeText());
+                        if (ContinueSelfTest.Requested)
+                        {
+                            // SAVE-002: continue the host's save from a fresh local lobby (ADR 0027); the saves still exist here.
+                            ContinueSelfTest.Begin(hostTick);
+                            gameStage = 11; gameStageAt = UnityEngine.Time.realtimeSinceStartup;
+                            return;
+                        }
                         Finish();
+                        return;
+                    case 11:
+                        if (ContinueSelfTest.Step(Check, HostSave)) Finish();
                         return;
                 }
             }

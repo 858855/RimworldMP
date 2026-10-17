@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Spielstand aus der Lobby fortsetzen (`feat/continue-save`, SAVE-002 Coop, ADR 0027)
+
+- Der Host wählt im Lobby-Fenster „Spielstand fortsetzen …“ einen Multiplayer-Spielstand; die Lobby bleibt bestehen. Im geladenen Spiel meldet die Mod die Spieler des Spielstands (Coop: neuer Code 105 `SessionRestore`; Fraktionen wie bisher 101). Nur diese Spieler können vor dem Start beitreten; „Spiel fortsetzen“ führt direkt zur Spielstandübertragung, alle laden denselben Stand, Besitz bleibt aus dem Spielstand erhalten (Besitzer nicht mehr lebender Figuren werden entfernt).
+- Lobbyzustand: Flag `Restored` für jeden Modus (ein Byte nach dem Modus; `FactionsRestored` umbenannt). `SetupAbort` in einer fortgesetzten Lobby vergisst den Spielstand.
+- Das geladene Spiel des Hosts bleibt pausiert, bis er „fortsetzen“ drückt; so landen alle am gespeicherten Tick.
+- Protocol-, Lobby- und Hosting-Tests (auch über `ListenHost`) bestanden; Mod-Build ohne Warnungen; Selbsttest `-mpWorldSelfTest -mpContinueSelfTest` (lokaler Host, Spielstand laden bei bestehender Verbindung, Restore, Start, Host-Pfad) PASS. Offen: zwei Clients, Pins im Spielstand, Fortsetzen durch einen anderen Host, Zuschauer vor dem Start.
 ### Steuerungsrechte für eigene Figuren (`feat/permissions`, SYNC-005 erster Schnitt, OWN-001 Anzeige, ADR 0026)
 
 - Ein Spieler steuert nur die Figuren, die er in der Einrichtung übernommen hat (Coop); gemeinsame Figuren ohne Besitzer darf jeder, im Fraktionsmodus nur die eigene Fraktion. Zeichnen- und Spielauftrags-Befehle für fremde Figuren sind in jedem Spiel ein No-op; der Auslöser sieht „Keine Berechtigung: <Figur> gehört <Spieler>“ sofort beim Klick und nach der Ausführung. Verbieten bleibt Kolonie-Aktion für alle.

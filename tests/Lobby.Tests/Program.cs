@@ -516,7 +516,7 @@ foreach (bool unlocked in new[] { true, false })
     Expect(3, () => cont.RestoreFactions(kEarly, table));                              // only the host restores
     Expect(6, () => cont.RestoreFactions(kHost, new FactionRestore(new[] { new FactionRestoreEntry(kGuestKey, 3, "Phoebe") })));  // host missing
     LobbyView restored = cont.RestoreFactions(kHost, table).State!;
-    Assert(restored.FactionsRestored && restored.Players.Single(p => p.Id == kHost).FactionSlot == 0 &&
+    Assert(restored.Restored && restored.Players.Single(p => p.Id == kHost).FactionSlot == 0 &&
         restored.Players.Single(p => p.Id == kHost).Storyteller == "Randy", "the save's table is in the lobby");
     Assert(LobbyRegistry.FactionSetupBlockReason(restored) == "Kein Platz im Spielstand: Früh", "the reason names who has no faction in the save");
     Expect(6, () => cont.Join(kStranger, kRoom));                                      // not a player of this save
@@ -530,10 +530,10 @@ foreach (bool unlocked in new[] { true, false })
     cont.Leave(kEarly);
     Expect(6, () => cont.AdvanceSetup(kHost, SetupPhase.Scenario));                    // a continued game skips the new-game setup
     LobbyView restoredRead = LobbyPayloads.ReadState(LobbyPayloads.State(cont.Ready(kHost, true).State!));
-    Assert(restoredRead.FactionsRestored && restoredRead.Players.Single(p => p.Key == kGuestKey).FactionSlot == 3, "the restored lobby survives the state payload");
+    Assert(restoredRead.Restored && restoredRead.Players.Single(p => p.Key == kGuestKey).FactionSlot == 3, "the restored lobby survives the state payload");
     if (!unlocked) { Expect(6, () => cont.AdvanceSetup(kHost, SetupPhase.Generating)); continue; }   // the Factions lock covers continuing
     LobbyView generating = cont.AdvanceSetup(kHost, SetupPhase.Generating).State!;
-    Assert(generating.Phase == SetupPhase.Generating && !generating.FactionsRestored && generating.Players.Single(p => p.Id == kGuest).FactionSlot == 3,
+    Assert(generating.Phase == SetupPhase.Generating && !generating.Restored && generating.Players.Single(p => p.Id == kGuest).FactionSlot == 3,
         "a continued game goes straight to the game transfer and keeps its slots");
     Expect(6, () => cont.RestoreFactions(kHost, table));                               // only before the start
     cont.SetHostGame(kHost, sWorld); cont.ReportGame(kGuest, sWorld);
@@ -542,6 +542,52 @@ foreach (bool unlocked in new[] { true, false })
     Expect(6, () => cont.Join(kStranger, kRoom));
 }
 Console.WriteLine("PASS: continue a saved Factions game: host restores the table, only its players join, slots stay, start goes to the game transfer, locked without the switch (ADR 0038)");
+
+// ADR 0027 (SAVE-002, Coop part): continue a saved Coop game; the save's player list admits players, ownership stays in the save.
+{
+    var cont = new LobbyRegistry(8);
+    Guid cHost = Guid.NewGuid(), cGuest = Guid.NewGuid(), cStranger = Guid.NewGuid(), cAbsent = Guid.NewGuid(), cEarly = Guid.NewGuid();
+    PlayerKey cHostKey = PlayerKey.Local(Guid.NewGuid()), cGuestKey = PlayerKey.Local(Guid.NewGuid()), cAbsentKey = PlayerKey.Local(Guid.NewGuid());
+    cont.AddMember(cHost, "Host", cHostKey); cont.AddMember(cGuest, "Guest", cGuestKey); cont.AddMember(cStranger, "Fremd", PlayerKey.Local(Guid.NewGuid()));
+    cont.AddMember(cAbsent, "Später", cAbsentKey); cont.AddMember(cEarly, "Früh", PlayerKey.Local(Guid.NewGuid()));
+    Guid cRoom = cont.Create(cHost, "Koop fortsetzen", 6).State!.Id;
+    cont.Join(cEarly, cRoom); cont.Ready(cEarly, true);                                   // joined and ready before the save was restored
+    var saved = new SessionRestore(new[] { cHostKey, cGuestKey, cAbsentKey });
+    Expect(3, () => cont.RestoreSession(cEarly, saved));                                    // only the host restores
+    Expect(6, () => cont.RestoreSession(cHost, new SessionRestore(new[] { cGuestKey })));    // host missing
+    LobbyView restored = cont.RestoreSession(cHost, saved).State!;
+    Assert(restored.Restored && restored.Players.All(p => !p.Ready) && restored.Players.All(p => p.FactionSlot == null), "the lobby continues the save; ready is cleared, no faction data");
+    Expect(6, () => cont.Join(cStranger, cRoom));                                           // not a player of this save
+    Assert(cont.Join(cGuest, cRoom).State!.Restored, "a player of the save joins");
+    cont.Leave(cGuest);
+    Assert(cont.Join(cGuest, cRoom).State!.Players.Any(p => p.Id == cGuest), "leaving before the start keeps the seat");
+    foreach (Guid id in new[] { cHost, cGuest, cEarly }) cont.Ready(id, true);
+    Expect(6, () => cont.AdvanceSetup(cHost, SetupPhase.Generating));                       // "Früh" is not in the save
+    cont.Leave(cEarly);
+    Expect(6, () => cont.AdvanceSetup(cHost, SetupPhase.Scenario));                         // a continued game skips the new-game setup
+    LobbyView restoredRead = LobbyPayloads.ReadState(LobbyPayloads.State(cont.Ready(cHost, true).State!));
+    Assert(restoredRead.Restored && restoredRead.Mode.Mode == GameMode.Coop, "the restored Coop lobby survives the state payload");
+    LobbyView generating = cont.AdvanceSetup(cHost, SetupPhase.Generating).State!;
+    Assert(generating.Phase == SetupPhase.Generating && !generating.Restored, "a continued game goes straight to the game transfer");
+    Expect(6, () => cont.RestoreSession(cHost, saved));                                     // only before the start
+    cont.SetHostGame(cHost, sWorld); cont.ReportGame(cGuest, sWorld);
+    cont.AdvanceSetup(cHost, SetupPhase.Playing);
+    Assert(cont.Join(cAbsent, cRoom).State!.Players.Any(p => p.Id == cAbsent), "an absent player of the save joins the running game later");
+    // A Factions lobby refuses the Coop list; an aborted continue returns to a normal lobby.
+    var fac = new LobbyRegistry(8);
+    Guid fHost = Guid.NewGuid(); PlayerKey fHostKey = PlayerKey.Local(Guid.NewGuid());
+    fac.AddMember(fHost, "Host", fHostKey);
+    fac.Create(fHost, "Fraktionen", 4, LobbyMode.Factions(FactionRelation.Neutral));
+    Expect(6, () => fac.RestoreSession(fHost, new SessionRestore(new[] { fHostKey })));
+    var ccAgain = new LobbyRegistry(8);
+    Guid aHost = Guid.NewGuid(), aGuest = Guid.NewGuid(); PlayerKey aHostKey = PlayerKey.Local(Guid.NewGuid());
+    ccAgain.AddMember(aHost, "Host", aHostKey); ccAgain.AddMember(aGuest, "Guest", PlayerKey.Local(Guid.NewGuid()));
+    Guid aRoom = ccAgain.Create(aHost, "Nochmal", 4).State!.Id;
+    ccAgain.RestoreSession(aHost, new SessionRestore(new[] { aHostKey }));
+    Expect(6, () => ccAgain.Join(aGuest, aRoom));
+    Assert(!ccAgain.AbortSetup(aHost).State!.Restored && ccAgain.Join(aGuest, aRoom).State!.Players.Count == 2, "abort forgets the save; anyone may join ccAgain");
+}
+Console.WriteLine("PASS: continue a saved Coop game: host restores the player list, only its players join, start goes to the game transfer, Factions refuse the list, abort forgets it (ADR 0027)");
 
 
 // ADR 0038: from SiteSelection in the Factions mode, every member chooses an own site and ideology, then the host goes on
