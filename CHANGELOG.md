@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Spielstand aus der Lobby fortsetzen (`feat/continue-save`, SAVE-002 Coop, ADR 0027)
+
+- Der Host wählt im Lobby-Fenster „Spielstand fortsetzen …“ einen Multiplayer-Spielstand; die Lobby bleibt bestehen. Im geladenen Spiel meldet die Mod die Spieler des Spielstands (Coop: neuer Code 105 `SessionRestore`; Fraktionen wie bisher 101). Nur diese Spieler können vor dem Start beitreten; „Spiel fortsetzen“ führt direkt zur Spielstandübertragung, alle laden denselben Stand, Besitz bleibt aus dem Spielstand erhalten (Besitzer nicht mehr lebender Figuren werden entfernt).
+- Lobbyzustand: Flag `Restored` für jeden Modus (ein Byte nach dem Modus; `FactionsRestored` umbenannt). `SetupAbort` in einer fortgesetzten Lobby vergisst den Spielstand.
+- Protocol-, Lobby- und Hosting-Tests (auch über `ListenHost`) bestanden; Mod-Build ohne Warnungen; kein Spieltest. Offen: Pins im Spielstand, Fortsetzen durch einen anderen Host, Zuschauer vor dem Start.
+
 ### Integration 2026-10-17 (`integration/sync-2026-10-17`, Sven)
 
 - `codex/continuous-sync` (SYNC-009, ADR 0049) per Fast-Forward übernommen; die drei Commits behalten ihre SHAs.

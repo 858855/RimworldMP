@@ -1207,11 +1207,16 @@ tasks:
   - SAVE-001
   acceptance:
   - 'Alle landen am gespeicherten Tick; Besitz intakt'
-  implementation: planned
-  verification: not_tested
+  implementation: in_progress
+  verification: tests_passed
   integration: not_submitted
-  branch: null
-  evidence: []
+  branch: feat/continue-save
+  base_branch: main
+  base_commit: 060d2be
+  evidence:
+  - docs/decisions/0027-continue-saved-game-from-lobby.md
+  - docs/verification/2026-10-17-continue-save.md
+  blocker: 'Coop-Teil gebaut (Sven, feat/continue-save, ADR 0027): Spielstand-Auswahl in der Lobby, Code 105, Beitritts- und Startregeln, Host-Pfad; Protocol-, Lobby- und Hosting-Tests bestanden. Offen: Zwei-Client-Spieltest (speichern, beenden, fortsetzen, Fingerabdruck, Besitz), Pins im Spielstand, anderer Host, Zuschauer vor dem Start; Fraktions-Fortsetzen bleibt durch die Fraktionssperre blockiert.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: SYNC-006
   title: 'Tier-2-Abdeckung Vanilla'
