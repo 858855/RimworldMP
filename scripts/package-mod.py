@@ -20,6 +20,7 @@ FILES = (
     "Assemblies/Multiplayer.Foundation.Lobby.dll",
     "Assemblies/Multiplayer.Foundation.Session.dll",
     "Assemblies/Multiplayer.Foundation.Hosting.dll",
+    "Assemblies/Multiplayer.Foundation.Api.dll",
     "Assemblies/Multiplayer.Foundation.RimWorld.dll",
     "THIRD_PARTY_LICENSES/Harmony-MIT.txt",
 )

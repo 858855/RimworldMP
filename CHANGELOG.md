@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Öffentliche Sync-API v1 für andere Mods (`feat/mod-api`, API-001, ADR 0029)
+
+- Neues Assembly `Multiplayer.Foundation.Api` (im Mod-Paket, eigene SemVer 1.0.0): `MP.RegisterSyncMethod`/`[SyncMethod]` macht eine Methode zum synchronisierten Befehl (Harmony-Prefix sendet den Aufruf, alle Clients führen ihn am selben Tick aus), `MP.RegisterSyncWorker<T>`/`[SyncWorker]` für eigene Typen, `MP.RegisterHashContributor`/`[SyncHash]` für die 60-Tick-Hash-Prüfung, Abfragen `IsInSession`, `IsHost`, `IsExecutingCommand`, `LocalPlayerKey`, `ExecutingIssuer`; `MP.RegisterAll()` für ein Assembly.
+- Serialisierer für Primitive, Strings, Enums, Listen, `IntVec3`/`Rot4`/`CellRect`/`LocalTargetInfo`, Defs, Things (platziert, Weltfigur, in Behälter), ThingComps, Map, Faction, Zone, Area, Bill; fehlende Referenzen machen den Befehl überall zum No-op.
+- `GameCommandCodec` ist eine Opcode-Tabelle (Draft, Forbid, Goto, Sync-Methode) statt einer if-Kette. `docs/extension-api.md` beschreibt Einbindung, Typen, Regeln und Versionierung; Beispielvorlage `examples/multiplayer/FoundationApiExample.cs`.
+- Selbsttest `-mpWorldSelfTest` prüft Registrierung, Kodierung, Ausführung, No-op, Ablehnung, Größengrenze und Hash-Beitrag. Kein Zwei-Client-Test, kein echter Fremd-Mod.
 ### Fraktionskolonien je Spieler erzeugen (`feat/factions-generation`, FACTION-005 Spielseite, ADR 0028)
 
 - Der isolierte Testschnitt ist Produktionscode geworden (`FactionGeneration`): vor der Landung je Platz eine Spielerfraktion mit der gewählten Ideologie (Vorlage oder bearbeitet) und der Lobby-Beziehung; nach der Landung je Platz Siedlung am gewählten Startort, eigene Karte und die übernommene Figur dort. Der Host-Startpfad nutzt das hinter dem Debug-Schalter `-mpFactionStart`; die Server-Sperre bleibt.

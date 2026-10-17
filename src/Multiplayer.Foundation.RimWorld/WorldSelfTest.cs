@@ -267,6 +267,8 @@ namespace Multiplayer.Foundation.RimWorld
                             Check("controlAllowed", owned.Drafted == !before);
                             GameCommandCodec.Execute(Command(3, a, before), Guid.Empty);   // back to the state that gets saved
                         }
+                        try { ApiSelfTest.Run(Check); }
+                        catch (Exception error) { Log.Error("Multiplayer Foundation API self-test: " + error); Check("api", false); }
                         Map map = Find.Maps[0];
                         gameResults.Add("generated(tick=" + Find.TickManager.TicksGame + " tile=" + map.Tile.tileId + " parent=" +
                             (map.Parent?.Tile.tileId.ToString() ?? "-") + " start=" + startTile.tileId + ")");

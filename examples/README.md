@@ -9,5 +9,6 @@
 | `harmony` | Prefix/Postfix eines beobachteten Game-Hooks | C# nicht gebaut; keine RimWorld-Instanz | 1.6 Beispiel, Harmony2 |
 | `components` | Game/Map/ThingComp und Scribe | C# nicht gebaut, API signatures in lokaler DLL prüfen | 1.6-Konzept |
 | `multiplayer` | `[SyncMethod]`, API Detection, SyncField/Watch, SyncWorker | C# nicht gebaut; API-Wiki historisch | 1.6 mit `RimWorld.MultiplayerAPI 0.6.0`; keine 1.7-Unterstützung |
+| `multiplayer/FoundationApiExample.cs` | Vorlage für die eigene Foundation-API v1 (`Multiplayer.Foundation.Api`, ADR 0029): `[SyncMethod]`, `[SyncWorker]`, `[SyncHash]` | C# nicht gebaut; API im Selbsttest geprüft | 1.6, `docs/extension-api.md` |
 
 Der Code ist didaktisch und enthält einzelne absichtliche Platzhalter (insbesondere nicht vorhandene DefNames/Texturen). Vor realem Einsatz fehlende Properties/Defs, Ref-Packs und UI-Kontexte gegen die eigene Runtime ermitteln. Quellen stehen in `references/verified-apis.md`.

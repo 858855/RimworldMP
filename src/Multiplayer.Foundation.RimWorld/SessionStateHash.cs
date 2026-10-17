@@ -48,6 +48,7 @@ namespace Multiplayer.Foundation.RimWorld
             var quests = Current.Game?.questManager?.QuestsListForReading.OrderBy(q => q.id).ToList();
             AddInt(quests?.Count ?? -1);
             if (quests != null) foreach (Quest quest in quests) { AddInt(quest.id); AddInt((int)quest.State); }
+            SyncHashes.Contribute(Add);   // ADR 0029: other mods' synchronized state, in id order
             Add(randDraws); Add(randValueSum);
             return hash;
         }

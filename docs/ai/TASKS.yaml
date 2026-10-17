@@ -1311,11 +1311,17 @@ tasks:
   acceptance:
   - 'Ein Beispielmod mit synchronisiertem Knopf, Feld und eigenem Worker besteht den Zwei-Client-Test'
   - 'Versionierung und Deprecation sind in docs/extension-api.md beschrieben'
-  implementation: planned
-  verification: not_tested
-  integration: not_submitted
-  branch: null
-  evidence: []
+  implementation: in_progress
+  verification: build_passed
+  integration: ready_for_human_review
+  branch: feat/mod-api
+  base_branch: main
+  base_commit: 060d2be
+  evidence:
+  - docs/decisions/0029-public-sync-api.md
+  - docs/extension-api.md
+  - docs/verification/2026-10-17-public-sync-api.md
+  blocker: 'v1 (Sync-Methoden, Worker, Hash-Beitrag) gebaut und im Selbsttest geprüft; SyncField/Watch und SyncDelegate fehlen, kein Beispielmod gebaut, kein Zwei-Client-Test.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: API-002
   title: 'Spike: Kompatibilität mit rwmt Multiplayer.API'
