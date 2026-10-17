@@ -6,5 +6,5 @@
   <supportedVersions>
     <li>1.6</li>
   </supportedVersions>
-  <description>Lobby für RimWorld 1.6: direkt im Spiel hosten oder dedizierten Server nutzen. Version 0.2 (Vorschau): Prüfung von Mods und Ladereihenfolge in der Lobby und Start-Knopf. Gemeinsames Gameplay ist noch nicht verfügbar.</description>
+  <description>Multiplayer für RimWorld 1.6: Lobby (Steam, IP, dedizierter Server), gemeinsamer Spielstart mit Figurenwahl, Lockstep-Zeit mit Koordinator, Draft/Verbieten/Gehen als gemeinsame Befehle, Steuerungsrechte je Figur, Spielstand aus der Lobby fortsetzen, Fraktionsmodus (gesperrt) und eine Sync-API für andere Mods. Version 0.3.0-alpha.1: alle Funktionen nur im Selbsttest geprüft, kein Zwei-Client-Test; nur mit identischem Mod-Stand auf allen Rechnern spielen.</description>
 </ModMetaData>

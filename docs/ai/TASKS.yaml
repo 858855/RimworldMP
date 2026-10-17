@@ -904,7 +904,7 @@ tasks:
   - 'Besitz übersteht Speichern und Laden'
   implementation: in_progress
   verification: tests_passed
-  integration: not_submitted
+  integration: merged
   branch: feat/permissions
   base_branch: main
   base_commit: 060d2be
@@ -1070,7 +1070,7 @@ tasks:
   - 'Kontrolle leihen funktioniert'
   implementation: in_progress
   verification: tests_passed
-  integration: not_submitted
+  integration: merged
   branch: feat/permissions
   base_branch: main
   base_commit: 060d2be
@@ -1219,7 +1219,7 @@ tasks:
   - 'Alle landen am gespeicherten Tick; Besitz intakt'
   implementation: in_progress
   verification: tests_passed
-  integration: not_submitted
+  integration: merged
   branch: feat/continue-save
   base_branch: main
   base_commit: 060d2be
@@ -1313,7 +1313,7 @@ tasks:
   - 'Versionierung und Deprecation sind in docs/extension-api.md beschrieben'
   implementation: in_progress
   verification: build_passed
-  integration: ready_for_human_review
+  integration: merged
   branch: feat/mod-api
   base_branch: main
   base_commit: 060d2be
@@ -1724,7 +1724,7 @@ tasks:
   - 'Coop bleibt unverändert und Fraktionsstart gesperrt'
   implementation: in_progress
   verification: build_passed
-  integration: ready_for_human_review
+  integration: merged
   branch: feat/factions-generation
   base_branch: main
   base_commit: 060d2be

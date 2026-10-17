@@ -1,6 +1,8 @@
-# RimWorld Multiplayer Foundation 0.1.0-dev installieren
+# RimWorld Multiplayer Foundation 0.3.0-alpha.1 installieren
 
-Diese Vorschau ist für **RimWorld 1.6** gebaut. Sie bietet Verbindung, Lobby und einen flüchtigen Lobby-Chat, aber **kein gemeinsames Gameplay**. Der Benutzer bestätigte den Hauptmenü-Knopf und die Fensteröffnung im Spiel; die Chat-Bedienung steht noch aus.
+Diese Alpha ist für **RimWorld 1.6** gebaut (geprüft gegen 1.6.4871). Sie enthält Lobby (Steam, IP, dedizierter Server) mit Mod-Prüfung und Chat, den gemeinsamen Spielstart mit Weltübertragung, Startort und Figurenwahl, Lockstep-Zeit mit Koordinator (gemeinsame Pause, Tempo, Tempoanpassung bei langsamer Verbindung, Hash-Prüfung alle 60 Ticks, Speichern an der Tickgrenze, Beitritt und Resync), die gemeinsamen Befehle Zeichnen/Verbieten/Gehen, Steuerungsrechte je übernommener Figur, das Fortsetzen eines Spielstands aus der Lobby (Coop) sowie die Sync-API `Multiplayer.Foundation.Api` für andere Mods. Der Fraktionsmodus (eigene Kolonie je Spieler) ist enthalten, aber serverseitig gesperrt.
+
+**Alpha-Stand:** Jede Funktion ist gebaut und im Selbsttest eines einzelnen Spielprozesses geprüft (`docs/verification/2026-10-17-alpha-release.md`); **kein Zwei-Client-Spieltest** dieses Stands. Alle anderen Spieleraktionen (Bauen, Zonen, Aufträge, Forschung, Handel …) laufen noch lokal und werden nicht übertragen; sie können Abweichungen auslösen, die die Hash-Prüfung meldet. Spielstände regelmäßig sichern.
 
 1. RimWorld schließen. Beide Spieler benötigen **dasselbe Vorschau-ZIP**; der dedizierte Server muss aus demselben Branch gebaut sein. Die Chat-Vorschau verwendet Wire-Version 2 und ist nicht mit älteren Version-1-Mods/Servern kombinierbar.
 2. ZIP direkt in `RimWorld/Mods/` entpacken. Danach muss `RimWorld/Mods/RimWorldMultiplayerFoundation/About/About.xml` vorhanden sein. Einen alten `RimWorldMultiplayerFoundation`-Ordner vorher sichern oder entfernen, damit keine alten DLLs verbleiben.

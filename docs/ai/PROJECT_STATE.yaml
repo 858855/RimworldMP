@@ -13,7 +13,7 @@ target_rimworld_version:
   runtime: Unity/Mono
   game_runtime_tested: true
   other_versions_verified: []
-current_phase: faction_setup_integrated_runtime_verification_open
+current_phase: alpha_0_3_0_merged_two_client_verification_open
 git:
   branch: main
   base_branch: null
@@ -176,7 +176,7 @@ active_tasks:
 - SETUP-003
 - SETUP-004
 - SETUP-005
-next_action: 'Besitzer: Entscheidung zu den zwei Gleichlauf-Linien (main vs. feat/sync-lockstep/feat/sync-commands) und zur Gast-Figurenseite; danach a779f21/da2e4b7 (claude/continuous-sync, lokal) mit SYNC-010 zusammenführen (PeerQuality als weiterer Eingang, ADR 0039). Codex: Ideologie-Instanz im Fraktions-Selbsttest statisch untersuchen; keine neuen Spieltests, solange der Benutzer sie ausgesetzt hat. Fraktionsstart gesperrt lassen; Regel für weltweite Ereignisse (ADR 0037 R4) offen.'
+next_action: 'Besitzer: Push von main (vier Feature-Merges + Release 0.3.0-alpha.1) und Tag v0.3.0-alpha.1 freigeben, GitHub-Release mit dem ZIP anlegen, neue ADR-Bereiche vergeben; Zwei-Client-Spieltest der Alpha mit identischem RimWorld-Build. Besitzer: Entscheidung zu den zwei Gleichlauf-Linien (main vs. feat/sync-lockstep/feat/sync-commands) und zur Gast-Figurenseite; danach a779f21/da2e4b7 (claude/continuous-sync, lokal) mit SYNC-010 zusammenführen (PeerQuality als weiterer Eingang, ADR 0039). Codex: Ideologie-Instanz im Fraktions-Selbsttest statisch untersuchen; keine neuen Spieltests, solange der Benutzer sie ausgesetzt hat. Fraktionsstart gesperrt lassen; Regel für weltweite Ereignisse (ADR 0037 R4) offen.'
 documentation_refs:
   tasks: docs/ai/TASKS.yaml
   handoff: docs/ai/SESSION_HANDOFF.md
@@ -237,4 +237,6 @@ documentation_refs:
   faction_generation_verification: docs/verification/2026-10-17-faction-generation.md
   public_sync_api_decision: docs/decisions/0029-public-sync-api.md
   public_sync_api_verification: docs/verification/2026-10-17-public-sync-api.md
+  alpha_merge_review: docs/reviews/2026-10-17-alpha-merge.md
+  alpha_release_verification: docs/verification/2026-10-17-alpha-release.md
 last_updated: '2026-10-17'

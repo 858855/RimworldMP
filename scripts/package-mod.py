@@ -10,7 +10,7 @@ from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 ROOT = Path(__file__).resolve().parents[1]
 MOD = ROOT / "dist" / "RimWorldMultiplayerFoundation"
-DEFAULT_NAME = "RimWorldMultiplayerFoundation-0.1.0-dev-menu-chat-preview-rw1.6.zip"
+DEFAULT_NAME = "RimWorldMultiplayerFoundation-0.3.0-alpha.1-rw1.6.zip"
 PREFIX = "RimWorldMultiplayerFoundation/"
 FILES = (
     "About/About.xml",

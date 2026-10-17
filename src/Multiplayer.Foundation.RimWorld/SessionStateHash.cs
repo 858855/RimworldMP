@@ -42,7 +42,9 @@ namespace Multiplayer.Foundation.RimWorld
                 foreach (Faction other in factions)
                 {
                     if (other == faction) continue;
-                    AddInt(other.loadID); AddInt(faction.GoodwillWith(other));
+                    // The stored relation, not GoodwillWith: vanilla's situation manager only knows Faction.OfPlayer and
+                    // throws for a second player faction (Factions mode, self-test 2026-10-17).
+                    AddInt(other.loadID); AddInt(faction.RelationWith(other, true)?.baseGoodwill ?? int.MinValue);
                 }
             }
             var quests = Current.Game?.questManager?.QuestsListForReading.OrderBy(q => q.id).ToList();

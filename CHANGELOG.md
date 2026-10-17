@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.3.0-alpha.1 (2026-10-17)
+
+Erste Alpha mit gemeinsamem Gameplay-Grundgerüst: `main` @ `060d2be` (Integration vom 2026-10-17, Koordinator-Linie ADR 0030/0040/0043/0049 mit Tempoanpassung) plus die vier Feature-Branches `feat/permissions` (ADR 0026), `feat/continue-save` (ADR 0027), `feat/factions-generation` (ADR 0028) und `feat/mod-api` (ADR 0029), per Merge-Commits zusammengeführt. Paket `releases/RimWorldMultiplayerFoundation-0.3.0-alpha.1-rw1.6.zip` (acht eigene Assemblies, Harmony, Lizenz, Installationsanleitung). Einordnung nach AGENTS.md Regel 25: `BUILD_ERFOLGREICH`, `IN_GAME_GETESTET` (drei Selbsttests in einem Prozess), **kein** `MP_ZWEI_CLIENTS_GETESTET`. Nicht enthalten: die zweite Gleichlauf-Linie `feat/sync-lockstep`/`feat/sync-commands` (Entscheidung des Besitzers offen). Die Abschnitte darunter beschreiben den Inhalt.
+
+- Beim Zusammenführen gefunden und behoben: `SessionStateHash` rief `Faction.GoodwillWith` für jedes Fraktionspaar; Vanillas Situationsverwaltung kennt nur `Faction.OfPlayer` und warf im Fraktionsmodus für die zweite Spielerfraktion eine NullReferenceException (Fraktions-Selbsttest mit API-Hash-Prüfung). Der Hash nimmt jetzt die gespeicherte Beziehung (`RelationWith(...).baseGoodwill`).
+
 ### Öffentliche Sync-API v1 für andere Mods (`feat/mod-api`, API-001, ADR 0029)
 
 - Neues Assembly `Multiplayer.Foundation.Api` (im Mod-Paket, eigene SemVer 1.0.0): `MP.RegisterSyncMethod`/`[SyncMethod]` macht eine Methode zum synchronisierten Befehl (Harmony-Prefix sendet den Aufruf, alle Clients führen ihn am selben Tick aus), `MP.RegisterSyncWorker<T>`/`[SyncWorker]` für eigene Typen, `MP.RegisterHashContributor`/`[SyncHash]` für die 60-Tick-Hash-Prüfung, Abfragen `IsInSession`, `IsHost`, `IsExecutingCommand`, `LocalPlayerKey`, `ExecutingIssuer`; `MP.RegisterAll()` für ein Assembly.
