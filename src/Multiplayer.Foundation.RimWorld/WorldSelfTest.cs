@@ -234,6 +234,8 @@ namespace Multiplayer.Foundation.RimWorld
                             new[] { (a, "Test-Host"), (b, "Test-Gast") }, owners,
                             colonists.Select(p => p.thingIDNumber).ToList());
                         Check("ownersLanded", session != null && session.Owners.Count() == Math.Min(2, colonists.Count));
+                        try { ApiSelfTest.Run(Check); }
+                        catch (Exception error) { Log.Error("Multiplayer Foundation API self-test: " + error); Check("api", false); }
                         Map map = Find.Maps[0];
                         gameResults.Add("generated(tick=" + Find.TickManager.TicksGame + " tile=" + map.Tile.tileId + " parent=" +
                             (map.Parent?.Tile.tileId.ToString() ?? "-") + " start=" + startTile.tileId + ")");

@@ -47,6 +47,8 @@ namespace Multiplayer.Foundation.RimWorld
         internal bool CatchingUp => catchingUp;
         internal bool SavePending => savePending;
         internal void MarkSynced() => catchingUp = false;
+        /// <summary>True while a shared tick runs; calls from the simulation are not player input (ADR 0029).</summary>
+        internal bool InTick => tickRandomActive;
         internal byte Speed => lockstep.Speed;
         internal int Horizon => lockstep.Horizon;
         internal Guid SlowestSession => lockstep.SlowestSession;

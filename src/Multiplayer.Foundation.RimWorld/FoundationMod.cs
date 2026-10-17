@@ -159,6 +159,12 @@ namespace Multiplayer.Foundation.RimWorld
         /// <summary>For the determinism patches: the current game is a shared one (from Generating on, in Playing).</summary>
         internal bool InSharedGame => SharedGame;
 
+        internal bool IsLobbyHost => lobby != null && client != null && lobby.HostId == client.SessionId;
+
+        /// <summary>The local player's persistent key as the lobby knows it (API-001).</summary>
+        internal string? LocalPlayerKeyText => lobby == null || client == null ? null
+            : lobby.Players.FirstOrDefault(p => p.Id == client.SessionId)?.Key.ToString();
+
         internal bool SuppressLocalAutosave => holdForSnapshot || ConnectionLost ||
             (SharedGame && lobby?.Phase == SetupPhase.Playing);
 
@@ -286,6 +292,26 @@ namespace Multiplayer.Foundation.RimWorld
             accepted = SendBackground(LockstepClient.CommandMessage(data));
             if (!accepted) status = "Spielauftrag konnte nicht gesendet werden.";
             return false;
+        }
+
+        /// <summary>
+        /// ADR 0029: a registered sync method was called. Inside a command or a shared tick it runs directly (false). Otherwise
+        /// it is player input: encode, send, and skip the original (true); the call arrives later from the coordinator.
+        /// </summary>
+        internal bool CaptureSyncMethod(SyncMethodEntry entry, object? instance, object?[] args)
+        {
+            if (!SharedGame || lobby?.Phase != SetupPhase.Playing || GameCommandCodec.Executing || tickDriver?.InTick == true) return false;
+            if (tickDriver == null || tickDriver.Faulted) { status = "Mod-Befehl konnte nicht gesendet werden."; return true; }
+            byte[] data;
+            try { data = SyncMethods.Encode(entry, instance, args); }
+            catch (Exception error) when (error is InvalidOperationException || error is ProtocolException || error is ArgumentException)
+            {
+                status = "Mod-Befehl nicht sendbar: " + error.Message;
+                Log.Warning("Multiplayer Foundation: " + entry.Name + " nicht sendbar: " + error.Message);
+                return true;
+            }
+            if (!SendBackground(LockstepClient.CommandMessage(data))) status = "Mod-Befehl konnte nicht gesendet werden.";
+            return true;
         }
 
         private static void ExecuteGameCommand(ScheduledCommand command) => GameCommandCodec.Execute(command);
@@ -482,6 +508,8 @@ namespace Multiplayer.Foundation.RimWorld
         {
             settings = GetSettings<FoundationSettings>();
             Instance = this;
+            try { Api.MP.Install(new FoundationSyncProvider()); }
+            catch (Exception error) { Log.Error("Multiplayer Foundation: API nicht installiert: " + error.Message); }
             try { manifestTask = ModManifestBuilder.StartAsync(); }
             catch (Exception error) { Log.Error("Multiplayer mod manifest failed: " + error); }
             TryInitializeSteam();
