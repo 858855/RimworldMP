@@ -149,12 +149,20 @@ namespace Multiplayer.Foundation.RimWorld
         /// </summary>
         private bool ConnectionLost => client != null && !client.IsConnected && SharedGame;
 
-        internal bool SessionPaused => WorldSelfTest.HoldsPause || holdForSnapshot || ConnectionLost ||
+        internal bool SessionPaused => WorldSelfTest.HoldsPause || holdForSnapshot || ConnectionLost || ContinuingSave ||
             (SharedGame && (lobby!.Phase != SetupPhase.Playing || tickDriver == null || tickDriver.Paused ||
                 tickDriver.CompletedTick(Find.TickManager) >= tickDriver.Horizon));
 
         private bool SharedGame => client != null && lobby != null && lobby.Phase >= SetupPhase.Generating &&
             Current.ProgramState == ProgramState.Playing;
+
+        /// <summary>
+        /// SAVE-002 (ADR 0027): the host loaded a multiplayer save while its lobby waits in the Lobby phase. The game stays at
+        /// the saved tick until "fortsetzen" (then <see cref="SharedGame"/> takes over), so everyone lands where the save was.
+        /// </summary>
+        private bool ContinuingSave => client != null && lobby != null && lobby.Phase == SetupPhase.Lobby && lobby.HostId == client.SessionId &&
+            Current.ProgramState == ProgramState.Playing && MultiplayerSession.ForCurrentGame is MultiplayerSession loaded &&
+            loaded.Active && loaded.Mode == lobby.Mode;
 
         /// <summary>For the determinism patches: the current game is a shared one (from Generating on, in Playing).</summary>
         internal bool InSharedGame => SharedGame;
@@ -317,7 +325,7 @@ namespace Multiplayer.Foundation.RimWorld
 
         internal bool PrepareSessionFrame(TickManager manager)
         {
-            if (!SharedGame && !WorldSelfTest.HoldsPause && !holdForSnapshot) return false;
+            if (!SharedGame && !WorldSelfTest.HoldsPause && !holdForSnapshot && !ContinuingSave) return false;
             TryStartTickDriver(manager);
             if (tickDriver != null && !tickDriver.Faulted)
             {
@@ -331,7 +339,7 @@ namespace Multiplayer.Foundation.RimWorld
 
         internal void RestoreSessionSpeed(TickManager manager)
         {
-            if (SharedGame || WorldSelfTest.HoldsPause || holdForSnapshot) SetSessionSpeed(manager);
+            if (SharedGame || WorldSelfTest.HoldsPause || holdForSnapshot || ContinuingSave) SetSessionSpeed(manager);
         }
 
         private TimeSpeed EffectiveSessionSpeed()
@@ -354,7 +362,7 @@ namespace Multiplayer.Foundation.RimWorld
 
         internal bool MayRunSessionTick(TickManager manager)
         {
-            if (holdForSnapshot || ConnectionLost) return false;
+            if (holdForSnapshot || ConnectionLost || ContinuingSave) return false;
             if (!SharedGame && !WorldSelfTest.HoldsPause) return true;
             if (WorldSelfTest.HoldsPause || !TryStartTickDriver(manager) || tickDriver == null) return false;
             try
@@ -755,6 +763,28 @@ namespace Multiplayer.Foundation.RimWorld
             connecting = LobbyClient.ConnectAsync(host, port, settings.PlayerName.Trim(), TimeSpan.FromSeconds(10),
                 System.Threading.CancellationToken.None, settings.LocalKey, identity);
         }
+
+        // Self-test hooks (-mpContinueSelfTest, ADR 0027): the same steps the window buttons take, loopback only.
+        internal LobbyView? SelfTestLobby => lobby;
+        internal bool SelfTestDriverRunning => tickDriver != null && !tickDriver.Faulted;
+        internal string SelfTestStatus => status;
+        internal string SelfTestGameText => gameText;
+        internal PlayerKey SelfTestHostKey()
+        {
+            if (settings.EnsureLocalPlayerKey()) WriteSettings();
+            return settings.LocalKey;
+        }
+        internal void SelfTestHost()
+        {
+            PlayerIdentity identity = LocalIdentity();
+            status = "Selbsttest: lokale Lobby startet";
+            hosting = ListenHost.StartAsync("127.0.0.1", 0, "Test-Host", "Selbsttest Fortsetzen", 2, settings.LocalKey, true,
+                LobbyMode.CoopHost, null, identity, settings.LoadPins(), requireKeyProof: true);
+        }
+        internal void SelfTestLoadSave(string name) => LoadSavedMultiplayerGame(name);
+        internal void SelfTestReady() => Send(MessageType.PlayerReadyChanged, LobbyPayloads.Bool(true));
+        internal void SelfTestAdvance(SetupPhase phase) => Send(MessageType.SetupAdvance, SetupPayloads.Advance(phase));
+        internal void SelfTestDisconnect() => Disconnect();
 
         private PlayerIdentity LocalIdentity()
         {
@@ -2720,6 +2750,8 @@ namespace Multiplayer.Foundation.RimWorld
             UpdateManifestAndTransfers();
             if (client != null && rejoinLobby != null && rejoinRequest == 0 &&
                 !reconnectRejected && manifestSentTo == client) SendRejoinRequest();
+            // SAVE-002: after the host loaded a save no lobby update arrives on its own; check every frame (cheap early-outs).
+            TryRestoreSessionLobby();
             UpdateHostSetup();
             UpdateGuestGame();
             UpdateSiteFlags();
