@@ -1,7 +1,7 @@
 # Verifikation – Multiplayer-Spielstand aus der Lobby fortsetzen (SAVE-002 Coop, ADR 0027)
 
 - **Datum:** 2026-10-17
-- **Branch:** `feat/continue-save` (Worktree `E:\RimworldMP-continue`), von `main` @ `060d2be`; Code-Commit `733830c`, danach der Doku-Commit.
+- **Branch:** `feat/continue-save` (Worktree `E:\RimworldMP-continue`), von `main` @ `060d2be`; Code-Commit `733830c`, Doku-Commit `ab4c7a1`, Selbsttest und Halte-Regel im Folgecommit (siehe `git log`).
 - **Umgebung:** Windows 11 Pro; RimWorld `1.6.4871` (`Version.txt` rev590) unter `E:/SteamLibrary/steamapps/common/RimWorld`; .NET SDK 8.0.403 (Tests im lokalen .NET-8-Harness wie in `2026-10-17-integration-sync.md`); Lib.Harmony 2.4.3; Python 3.11 mit PyYAML.
 - **Designnotiz:** ADR 0027.
 
@@ -30,12 +30,22 @@ Während der Entwicklung behoben: Protocol-Test „nothing after the mode“ an 
 - Ende zu Ende über `FoundationServer` und über `ListenHost` (der Hosting-Pfad der Mod): Wiederherstellen, Beitritt, Bereit, Start nach `Generating`, Spielstandübertragung mit `TransferGameAsync`, später Beitritt.
 - Der Lobbyzustand kodiert `Restored` für Coop und Fraktionen; bestehende Zustände sind bis zum Modus byte-gleich, danach folgt ein Byte.
 
+## Selbsttest im Spiel (`-mpContinueSelfTest`, Benutzerwunsch 2026-10-17)
+
+Installation wie bei `2026-10-17-pawn-control.md` (Sicherung `ModBackups/RimWorldMultiplayerFoundation-2026-10-17-before-continue`, Ordner komplett ersetzt). Befehl: `RimWorldWin64.exe -mpWorldSelfTest -mpContinueSelfTest -mpWorldSelfTestCoverage=0.3 -mpQuitAfterSelfTest -screen-fullscreen 0 -screen-width 1280 -screen-height 720` (rev591, Core + 5 DLCs + Foundation). Ablauf nach dem Spielteil (`ContinueSelfTest.cs`): Hauptmenü → lokaler Host über `ListenHost` (127.0.0.1, Allein-Start, eigener `PlayerKey`, Identität, Pins, Schlüsselbeweis) → Lobby da → `LoadSavedMultiplayerGame("Multiplayer - Selbsttest Host")` → Spiel geladen, Lobby besteht, `Restored` → Bereit → `SetupAdvance(Generating)` → Host-Pfad → `Playing` → Prüfungen, danach Trennen und Aufräumen der dabei geschriebenen Spielstände.
+
+| Lauf | Stand | Ergebnis |
+|---|---|---|
+| 1 (04:48) | ohne Halte-Regel | `game self-test: FAIL`: `continueLobby=ok continueLobbyKept=ok continueRestored=ok continuePlaying=ok continueSession=ok continueOwners=ok continueDriver=ok`, aber `continueTick=FAIL continueHeld=FAIL`: das geladene Spiel lief drei Ticks, bevor der Host „fortsetzen“ drückte (`Spielstand gesendet … tick 3`). 0 Exceptions. |
+| 2 (04:51) | mit `ContinuingSave` (geladenes Spiel bleibt pausiert, bis `Generating`) | **`game self-test: PASS`** mit allen Welt-, Figuren- und Spielprüfungen und `continueLobby=ok continueLobbyKept=ok continueRestored=ok continuePlaying=ok continueSession=ok continueOwners=ok continueTick=ok continueDriver=ok continueHeld=ok`; `Spielstand gesendet … tick 0; … players 2; owners 2`. Prozess nach 53 s beendet, 0 Exceptions, kein Steam-Fehler. |
+
+Belegt damit im Spiel: Spielstand laden bei bestehender Lobby-Verbindung (Szenenwechsel), Restore über 105 im geladenen Spiel, Start direkt nach `Generating`, Host-Pfad `RebindLobby`/`PruneOwners`/Speichern/Neuladen/Fingerabdruck, Landung am gespeicherten Tick, Tick-Treiber. Nicht belegt: die Spielstand-Auswahl als Klick im Fenster (der Test ruft dieselbe Methode), der Gast-Empfang (nur Hosting-Tests), Fortsetzen mit zwei echten Clients.
+
 ## Nicht geprüft (Laufzeit)
 
-- Kein RimWorld-Start für dieses Feature: Spielstand-Auswahl im Lobby-Fenster, Laden bei bestehender Lobby-Verbindung (Szenenwechsel), `TryRestoreSessionLobby` im geladenen Spiel, Fenster im Spiel, Host-Pfad `RebindLobby`/`PruneOwners`/Speichern/Senden/Neuladen, Gäste laden den Spielstand aus dem Hauptmenü.
-- Akzeptanz SAVE-002 mit zwei Clients: speichern, beenden, fortsetzen, gleicher Fingerabdruck, Besitz intakt.
-- `GenFilePaths.AllSavedGameFiles` nur per Build gegen die lokalen 1.6-Assemblies belegt.
+- Akzeptanz SAVE-002 mit zwei Clients: speichern, beenden, fortsetzen, gleicher Fingerabdruck, Besitz intakt; Gäste laden den Spielstand aus dem Hauptmenü.
+- Bedienung der Spielstand-Auswahl im Fenster; Fenster im geladenen Spiel.
 
 ## Einordnung nach AGENTS.md Regel 25
 
-`BUILD_ERFOLGREICH` (0 Warnungen); .NET-Tests im .NET-8-Harness bestanden (Koordinator-Seite); `IN_GAME_GETESTET`: nein; `MP_ZWEI_CLIENTS_GETESTET`: nein. `LAUFZEIT NICHT VERIFIZIERT`.
+`BUILD_ERFOLGREICH` (0 Warnungen); .NET-Tests im .NET-8-Harness bestanden (Koordinator-Seite); `IN_GAME_GETESTET` (Selbsttest, ein Prozess, lokaler Host über Loopback, Host-Seite); `MP_ZWEI_CLIENTS_GETESTET`: nein.
