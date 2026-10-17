@@ -885,7 +885,9 @@ tasks:
   - docs/decisions/0023-shared-game-start.md
   - docs/verification/2026-10-15-game-start.md
   - docs/reviews/2026-10-15-mod-check-setup-ui.md
-  blocker: 'Serverregeln getestet; Spielstart, Speichern, Laden als Host und Gast, Fingerabdruck und Pause im Selbsttest geprüft (ADR 0023). Offen: Ablauf mit Server und zwei echten Spielern (Prüfpunkt 9).'
+  - docs/verification/2026-10-16-start-keeps-setup.md
+  - docs/verification/2026-10-16-guest-world-discard.md
+  blocker: 'Serverregeln getestet; Spielstart, Speichern, Laden als Host und Gast, Fingerabdruck und Pause im Selbsttest geprüft (ADR 0023). 2026-10-17: Start-Fix (Fenster hält die Einrichtung, Benutzer-Solo-Lauf auf feat/mod-check-setup-ui bestätigt) und Gast-Welt-Fix (erster Zwei-Spieler-Lauf) auf main portiert, hier nur gebaut. Offen: Ablauf mit Server und zwei echten Spielern (Prüfpunkt 9).'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: OWN-001
   title: 'Besitz-Komponente und Besitzeranzeige'
@@ -937,11 +939,13 @@ tasks:
   acceptance:
   - 'Zwei Instanzen, gleicher Spielstand, keine Eingaben, Rand-Neuseed pro Tick: Hashes über 60000 Ticks gleich'
   - 'Jede Abweichung ist ursächlich geklärt und behebbar, sonst wird der Plan überarbeitet'
-  implementation: planned
-  verification: not_tested
-  integration: not_submitted
-  branch: null
-  evidence: []
+  implementation: in_progress
+  verification: build_passed
+  integration: ready_for_human_review
+  branch: integration/sync-2026-10-17
+  evidence:
+  - docs/verification/2026-10-17-integration-sync.md
+  blocker: 'Drei Abweichungsursachen in RimWorld 1.6 (sicht-/tonabhängige Rand-Ziehungen, sichtabhängige Pawn-Tickrate, Hintergrund-Pfadsuche) wurden auf feat/sync-lockstep im Selbsttest gefunden und behoben (5 × 6 000 Ticks gleich; eine seltene Abweichung nach 20 000 Ticks offen). Die Patches sind auf main portiert, aber auf diesem Treiber nur gebaut; der 60 000-Tick-Nachweis mit zwei Instanzen fehlt.'
   plan_ref: docs/plans/rimworldmp-full-plan.md
 - id: SYNC-001
   title: 'Sequencer, Tick-Horizont und Tick-Treiber'
@@ -1738,7 +1742,7 @@ tasks:
 - id: SYNC-009
   title: 'Kontinuierlicher Gleichlauf mit Hot-Rejoin und Qualitätsanzeige'
   goal: 'Bei Verbindungsstörung keinen lokalen Tick verlieren; Gast über denselben PlayerKey und Host-Snapshot zurückholen und Verbindungslage sichtbar machen.'
-  description: 'Spielseite auf vorhandenem Lockstep- und Snapshot-Vertrag. Ping/Pong-RTT und Antwortausfälle; lokale Tempoobergrenze bei hoher Verzögerung. Kein Roh-Paketverlustmesswert.'
+  description: 'Spielseite auf vorhandenem Lockstep- und Snapshot-Vertrag. Ping/Pong-RTT und Antwortausfälle als Anzeige. Kein Roh-Paketverlustmesswert. Die ursprüngliche lokale Tempoobergrenze ist am 2026-10-17 durch die Tempoanpassung des Koordinators (SYNC-010) ersetzt.'
   priority: critical
   owner: codex
   components:
@@ -1752,15 +1756,48 @@ tasks:
   - 'IP- und Steam-Gast können dieselbe Lobby mit derselben Identität erneut beitreten; kein alter Tick-Treiber läuft davor an'
   - 'Ein Gast kann über die Spieloberfläche einen Snapshot-Resync manuell anstoßen'
   - 'RTT und ausgefallene Ping-Antworten werden ehrlich beschriftet angezeigt'
-  - 'Bei schlechter Qualität begrenzt die Spielseite das lokale Tempo ohne Änderung der autoritativen Befehlsfolge'
+  - 'Bei gehaltenem Horizont senkt der Koordinator das gemeinsame Tempo für alle am selben Tick (SYNC-010); keine lokale Deckelung'
   - 'Mod-Build und Zwei-Client-Spieltest mit Unterbrechung, Resync und Tempoänderung dokumentiert'
   implementation: implemented
   verification: build_passed
-  integration: not_submitted
-  branch: codex/continuous-sync
+  integration: ready_for_human_review
+  branch: integration/sync-2026-10-17
   base_branch: main
   base_commit: 85e02f9
   evidence:
   - docs/decisions/0049-continuous-sync-and-rejoin.md
   - docs/verification/2026-10-16-continuous-sync.md
-  blocker: 'Zwei-Client-RimWorld-Test auf Benutzerwunsch aktuell ausgesetzt; Host-Hot-Rejoin benötigt einen separaten Koordinator-Vertrag.'
+  - docs/verification/2026-10-17-integration-sync.md
+  - docs/reviews/2026-10-17-integration-sync.md
+  blocker: 'Zwei-Client-RimWorld-Test auf Benutzerwunsch aktuell ausgesetzt; Host-Hot-Rejoin benötigt einen separaten Koordinator-Vertrag. Integration 2026-10-17 per Fast-Forward; Merge nach main wartet auf die Freigabe des Besitzers.'
+- id: SYNC-010
+  title: 'Gemeinsame Tempoanpassung durch den Koordinator'
+  goal: 'Bei hohem Ping oder Datenverlust wird die Verbindung langsamer: Das gemeinsame Tempo sinkt für alle Spiele am selben Tick, kehrt automatisch zurück und ist nie schneller als die Wahl des Hosts; der Grund ist sichtbar.'
+  description: 'ADR 0049 Nachtrag 2026-10-17 (der Besitzer sah ADR 0039 vor; sie liegt nur lokal bei ihm). Eingang: tatsächliche Wartezeiten am Horizont (Stalls). Herunter nach 1,5 s gehaltenem Horizont in 5 s, hinauf eine Stufe je 10 s ohne Stall und 10 s Haltezeit. ScheduledKind.Speed mit Absender Guid.Empty; PaceNotice (Code 104). Server-Ping, Stille und Steam-Verlust (PeerQuality, Codes 102/103 der lokalen Arbeit des Besitzers) sind noch nicht angebunden. Ein langsameres Tempo verhindert Stocken, macht eine TCP-Verbindung aber nicht stabiler.'
+  priority: high
+  owner: claude
+  components:
+  - session_core
+  - protocol
+  - rimworld_adapter
+  depends_on:
+  - SYNC-001
+  - SYNC-003
+  - SYNC-009
+  acceptance:
+  - 'Hysterese mit dokumentierten Schwellen und Haltezeiten für herunter und hinauf, in Session.Tests geprüft'
+  - 'Alle Spiele wechseln das Tempo nach demselben Tick (geplanter Befehl des Koordinators)'
+  - 'Nie schneller als das gewählte Tempo; automatische Rückkehr; Grund im UI sichtbar'
+  - 'Zwei-Client-Spieltest mit künstlich langsamem Gast: Absenkung, Anzeige und Rückkehr'
+  implementation: implemented
+  verification: tests_passed
+  integration: ready_for_human_review
+  branch: integration/sync-2026-10-17
+  base_branch: main
+  base_commit: 85e02f9
+  evidence:
+  - docs/decisions/0049-continuous-sync-and-rejoin.md
+  - docs/verification/2026-10-17-integration-sync.md
+  - docs/reviews/2026-10-17-integration-sync.md
+  blocker: 'Kein Spieltest (Spieltests vom Benutzer ausgesetzt); nur Stalls als Eingang, PeerQuality-Werte folgen nach dem Zusammenführen mit claude/continuous-sync (a779f21/da2e4b7, lokal beim Besitzer).'
+  plan_ref: docs/plans/rimworldmp-full-plan.md

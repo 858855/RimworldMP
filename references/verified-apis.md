@@ -144,3 +144,15 @@ Wichtiger Unterschied: `Multiplayer.Client.Multiplayer` ist eine interne Clientk
 | `Verse.Window.forcePause`; `Verse.WindowStack.Windows`, `.IsOpen<T>()`; `Verse.GenScene.GoToMainMenu()`; `RimWorld.MessageTypeDefOf.NeutralEvent` | public | BESTÄTIGT (Metadaten) |
 | Hauptmenü ohne offenes Fenster | – | **Laufzeitbefund**: RimWorld verwirft dann `Current.Game` im nächsten Frame; mit offenem Fenster bleibt es (Selbsttest) |
 | Spielstart aus einer per `WorldCodec` geladenen Welt | – | **Laufzeitbefund**: doppelte Load-IDs (Precept, Gene, WorldObject), weil die Welt-Datei keine ID-Zähler trägt; Gäste starten deshalb nie ein Spiel aus ihrer Kopie |
+
+## Integration 2026-10-17: Determinismus-Patches und Gast-Welt (Build gegen lokale 1.6.4871 rev590, Windows)
+
+| Symbol | Signatur in 1.6.4871 | Status |
+|---|---|---|
+| `Verse.Pawn.UpdateRateTicks` (Getter) | public | BESTÄTIGT (Build, Harmony-Postfix); Laufzeit auf dieser Linie NICHT_GETESTET, auf `feat/sync-lockstep` im Selbsttest genutzt |
+| `Verse.Thing.MinTickIntervalRate` (Getter) | nonpublic, über `AccessTools.PropertyGetter` | BESTÄTIGT (Build); Laufzeit wie oben |
+| `Verse.AI.PathFinder.PushRequest(PathRequest)`, `PathFinder.FindPathNow(Start, Target, TraverseParms, Tuning, EndMode, customizer)` | public | BESTÄTIGT (Build, Harmony-Prefix); Laufzeit wie oben |
+| `Verse.AI.PathRequest.Start`, `.Target`, `.TraverseParms`, `.Tuning`, `.EndMode`, `.customizer`, `.area`, `.ResultIsReady`, `.Resolve(PawnPath)`; `PawnPath.Found` | public | BESTÄTIGT (Build) |
+| `Verse.FishShadowComponent.MapComponentTick()`; `Verse.Sound.SoundStarter.PlayOneShot`, `.PlayOneShotOnCamera`, `.TrySpawnSustainer`; `Verse.Sound.SubSustainer.StartSample` (nonpublic) | public / nonpublic | BESTÄTIGT (Build, Harmony-TargetMethods); Laufzeit wie oben |
+| `Verse.Log.Error(string)` (Harmony-Prefix, nur während `WorldCodec.Load`) | public static | BESTÄTIGT (Build); im Selbsttest der Herkunftslinie ohne Fehler angewandt |
+| `UnityEngine.Application.runInBackground` (set) | public static | BESTÄTIGT (Build) |

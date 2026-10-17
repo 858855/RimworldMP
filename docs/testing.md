@@ -25,3 +25,5 @@ Nach Änderungstyp testen. Ausgeführte Nachweise liegen unter `docs/verificatio
   - Sechs simulierte Läufe mit drei Spielen (eines 5× langsamer, zufällige Latenz) mit identischer Ausführungsfolge; Desync-Gegenprobe mit gemeinsamem Halt.
   - Dazu Ende zu Ende in `Hosting.Tests`.
   - Siehe `docs/verification/2026-10-16-lockstep-coordinator.md`.
+
+- Integration 2026-10-17 (`integration/sync-2026-10-17`): alle acht Testprojekte im lokalen .NET-8-Harness (je Testprojekt eine `net8.0`-Konsole über die Repo-Testquellen, Server als gleichnamiger `net8.0`-Harness; nicht eingecheckt), Hosting zweimal; Mod-Build gegen die Windows-Installation (rev590) ohne Warnungen; Validator und `git diff --check`. Neu in `Session.Tests`: Tempoanpassung des Koordinators (Schritt nach 1,5 s gehaltenem Horizont, Untergrenze, gemerkte Wahl, Rückkehr nach 10 s, nie über die Wahl, Abschaltung, gleicher Umschalttick); in `Protocol.Tests`: Code 104 im Frame. Kein Spieltest. Siehe `docs/verification/2026-10-17-integration-sync.md`.

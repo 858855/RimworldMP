@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Integration 2026-10-17 (`integration/sync-2026-10-17`, Sven)
+
+- `codex/continuous-sync` (SYNC-009, ADR 0049) per Fast-Forward übernommen; die drei Commits behalten ihre SHAs.
+- **Tempoanpassung durch den Koordinator (SYNC-010, ADR 0049 Nachtrag, Code 104):** Hält das langsamste Spiel den Horizont zusammen 1,5 s innerhalb von 5 s, senkt der Koordinator das gemeinsame Tempo um eine Stufe, als geplanter Befehl mit Absender `Guid.Empty` am selben Tick für alle. Zurück geht es eine Stufe je 10 s ohne gehaltenen Horizont (frühestens 10 s nach dem letzten Schritt), nie über das vom Host gewählte Tempo. `PaceNotice` (104) nennt Tempo, gewähltes Tempo, Grund und das langsamste Spiel; das Overlay zeigt „Tempo 1× statt 3× (Koordinator): … hinkt hinterher“. Die lokale Tempoobergrenze der Spielseite aus SYNC-009 entfällt; die Ping-/Ausfallanzeige bleibt. Ein langsameres Tempo verhindert Stocken am Horizont, macht die Verbindung aber nicht stabiler. Geprüft in `Session.Tests` (Hysterese, Untergrenze, gemerkte Wahl, Rückkehr, Abschaltung, gleicher Umschalttick); kein Spieltest.
+- Koordinator: Beim gehaltenen Horizont fällt die Clock-Basis nicht mehr unter den Horizont (nach einem Tempowechsel fror die Zeit sonst nach dem Aufholen für Sekunden ein).
+- Aus `feat/mod-check-setup-ui` (Sven) portiert: Der gemeinsame Spielstart behält Figuren und Startort, solange er auf den Server wartet (das Fenster hält die Einrichtung; ein Start ohne `GameInitData` wird abgebrochen; der Selbsttest prüft `startKept`, `landedChosen`, `site`). Der Gast verwirft seine Einrichtungswelt vollständig (keine NullReferenceException mehr beim Laden des Spielstands), der erwartete Ideoligion-Fehler wird nur beim Laden der Einrichtungswelt zu einem Hinweis, das Fenster zeigt nach dem Start keine Einrichtungsseite mehr.
+- Aus `feat/sync-lockstep` (Sven, DET-001-Befunde) portiert: drei Harmony-Patches gegen Abweichungen in RimWorld 1.6 (sicht- und tonabhängige Zufallsziehungen isoliert, gleiche Pawn-Tickrate für alle Spieler, Pfadanfragen synchron beantwortet). Auf dieser Linie nur gebaut.
+- Nicht übernommen (Entscheidung des Besitzers offen): die zweite Gleichlauf-Linie `feat/sync-lockstep`/`feat/sync-commands` (ADR 0024/0025: Wire-Version 4, eigener Sequencer, breite Befehlsmenge, Zwei-Spieler-Lauf 2026-10-16) und die vanilla-nahe Gast-Figurenseite; siehe `docs/reviews/2026-10-17-integration-sync.md`.
+- Prüfung: Mod-Build gegen lokale 1.6.4871-Assemblies (Windows, rev590) mit 0 Warnungen; alle acht Testprojekte im lokalen .NET-8-Harness (kein .NET 10 auf diesem Rechner), Hosting zweimal; Validator; `git diff --check`. Siehe `docs/verification/2026-10-17-integration-sync.md`.
+
 ### Verbindungsanzeige und Wiederbeitritt (`codex/continuous-sync`, SYNC-009)
 
 - Nach einem unerwarteten Abbruch hält der Spieladapter das gemeinsame Spiel und lokale Autosaves an. Ein Gast versucht, sich mit seiner bisherigen Identität über IP oder Steam erneut zu verbinden. Er setzt erst nach Laden eines neuen Host-Snapshots und Neuaufbau des Tick-Treibers fort. Ein ausdrückliches Trennen erlaubt die lokale Fortsetzung.

@@ -1,6 +1,13 @@
 # Übergabe Claude (Koordinator und Protokoll)
 
-- **Bahn:** siehe `docs/ai/ASSIGNMENTS.md`. Branch-Präfix `claude/`, ADR 0032–0039, Nachrichtencodes 71–79 und 96–111 (zweiter Bereich, Benutzer 2026-10-16; belegt 96–101, frei 102–111). Worktree `/mnt/Arbeit/Git Projekte/RimworldMP-claude`.
+- **Bahn:** siehe `docs/ai/ASSIGNMENTS.md`. Branch-Präfix `claude/`, ADR 0032–0039, Nachrichtencodes 71–79 und 96–111 (zweiter Bereich, Benutzer 2026-10-16; belegt 96–101 und 104, 102/103 für die lokale Arbeit des Besitzers reserviert, frei 105–111). Worktree `/mnt/Arbeit/Git Projekte/RimworldMP-claude`.
+- **Integration 2026-10-17 (Sven, Branch `integration/sync-2026-10-17`, Worktree `E:\RimworldMP-integration`, Auftrag des Besitzers):**
+  - `codex/continuous-sync` (`de63452`, `1de7bb3`, `f1ebe66`) per Fast-Forward übernommen. `a779f21`/`da2e4b7` (`claude/continuous-sync`, Koordinator-Ping je Spieler, Codes 102/103, `PeerQuality`) liegen nur lokal beim Besitzer und fehlen hier; ADR 0039 ebenso.
+  - **SYNC-010, Tempoanpassung durch den Koordinator** (Claude-Bahn: `Protocol`, `Session`, Tests; kleine Spielseite): `LockstepSession` senkt bei gehaltenem Horizont (1,5 s in 5 s) das Tempo als `ScheduledKind.Speed` mit Absender `Guid.Empty` am selben Tick für alle, zurück eine Stufe je 10 s ohne Stall und 10 s Haltezeit, nie über `ChosenSpeed`; `PaceNotice` (104) für die Anzeige. Nachtrag in ADR 0049 (0039 nicht erreichbar). Die lokale Tempoobergrenze der Spielseite ist entfernt. Offen: `PeerQuality`-Eingänge aus `a779f21` anbinden, wenn der Besitzer die Linien zusammenführt; Spieltest.
+  - Nebenbefund behoben: `AdvanceClock` setzte die Clock-Basis beim gehaltenen Horizont unter den Horizont (Vorlauf nach Tempowechsel kleiner); nach dem Aufholen stand die Zeit für Sekunden.
+  - Portiert aus Svens Branches: Start-Fix (`cf41b65` → `fd68525`), Gast-Welt-Fix (`37ad103` → `1711a92`), DET-001-Patches (`5f1b782` → `b0f5780`, Spielseite, nur gebaut).
+  - **Nicht integriert, Entscheidung des Besitzers:** `feat/sync-lockstep`/`feat/sync-commands` (ADR 0024/0025) als zweite Gleichlauf-Implementierung und die Gast-Figurenseite; siehe `docs/reviews/2026-10-17-integration-sync.md`.
+  - Prüfung: `docs/verification/2026-10-17-integration-sync.md` (.NET-8-Harness, Mod-Build Windows rev590). Kein Push, kein Merge ohne Freigabe.
 - **Stand auf `main` (`85af3a9`):**
   - Chunk-Kanal (ADR 0014), PlayerKey (ADR 0016), Setup-Regeln (ADR 0017).
   - Lockstep-Koordinator (ADR 0030): `LockstepSession`, `LockstepClient`, `LockstepHost`, `OrderedOutbox`; Codes 64–70.

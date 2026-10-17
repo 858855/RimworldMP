@@ -119,6 +119,7 @@ verified_capabilities:
 - 'Fraktionsmodus, Koordinator-Seite (FACTION-004, ADR 0037) auf main: Fraktionsplatz je PlayerKey, gemeinsame Schwierigkeit nur vom Host, Erzählerwahl je Spieler über Codes 96/97 (Claude-Bereich 96–111), Fertig-Regeln, Rückkehr findet die eigene Fraktion; Lobby-Kern und Server Ende zu Ende getestet, Coop-Lobbyzustand byte-gleich. Fraktionsstart weiter gesperrt (Test-Schalter intern). Spielseite (FACTION-003) offen. Siehe docs/verification/2026-10-16-faction-storyteller.md.'
 - 'FACTION-003-Teilstand auf main: Spielstand-Zuordnung PlayerKey/Slot/Faction/Storyteller, Fingerabdruck der gemeinsamen Host-Schwierigkeit und UI für Optionen, Wahl und Fertig. Mod-Build ohne Warnungen, alle acht .NET-Testprojekte und Validator bestanden. Kein RimWorld-Spieltest dieses Stands; Fraktionsstart weiter gesperrt. Siehe docs/verification/2026-10-16-faction-ui-merge-gate.md.'
 - 'Lokaler Merge 2026-10-16: Claude-Fraktionsvertrag und Codex-Spielseite samt Figurenwahl auf main. Mod-Build des integrierten Feature-Branches ohne Warnungen und Dokumentvalidator bestanden; kein erneuter Zwei-Client-Test. Ein isolierter Zwei-Fraktionen-Save/Load bei Tick 0 bestand vor der späteren Ideologie-Prüfung. Siehe docs/reviews/2026-10-16-faction-setup-integration.md.'
+- 'Integration 2026-10-17 (Branch integration/sync-2026-10-17, Sven, Auftrag des Besitzers): codex/continuous-sync (SYNC-009) per Fast-Forward; Start-Fix und Gast-Welt-Fix aus feat/mod-check-setup-ui sowie drei DET-001-Patches aus feat/sync-lockstep portiert; Tempoanpassung des Koordinators (SYNC-010, Code 104) mit Hysterese- und Umschalttick-Tests in Session.Tests; Mod-Build gegen Windows-1.6-Installation (rev590) ohne Warnungen; alle acht Testprojekte im lokalen .NET-8-Harness bestanden, Hosting zweimal. Kein Spieltest. Siehe docs/verification/2026-10-17-integration-sync.md und docs/reviews/2026-10-17-integration-sync.md.'
 user_reported_capabilities:
 - 'Allein-Start (Debug-Option) mit den Einrichtungsseiten des Hosts laut Benutzer am 2026-10-15 im Spiel funktionsfähig („works“, Build b0f4df8); Spiegel beim Gast ungeprüft.'
 - 'Mod-Prüfung und Start-Knopf (Fassung feat/lobby-hardening) laut Benutzer am 2026-10-15 mit zwei Spielern funktionsfähig; die auf feat/setup-rules übertragene Fassung ist noch nicht mit zwei Spielern geprüft.'
@@ -127,6 +128,8 @@ user_reported_capabilities:
 - 'Spieltest durch Benutzer (Windows, 1.6.4871 rev590): Mod lädt, Einstellungsfenster bedienbar, Direkt-Host erstellt Lobby. Dabei gefundene UPnP-/Adressfehler auf fix/internet-connectivity korrigiert.'
 - 'Branch fix/internet-connectivity: Dual-Stack-Bindung `::`, Client über IPv6/DNS mit Fallback und UPnP gegen Fake-Gateway getestet (sieben Testprojekte unter .NET 8); Mod-Build gegen Windows-1.6-Installation (rev590) ohne Warnungen; SSDP gegen echte FRITZ!Box nur lesend.'
 known_issues:
+- 'Integration 2026-10-17: Tempoanpassung des Koordinators (SYNC-010) und die drei portierten Determinismus-Patches sind nur per .NET-Tests bzw. Mod-Build geprüft, nicht im laufenden Spiel; die Tests liefen im lokalen .NET-8-Harness statt unter .NET 10 (einschließlich ProcessIntegration mit net8-Server-Harness).'
+- 'Zwei Gleichlauf-Linien auf GitHub: main (ADR 0030/0040/0043) und feat/sync-lockstep/feat/sync-commands (ADR 0024/0025, Wire-Version 4, breite Befehlsmenge, Zwei-Spieler-Lauf 2026-10-16). Nicht mechanisch zusammenführbar; Entscheidung des Besitzers offen (docs/reviews/2026-10-17-integration-sync.md).'
 - 'Tests von feat/mod-check-setup-ui liefen unter .NET 8 statt .NET 10 (lokaler Harness); Serverbuild und ProcessIntegration.Tests nicht ausgeführt.'
 - 'IP-Key-Proof und Pinning sind im Hosting-Test belegt, aber ihre Verwendung im laufenden RimWorld-Mod sowie Heimnetz-Verbindungen bleiben ungeprüft.'
 - 'X1/X4/X5-Vorschau ist noch nicht mit zwei laufenden RimWorld-Clients getestet; Fabio und Sven planen diesen Test.'
@@ -149,6 +152,9 @@ blockers:
 - Umfang und Umgebung des gemeldeten Steam-Verbindungstests noch nicht dokumentiert.
 - Chat mit zwei RimWorld-Clients offen.
 active_tasks:
+- SYNC-009
+- SYNC-010
+- DET-001
 - FACTION-001
 - FACTION-003
 - FACTION-005
@@ -169,7 +175,7 @@ active_tasks:
 - SETUP-003
 - SETUP-004
 - SETUP-005
-next_action: 'Codex: nach dem lokalen Merge die getrennte Ideologie-Instanz und Zuordnung im Fraktions-Selbsttest statisch untersuchen; keine neuen Spieltests, solange der Benutzer sie ausgesetzt hat. PAWN-001 und Fraktions-Join mit zwei Clients bleiben ungeprüft. Fraktionsstart gesperrt lassen; Regel für weltweite Ereignisse (ADR 0037 R4) offen.'
+next_action: 'Besitzer: Freigabe für den Fast-Forward von integration/sync-2026-10-17 nach main und den Push (docs/reviews/2026-10-17-integration-sync.md, Freigabe-Stopp); Entscheidung zu den zwei Gleichlauf-Linien (main vs. feat/sync-lockstep/feat/sync-commands) und zur Gast-Figurenseite; danach a779f21/da2e4b7 (claude/continuous-sync, lokal) mit SYNC-010 zusammenführen (PeerQuality als weiterer Eingang, ADR 0039). Codex: Ideologie-Instanz im Fraktions-Selbsttest statisch untersuchen; keine neuen Spieltests, solange der Benutzer sie ausgesetzt hat. Fraktionsstart gesperrt lassen; Regel für weltweite Ereignisse (ADR 0037 R4) offen.'
 documentation_refs:
   tasks: docs/ai/TASKS.yaml
   handoff: docs/ai/SESSION_HANDOFF.md
@@ -226,4 +232,4 @@ documentation_refs:
   faction_ui_merge_gate: docs/verification/2026-10-16-faction-ui-merge-gate.md
   faction_setup_merge_review: docs/reviews/2026-10-16-faction-setup-integration.md
   faction_runtime_and_pawns: docs/verification/2026-10-16-faction-runtime-and-pawns.md
-last_updated: '2026-10-16'
+last_updated: '2026-10-17'

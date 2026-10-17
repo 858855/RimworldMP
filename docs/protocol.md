@@ -67,6 +67,7 @@ Strings sind `length:u16` plus strikt gültige UTF-8-Bytes. Allgemeine Strings: 
 | 99 | FactionIdeologyChoice | C→S; S→C nur an den Host | C→S: Bezeichnung (≤ 96 Byte), Daten (`u32`-Länge, 1–49 152 Byte); an den Host zusätzlich vorne Platz `u8` und PlayerKey |
 | 100 | FactionChoiceClear | C→S, nur Host | Platz `u8`, Art `u8` (1 Startort, 2 Ideologie), Grund (≤ 128 Byte) |
 | 101 | FactionRestore | C→S, nur Host | Anzahl `u8` (1–64), je PlayerKey, Platz `u8`, Erzähler-defName; nur in `Lobby` einer Fraktionslobby |
+| 104 | PaceNotice | S→C | Tempo `u8`, gewähltes Tempo `u8`, Grund `u8` (0 keiner, 1 langsamstes Spiel), langsamstes Spiel (Session), dessen Tick `u32`; Tempo ≤ gewähltes Tempo, Grund genau dann, wenn kleiner |
 
 Listen- und Zustandsupdates sind in `LobbyPayloads.cs` kodiert: Liste mit `count:u8`, je Lobby GUID, Name, Hostname, Spielerzahl und Kapazität; Snapshot mit GUID, Name, Host-GUID, Revision `u64`, Kapazität, Setup-Phase `u8`, optional gewähltes Feld und Spielerarray (Session-GUID, Name, Ready, PlayerKey, optional Fähnchen). Die Liste trägt je Lobby zusätzlich die Phase. Der TCP-Server verwendet diese Payloads; zwei unabhängige TCP-Testclients bestanden die Integrationstests. RimWorld-Client-Kompatibilität ist noch offen. Fehlercodes: `1=InvalidMessage`, `2=VersionMismatch`, `3=Unauthorized`, `4=NotFound`, `5=Capacity`, `6=InvalidState`, `7=ServerBusy`.
 
@@ -128,6 +129,10 @@ Ab der Phase `Playing` führt der Koordinator im eingebetteten Server des Hosts 
 
 Codes bewusst ab 64, abseits der fortlaufenden Setup-Codes. Siehe ADR 0030.
 
+## Tempoanpassung (Code 104, ADR 0049 Nachtrag)
+
+Hält das langsamste aktive Spiel den Horizont zusammen 1,5 s innerhalb von 5 s, plant der Koordinator `ScheduledCommand` der Art `Speed` mit dem nächstniedrigeren Tempo, Absender `Guid.Empty`, Grenze = aktueller Horizont; alle Spiele wechseln nach demselben Tick. Untergrenze 1×. Eine Stufe zurück nach 10 s ohne gehaltenen Horizont und 10 s nach dem letzten Schritt, nie über das vom Host gewählte Tempo. Eine Host-Wahl (`SessionControl`, Art 2) über der Deckelung wird gemerkt und mit `PaceNotice` angekündigt; nach 10 s ruhiger Verbindung gilt sie sofort als Befehl des Hosts. `PaceNotice` (104) geht bei jeder Änderung an alle und an Beitretende, solange ein Grund besteht; es ändert keinen Spielzustand. Codes 102/103 sind für die Koordinatorarbeit des Besitzers reserviert (`claude/continuous-sync`, lokal).
+
 ## Spielmodus (ADR 0031)
 
 `CreateLobby` trägt nach Name und Kapazität den Modus (`mode:u8`, `decisions:u8`, `relation:u8`):
@@ -182,7 +187,7 @@ Wer einen Snapshot laden soll (Beitritt oder Resync), muss `SnapshotLoaded` binn
   - Antwort ist jeweils `LobbyStateUpdate` an alle, an den Absender mit dessen Request-ID.
   - Fehler: Code 3 (nicht Host) oder 6 (Coop, falsche Phase, Liste fehlt, nicht angeboten).
   - Ungültige Nutzdaten (z. B. defName mit Leerzeichen): Code 1, danach trennt der Server die Verbindung, wie bei jeder anderen Nachricht.
-  - 98–111 sind reserviert und bis zu ihrer Belegung ungültig.
+  - 98–101 (ADR 0038) und 104 (Tempoanpassung, ADR 0049 Nachtrag) sind belegt; 102/103 sind für die lokale Koordinatorarbeit des Besitzers reserviert; 105–111 bleiben reserviert und bis zu ihrer Belegung ungültig.
 - **Verträglichkeit, Wire-Version bleibt 3:**
   - Ein anderer Mod-Build hat eine andere Prüfsumme, denn `ModContentHasher` umfasst `Assemblies/*.dll`. Er gilt deshalb als „Mods stimmen nicht“ (MOD-001) und kann weder bereit werden noch das Spiel starten oder in `Playing` beitreten.
   - Der Fraktionsblock entsteht erst nach dem Start der Einrichtung und erreicht deshalb nie einen fremden Build.
