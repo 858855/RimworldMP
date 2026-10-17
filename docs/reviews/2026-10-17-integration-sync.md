@@ -90,3 +90,21 @@ Worktrees am 2026-10-17: `E:\RimworldMP` (`feat/mod-check-setup-ui` @ `5c3f2b7`,
 | lokale Branches des Besitzers (`claude/faction-sites`, `codex/*`) | nur beim Besitzer | – | vom Besitzer gegen `origin/main` prüfen | hier nicht vorhanden |
 
 Sven ist über die Löschung seiner Branches informiert: Er hat diesen Lauf selbst ausgeführt.
+
+## Phase 2 (2026-10-17, nach Freigabe des Besitzers)
+
+Ausgeführt von Sven mit Claude, Befehle in `E:\RimworldMP`:
+
+| Schritt | Befehl | Ergebnis |
+|---|---|---|
+| Kontrolle | `git fetch origin --prune`; `git merge-base --is-ancestor origin/main integration/sync-2026-10-17` | `origin/main` noch `85e02f9`, Vorfahr des Integrationsbranchs; alle drei Worktrees ohne offene Änderungen |
+| Fast-Forward | `git checkout main` (Hauptverzeichnis war auf `feat/mod-check-setup-ui`); `git merge --ff-only integration/sync-2026-10-17` | `main` = `ffa46c9` |
+| Status | TASKS (SYNC-009, SYNC-010, DET-001 → `merged`), PROJECT_STATE, SESSION_HANDOFF, dieser Bericht; `validate_project_state.py` PASS; `git diff --check` leer | Commit `64c728c` |
+| Push | `git push origin main` | `85e02f9..64c728c  main -> main` |
+| Archiv-Tags | `git tag -a archive/<branch> <kopf>` für `codex/continuous-sync` (`f1ebe66`), `codex/tick-driver` (`19b3bf7`), `codex/faction-ui` (`2cd5f0c`), `codex/manual-test-candidate` (`e18eac5`), `codex/resync-game` (`0bde512`), `docs/full-multiplayer-plan` (`1e5a529`), `feat/lobby-hardening` (`61dc9f7`), `feat/mod-check-setup-ui` (`5c3f2b7`, lokaler Kopf; enthält den Remote-Kopf `9343e85`), `integration/sync-2026-10-17` (`ffa46c9`); `git push origin refs/tags/archive/...` | neun Tags auf `origin` (`git ls-remote --tags origin 'archive/*'`) |
+| Worktrees | `git worktree remove E:\RimworldMP-integration`; `E:\RimworldMP-sync` bleibt (Branch behalten); Hauptverzeichnis auf `main` | `git worktree list`: `E:/RimworldMP [main]`, `E:/RimworldMP-sync [feat/sync-commands]` |
+| Remote löschen | `git push origin --delete codex/continuous-sync codex/tick-driver codex/faction-ui codex/manual-test-candidate codex/resync-game docs/full-multiplayer-plan feat/lobby-hardening feat/mod-check-setup-ui` | acht `[deleted]` |
+| Lokal löschen | `git branch -d docs/full-multiplayer-plan integration/sync-2026-10-17`; `git branch -D feat/lobby-hardening feat/mod-check-setup-ui` (nicht in `main`, Tags gesetzt) | gelöscht |
+| Endstand | `git ls-remote --heads origin` | `main` `64c728c`, `feat/sync-lockstep` `2a52807`, `feat/sync-commands` `ed5b33b` |
+
+Behalten laut Freigabe: `feat/sync-lockstep` und `feat/sync-commands` (remote und lokal) bis zur Entscheidung über die Gleichlauf-Linien. Nicht von hier aus prüfbar: die lokalen Branches und Worktrees auf dem Rechner des Besitzers (`codex/faction-storytellers` als Codex-Worktree, `claude/continuous-sync` u. a.); sie bleiben seine Aufgabe.
