@@ -328,6 +328,29 @@ namespace Multiplayer.Foundation.RimWorld
             return player < 0 ? pawnOwners[index] : playerNames[player];
         }
 
+        /// <summary>SYNC-005 (plan §7.7): the saved owner of a pawn, or null for a shared pawn.</summary>
+        internal PlayerKey? OwnerKeyOf(int pawnId)
+        {
+            int index = ownedPawns.IndexOf(pawnId);
+            if (index < 0 || index >= pawnOwners.Count) return null;
+            return PlayerKey.TryParse(pawnOwners[index], out PlayerKey key) ? key : (PlayerKey?)null;
+        }
+
+        internal string? PlayerNameOf(PlayerKey key)
+        {
+            int index = playerKeys.IndexOf(key.ToString());
+            return index >= 0 && index < playerNames.Count ? playerNames[index] : null;
+        }
+
+        /// <summary>Factions mode: the player whose faction this is, by faction loadID.</summary>
+        internal string? FactionOwnerNameOf(int factionId)
+        {
+            int index = factionIds.IndexOf(factionId);
+            if (index < 0 || index >= factionStorytellerOwners.Count) return null;
+            int player = playerKeys.IndexOf(factionStorytellerOwners[index]);
+            return player < 0 ? factionStorytellerOwners[index] : playerNames[player];
+        }
+
         public override void ExposeData()
         {
             Scribe_Values.Look(ref sessionId, "sessionId", "");

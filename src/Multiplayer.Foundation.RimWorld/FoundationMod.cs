@@ -248,12 +248,27 @@ namespace Multiplayer.Foundation.RimWorld
             status = "Gemeinsamer Spielstand wird gespeichert …";
         }
 
+        /// <summary>The local player's persistent key, from the lobby state; null outside a lobby.</summary>
+        private PlayerKey? LocalPlayerKey => lobby != null && client != null
+            ? lobby.Players.FirstOrDefault(p => p.Id == client.SessionId)?.Key : null;
+
+        // SYNC-005: the same rule the executor applies, checked before sending so the player sees why at once.
+        private bool RefusedLocally(Pawn pawn)
+        {
+            string? denial = PawnControl.Denial(pawn, LocalPlayerKey, MultiplayerSession.ForCurrentGame);
+            if (denial == null) return false;
+            status = "Keine Berechtigung: " + denial;
+            Messages.Message(status, MessageTypeDefOf.RejectInput, false);
+            return true;
+        }
+
         internal bool CaptureDraft(Pawn pawn, bool drafted)
         {
             if (!SharedGame || lobby?.Phase != SetupPhase.Playing || GameCommandCodec.Executing ||
                 Event.current == null) return true;
             if (tickDriver == null || tickDriver.Faulted || pawn.Map == null)
             { status = "Draft-Befehl konnte nicht gesendet werden."; return false; }
+            if (RefusedLocally(pawn)) return false;
             byte[] data = GameCommandCodec.Draft(pawn.Map.uniqueID, pawn.thingIDNumber, drafted);
             if (!SendBackground(LockstepClient.CommandMessage(data)))
                 status = "Draft-Befehl konnte nicht gesendet werden.";
@@ -281,6 +296,7 @@ namespace Multiplayer.Foundation.RimWorld
             { status = "Spielauftrag konnte nicht gesendet werden."; return false; }
             if (job == null || job.def != JobDefOf.Goto || job.targetA.HasThing)
             { status = "Dieser Spielauftrag ist noch nicht für Multiplayer verfügbar."; return false; }
+            if (RefusedLocally(pawn)) return false;
             byte[] data = GameCommandCodec.Goto(pawn.Map.uniqueID, pawn.thingIDNumber,
                 job.targetA.Cell, tag, queued);
             accepted = SendBackground(LockstepClient.CommandMessage(data));
@@ -288,7 +304,8 @@ namespace Multiplayer.Foundation.RimWorld
             return false;
         }
 
-        private static void ExecuteGameCommand(ScheduledCommand command) => GameCommandCodec.Execute(command);
+        private void ExecuteGameCommand(ScheduledCommand command) =>
+            GameCommandCodec.Execute(command, client?.SessionId ?? Guid.Empty);
 
         private void PollScheduledSave()
         {
